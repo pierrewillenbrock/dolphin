@@ -268,20 +268,16 @@ private:
     // 2) drop redundant store_greg/load_greg insns, and unify
     // the vregs
     // other todo:
-    // implement the ORing of parallel output to the same insn
-    // handle fetching from the same memory segment
     // things that should be thought of:
     //** what about insn.SR? => make it vreg?
     //* switch insn "tree" to real graph
     //* what to do with "active" vregs that need to be stored
     //  when a branch happens(CallOp, JmpOp, HandleLoop,
     //  CheckException, ... about everything calling
-    //  WriteBranchExit)
-    //* kill redundant StoreGuest/LoadGuest pairs, potentially with
-    //  new converter ops in between
+    //  WriteBranchExit) => ILList::Branch
     //* kill noops with input==output
     //* do something sane when we run out of hregs for vregs
-    //* avoid the above in deparallelizing
+    //* avoid the above in earlier steps
     //* cycle counter => possible solution: add to global var on
     //  leaving the BB. probably something for the "unsaved" part
     //  of g_dsp
