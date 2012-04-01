@@ -113,7 +113,7 @@ DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter)
   m_xregs[RDX].guest_reg = DSP_REG_STATIC;  // reserved for MUL/DIV
   m_xregs[RCX].guest_reg = DSP_REG_STATIC;  // reserved for shifts
 
-  m_xregs[RBX].guest_reg = DSP_REG_STATIC;  // extended op backing store
+  m_xregs[RBX].guest_reg = DSP_REG_NONE;
 
   m_xregs[RSP].guest_reg = DSP_REG_STATIC;  // stack pointer
 
@@ -368,7 +368,7 @@ void DSPJitIRRegCache::FlushRegs()
   }
 
   ASSERT_MSG(DSPLLE, m_xregs[RSP].guest_reg == DSP_REG_STATIC, "wrong xreg state for %d", RSP);
-  ASSERT_MSG(DSPLLE, m_xregs[RBX].guest_reg == DSP_REG_STATIC, "wrong xreg state for %d", RBX);
+  ASSERT_MSG(DSPLLE, m_xregs[RBX].guest_reg == DSP_REG_NONE, "wrong xreg state for %d", RBX);
   ASSERT_MSG(DSPLLE, m_xregs[RBP].guest_reg == DSP_REG_NONE, "wrong xreg state for %d", RBP);
   ASSERT_MSG(DSPLLE, m_xregs[RSI].guest_reg == DSP_REG_NONE, "wrong xreg state for %d", RSI);
   ASSERT_MSG(DSPLLE, m_xregs[RDI].guest_reg == DSP_REG_NONE, "wrong xreg state for %d", RDI);
