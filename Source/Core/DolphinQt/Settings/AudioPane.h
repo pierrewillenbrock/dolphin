@@ -50,6 +50,7 @@ private:
   // DSP Engine
   QRadioButton* m_dsp_hle;
   QRadioButton* m_dsp_lle;
+  QRadioButton* m_dsp_llejitir;
   QRadioButton* m_dsp_interpreter;
 
   // Volume

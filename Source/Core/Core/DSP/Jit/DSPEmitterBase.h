@@ -37,4 +37,5 @@ public:
 };
 
 std::unique_ptr<DSPEmitter> CreateDSPEmitter(DSPCore& dsp);
+std::unique_ptr<DSPEmitter> CreateDSPEmitterIR(DSPCore& dsp);
 }  // namespace DSP::JIT

@@ -51,11 +51,13 @@ void AudioPane::CreateWidgets()
   dsp_box->setLayout(dsp_layout);
   m_dsp_hle = new QRadioButton(tr("DSP HLE (fast)"));
   m_dsp_lle = new QRadioButton(tr("DSP LLE Recompiler"));
+  m_dsp_llejitir = new QRadioButton(tr("DSP LLE IR Recompiler"));
   m_dsp_interpreter = new QRadioButton(tr("DSP LLE Interpreter (slow)"));
 
   dsp_layout->addStretch(1);
   dsp_layout->addWidget(m_dsp_hle);
   dsp_layout->addWidget(m_dsp_lle);
+  dsp_layout->addWidget(m_dsp_llejitir);
   dsp_layout->addWidget(m_dsp_interpreter);
   dsp_layout->addStretch(1);
 
@@ -187,6 +189,7 @@ void AudioPane::ConnectWidgets()
   connect(m_stretching_enable, &QCheckBox::toggled, this, &AudioPane::SaveSettings);
   connect(m_dsp_hle, &QRadioButton::toggled, this, &AudioPane::SaveSettings);
   connect(m_dsp_lle, &QRadioButton::toggled, this, &AudioPane::SaveSettings);
+  connect(m_dsp_llejitir, &QRadioButton::toggled, this, &AudioPane::SaveSettings);
   connect(m_dsp_interpreter, &QRadioButton::toggled, this, &AudioPane::SaveSettings);
 
 #ifdef _WIN32
@@ -206,7 +209,10 @@ void AudioPane::LoadSettings()
   }
   else
   {
-    m_dsp_lle->setChecked(SConfig::GetInstance().m_DSPEnableJIT);
+    m_dsp_lle->setChecked(SConfig::GetInstance().m_DSPEnableJIT &&
+                          !SConfig::GetInstance().m_DSPEnableJITIR);
+    m_dsp_llejitir->setChecked(SConfig::GetInstance().m_DSPEnableJIT &&
+                               SConfig::GetInstance().m_DSPEnableJITIR);
     m_dsp_interpreter->setChecked(!SConfig::GetInstance().m_DSPEnableJIT);
   }
 
@@ -275,7 +281,8 @@ void AudioPane::SaveSettings()
   }
   SConfig::GetInstance().bDSPHLE = m_dsp_hle->isChecked();
   Config::SetBaseOrCurrent(Config::MAIN_DSP_HLE, m_dsp_hle->isChecked());
-  SConfig::GetInstance().m_DSPEnableJIT = m_dsp_lle->isChecked();
+  SConfig::GetInstance().m_DSPEnableJIT = m_dsp_lle->isChecked() || m_dsp_llejitir->isChecked();
+  SConfig::GetInstance().m_DSPEnableJITIR = m_dsp_llejitir->isChecked();
   Config::SetBaseOrCurrent(Config::MAIN_DSP_JIT, m_dsp_lle->isChecked());
 
   // Backend
@@ -379,6 +386,7 @@ void AudioPane::OnEmulationStateChanged(bool running)
 {
   m_dsp_hle->setEnabled(!running);
   m_dsp_lle->setEnabled(!running);
+  m_dsp_llejitir->setEnabled(!running);
   m_dsp_interpreter->setEnabled(!running);
   m_backend_label->setEnabled(!running);
   m_backend_combo->setEnabled(!running);

@@ -1,4 +1,3 @@
-// Copyright 2009 Dolphin Emulator Project
 // Licensed under GPLv2+
 // Refer to the license.txt file included.
 
@@ -13,7 +12,7 @@
 #include "Core/DSP/DSPAnalyzer.h"
 #include "Core/DSP/DSPCodeUtil.h"
 #include "Core/DSP/DSPCore.h"
-#include "Core/DSP/Jit/x64/DSPEmitter.h"
+#include "Core/DSP/Jit/DSPEmitterBase.h"
 #include "Core/HW/DSP.h"
 #include "Core/HW/DSPLLE/DSPSymbols.h"
 #include "Core/HW/Memmap.h"

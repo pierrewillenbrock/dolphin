@@ -291,6 +291,7 @@ struct DSPInitOptions
   {
     Interpreter,
     JIT64,
+    JITIR64,
   };
   CoreType core_type = CoreType::JIT64;
 

@@ -416,6 +416,8 @@ bool DSPCore::Initialize(const DSPInitOptions& opts)
   // Initialize JIT, if necessary
   if (opts.core_type == DSPInitOptions::CoreType::JIT64)
     m_dsp_jit = JIT::CreateDSPEmitter(*this);
+  if (opts.core_type == DSPInitOptions::CoreType::JITIR64)
+    m_dsp_jit = JIT::CreateDSPEmitterIR(*this);
 
   m_dsp_cap.reset(opts.capture_logger);
 

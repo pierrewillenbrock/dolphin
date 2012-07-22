@@ -350,6 +350,7 @@ void DolphinAnalytics::MakePerGameBuilder()
   // Configuration.
   builder.AddData("cfg-dsp-hle", SConfig::GetInstance().bDSPHLE);
   builder.AddData("cfg-dsp-jit", SConfig::GetInstance().m_DSPEnableJIT);
+  // builder.AddData("cfg-dsp-jitir", SConfig::GetInstance().m_DSPEnableJITIR);
   builder.AddData("cfg-dsp-thread", SConfig::GetInstance().bDSPThread);
   builder.AddData("cfg-cpu-thread", SConfig::GetInstance().bCPUThread);
   builder.AddData("cfg-fastmem", SConfig::GetInstance().bFastmem);

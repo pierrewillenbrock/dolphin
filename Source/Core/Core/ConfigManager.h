@@ -295,6 +295,7 @@ struct SConfig
 
   // DSP settings
   bool m_DSPEnableJIT;
+  bool m_DSPEnableJITIR;
   bool m_DSPCaptureLog;
   bool m_DumpAudio;
   bool m_DumpAudioSilent;

@@ -83,6 +83,7 @@ private:
   bool bLowDCBZHack;
   bool bDisableICache;
   bool m_EnableJIT;
+  bool m_EnableJITIR;
   bool bSyncGPU;
   int iSyncGpuMaxDistance;
   int iSyncGpuMinDistance;
@@ -117,6 +118,7 @@ void ConfigCache::SaveConfig(const SConfig& config)
   bDisableICache = config.bDisableICache;
   bMMU = config.bMMU;
   m_EnableJIT = config.m_DSPEnableJIT;
+  m_EnableJITIR = config.m_DSPEnableJITIR;
   bSyncGPU = config.bSyncGPU;
   iSyncGpuMaxDistance = config.iSyncGpuMaxDistance;
   iSyncGpuMinDistance = config.iSyncGpuMinDistance;
@@ -164,6 +166,7 @@ void ConfigCache::RestoreConfig(SConfig* config)
   config->bMMU = bMMU;
   config->bLowDCBZHack = bLowDCBZHack;
   config->m_DSPEnableJIT = m_EnableJIT;
+  config->m_DSPEnableJITIR = m_EnableJITIR;
   config->bSyncGPU = bSyncGPU;
   config->iSyncGpuMaxDistance = iSyncGpuMaxDistance;
   config->iSyncGpuMinDistance = iSyncGpuMinDistance;
@@ -278,6 +281,7 @@ bool BootCore(std::unique_ptr<BootParameters> boot, const WindowSystemInfo& wsi)
     if (dsp_section->Get("Volume", &StartUp.m_Volume, StartUp.m_Volume))
       config_cache.bSetVolume = true;
     dsp_section->Get("EnableJIT", &StartUp.m_DSPEnableJIT, StartUp.m_DSPEnableJIT);
+    dsp_section->Get("EnableJIT", &StartUp.m_DSPEnableJITIR, StartUp.m_DSPEnableJITIR);
     dsp_section->Get("Backend", &StartUp.sBackend, StartUp.sBackend);
     core_section->Get("GPUDeterminismMode", &StartUp.m_strGPUDeterminismMode,
                       StartUp.m_strGPUDeterminismMode);
@@ -365,6 +369,7 @@ bool BootCore(std::unique_ptr<BootParameters> boot, const WindowSystemInfo& wsi)
     StartUp.SelectedLanguage = netplay_settings.m_SelectedLanguage;
     StartUp.bOverrideRegionSettings = netplay_settings.m_OverrideRegionSettings;
     StartUp.m_DSPEnableJIT = netplay_settings.m_DSPEnableJIT;
+    StartUp.m_DSPEnableJITIR = false;
     StartUp.m_OCEnable = netplay_settings.m_OCEnable;
     StartUp.m_OCFactor = netplay_settings.m_OCFactor;
     StartUp.m_EXIDevice[0] = netplay_settings.m_EXIDevice[0];

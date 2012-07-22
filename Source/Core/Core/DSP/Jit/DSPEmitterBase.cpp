@@ -6,6 +6,7 @@
 
 #if defined(_M_X86) || defined(_M_X86_64)
 #include "Core/DSP/Jit/x64/DSPEmitter.h"
+#include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
 #endif
 
 namespace DSP::JIT
@@ -16,6 +17,14 @@ std::unique_ptr<DSPEmitter> CreateDSPEmitter([[maybe_unused]] DSPCore& dsp)
 {
 #if defined(_M_X86) || defined(_M_X86_64)
   return std::make_unique<x64::DSPEmitter>(dsp);
+#else
+  return std::make_unique<DSPEmitterNull>();
+#endif
+}
+std::unique_ptr<DSPEmitter> CreateDSPEmitterIR([[maybe_unused]] DSPCore& dsp)
+{
+#if defined(_M_X86) || defined(_M_X86_64)
+  return std::make_unique<DSP::JITIR::x64::DSPEmitterIR>(dsp);
 #else
   return std::make_unique<DSPEmitterNull>();
 #endif
