@@ -212,7 +212,6 @@ private:
   void FallBackToInterpreter(UDSPInstruction inst);
 
   void WriteBranchExit();
-  void WriteBlockLink(u16 dest);
 
   void ReJitConditional(UDSPInstruction opc, void (DSPEmitterIR::*conditional_fn)(UDSPInstruction));
   void r_jcc(UDSPInstruction opc);
@@ -310,10 +309,6 @@ private:
 
   std::vector<DSPCompiledCode> m_blocks;
   std::vector<u16> m_block_size;
-  std::vector<Block> m_block_links;
-  Block m_block_link_entry;
-
-  std::array<std::list<u16>, MAX_BLOCKS> m_unresolved_jumps;
 
   u16 m_cycles_left = 0;
 

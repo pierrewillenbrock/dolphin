@@ -95,42 +95,11 @@ void DSPEmitterIR::WriteBranchExit()
   m_gpr.FlushRegs(c, false);
 }
 
-void DSPEmitterIR::WriteBlockLink(u16 dest)
-{
-  // Jump directly to the called block if it has already been compiled.
-  if (!(dest >= m_start_address && dest <= m_compile_pc))
-  {
-    if (m_block_links[dest] != nullptr)
-    {
-      m_gpr.FlushRegs();
-      // Check if we have enough cycles to execute the next block
-      MOV(64, R(RAX), ImmPtr(&m_cycles_left));
-      MOV(16, R(ECX), MatR(RAX));
-      CMP(16, R(ECX), Imm16(m_block_size[m_start_address] + m_block_size[dest]));
-      FixupBranch notEnoughCycles = J_CC(CC_BE);
-
-      SUB(16, R(ECX), Imm16(m_block_size[m_start_address]));
-      MOV(16, MatR(RAX), R(ECX));
-      JMP(m_block_links[dest], true);
-      SetJumpTarget(notEnoughCycles);
-    }
-    else
-    {
-      // The destination has not been compiled yet.  Add it to the list
-      // of blocks that this block is waiting on.
-      m_unresolved_jumps[m_start_address].push_back(dest);
-    }
-  }
-}
-
 void DSPEmitterIR::r_jcc(const UDSPInstruction opc)
 {
   const u16 dest = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
   const DSPOPCTemplate* opcode = GetOpTemplate(opc);
 
-  // If the block is unconditional, attempt to link block
-  if (opcode->uncond_branch)
-    WriteBlockLink(dest);
   MOV(16, M_SDSP_pc(), Imm16(dest));
   WriteBranchExit();
 }
@@ -174,9 +143,6 @@ void DSPEmitterIR::r_call(const UDSPInstruction opc)
   const u16 dest = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
   const DSPOPCTemplate* opcode = GetOpTemplate(opc);
 
-  // If the block is unconditional, attempt to link block
-  if (opcode->uncond_branch)
-    WriteBlockLink(dest);
   MOV(16, M_SDSP_pc(), Imm16(dest));
   WriteBranchExit();
 }

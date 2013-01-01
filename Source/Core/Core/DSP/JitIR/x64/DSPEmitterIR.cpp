@@ -32,7 +32,7 @@ constexpr u16 DSP_IDLE_SKIP_CYCLES = 0x1000;
 
 DSPEmitterIR::DSPEmitterIR(DSPCore& dsp)
     : m_compile_status_register{SR_INT_ENABLE | SR_EXT_INT_ENABLE}, m_blocks(MAX_BLOCKS),
-      m_block_size(MAX_BLOCKS), m_block_links(MAX_BLOCKS), m_dsp_core{dsp}
+      m_block_size(MAX_BLOCKS), m_dsp_core{dsp}
 {
   x64::InitInstructionTables();
   AllocCodeSpace(COMPILED_CODE_SIZE);
@@ -77,9 +77,7 @@ void DSPEmitterIR::ClearIRAM()
   for (size_t i = 0; i < DSP_IRAM_SIZE; i++)
   {
     m_blocks[i] = (DSPCompiledCode)m_stub_entry_point;
-    m_block_links[i] = nullptr;
     m_block_size[i] = 0;
-    m_unresolved_jumps[i].clear();
   }
   m_dsp_core.DSPState().reset_dspjit_codespace = true;
 }
@@ -93,9 +91,7 @@ void DSPEmitterIR::ClearIRAMandDSPJITCodespaceReset()
   for (size_t i = 0; i < MAX_BLOCKS; i++)
   {
     m_blocks[i] = (DSPCompiledCode)m_stub_entry_point;
-    m_block_links[i] = nullptr;
     m_block_size[i] = 0;
-    m_unresolved_jumps[i].clear();
   }
   m_dsp_core.DSPState().reset_dspjit_codespace = false;
 }
@@ -229,13 +225,10 @@ void DSPEmitterIR::Compile(u16 start_addr)
 {
   // Remember the current block address for later
   m_start_address = start_addr;
-  m_unresolved_jumps[start_addr].clear();
 
   const u8* entryPoint = AlignCode16();
 
   m_gpr.LoadRegs();
-
-  m_block_link_entry = GetCodePtr();
 
   m_compile_pc = start_addr;
   bool fixup_pc = false;
@@ -254,9 +247,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     m_block_size[start_addr]++;
     m_compile_pc += opcode->size;
-
-    // If the block was trying to link into itself, remove the link
-    m_unresolved_jumps[start_addr].remove(m_compile_pc);
 
     fixup_pc = true;
 
@@ -349,30 +339,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   m_blocks[start_addr] = (DSPCompiledCode)entryPoint;
 
-  // Mark this block as a linkable destination if it does not contain
-  // any unresolved CALL's
-  if (m_unresolved_jumps[start_addr].empty())
-  {
-    m_block_links[start_addr] = m_block_link_entry;
-
-    for (size_t i = 0; i < 0xffff; ++i)
-    {
-      if (!m_unresolved_jumps[i].empty())
-      {
-        // Check if there were any blocks waiting for this block to be linkable
-        size_t size = m_unresolved_jumps[i].size();
-        m_unresolved_jumps[i].remove(start_addr);
-        if (m_unresolved_jumps[i].size() < size)
-        {
-          // Mark the block to be recompiled again
-          m_blocks[i] = (DSPCompiledCode)m_stub_entry_point;
-          m_block_links[i] = nullptr;
-          m_block_size[i] = 0;
-        }
-      }
-    }
-  }
-
   if (m_block_size[start_addr] == 0)
   {
     // just a safeguard, should never happen anymore.
@@ -396,23 +362,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
 void DSPEmitterIR::CompileCurrentIR(DSPEmitterIR& emitter)
 {
   emitter.Compile(emitter.m_dsp_core.DSPState().pc);
-
-  bool retry = true;
-
-  while (retry)
-  {
-    retry = false;
-    for (size_t i = 0; i < 0xffff; ++i)
-    {
-      if (!emitter.m_unresolved_jumps[i].empty())
-      {
-        const u16 address_to_compile = emitter.m_unresolved_jumps[i].front();
-        emitter.Compile(address_to_compile);
-        if (!emitter.m_unresolved_jumps[i].empty())
-          retry = true;
-      }
-    }
-  }
 }
 
 const u8* DSPEmitterIR::CompileStub()
