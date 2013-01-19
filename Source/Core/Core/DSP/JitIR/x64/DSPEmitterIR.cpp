@@ -1455,7 +1455,6 @@ void DSPEmitterIR::ir_finish_insn(IRInsn& insn)
 {
   insn.original = m_dsp_core.DSPState().ReadIMEM(m_compile_pc);
   insn.addr = m_compile_pc;
-  insn.cycle_count = m_block_size[m_start_address];
   insn.needs_SR |= insn.emitter->needs_SR;
   insn.modifies_SR |= insn.emitter->modifies_SR;
   insn.constant_mask_SR |= insn.emitter->constant_mask_SR;

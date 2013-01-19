@@ -335,8 +335,7 @@ private:
     u16 constant_val_SR;
 
     UDSPInstruction original;
-    u16 addr;         // filled in by ir_add_insn helper
-    u16 cycle_count;  // cycles done in this block
+    u16 addr;  // filled in by ir_add_insn helper
 
     Gen::OpArg SR;  // may be M, especially if the insn doesn't use it
 
