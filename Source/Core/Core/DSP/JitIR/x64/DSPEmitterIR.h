@@ -250,6 +250,10 @@ private:
     IROpInfo inputs[NUM_INPUTS];
     IROpInfo output;
     IROpInfo temps[NUM_TEMPS];
+
+    bool invertible_branch;  // this branch can fall through if
+    // either the condition is false(default, note "fall through")
+    // or if the condition is true.
   };
   class IROp
   {
@@ -343,6 +347,8 @@ private:
     u16 const_SR;     // known constant value
     u16 modified_SR;  // unpredictably modified
     u16 value_SR;     // value for fixed SR bits
+
+    bool branch_inverted;
 
     mutable Gen::FixupBranch branchTaken;
   };

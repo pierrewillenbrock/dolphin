@@ -536,7 +536,10 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoopOp = {
     0x0000,   0x0000,
     0x0000,   0x0000,
     true,     {{OpAnyReg | OpImm | ExtendZero16 | Clobbered}, {OpImmAny}, {OpImmAny}},
-    {},       {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
+    {},       {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}},
+    false,  // invertible_branch  (not invertible, since it needs to put
+            // its own insns on the unbranched path)
+};
 
 void DSPEmitterIR::iremit_HaltOp(IRInsn const& insn)
 {
@@ -580,12 +583,14 @@ void DSPEmitterIR::iremit_RetOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
-  IRReJitConditional(cc, insn, insn.SR, false, tmp1, tmp2);
+  IRReJitConditional(cc, insn, insn.SR, insn.branch_inverted, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RetOp = {
     "RetOp", &DSPEmitterIR::iremit_RetOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {{OpImmAny}},
-    {},      {{OpAnyReg}, {OpAnyReg}}};
+    {},      {{OpAnyReg}, {OpAnyReg}},
+    true,  // invertible_branch
+};
 
 void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
 {
@@ -616,12 +621,14 @@ void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
-  IRReJitConditional(cc & 0xf, insn, insn.SR, cc & 0x80, tmp1, tmp2);
+  IRReJitConditional(cc & 0xf, insn, insn.SR, !(cc & 0x80) == insn.branch_inverted, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::JmpOp = {
     "JmpOp", &DSPEmitterIR::iremit_JmpOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {{OpImmAny}},
-    {},      {{OpAnyReg}, {OpAnyReg}}};
+    {},      {{OpAnyReg}, {OpAnyReg}},
+    true,  // invertible_branch
+};
 
 void DSPEmitterIR::iremit_CallUncondOp(IRInsn const& insn)
 {
@@ -650,11 +657,13 @@ void DSPEmitterIR::iremit_CallOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
-  IRReJitConditional(cc, insn, insn.SR, false, tmp1, tmp2);
+  IRReJitConditional(cc, insn, insn.SR, insn.branch_inverted, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CallOp = {
     "CallOp", &DSPEmitterIR::iremit_CallOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {{OpImmAny}},
-    {},       {{OpAnyReg}, {OpAnyReg}}};
+    {},       {{OpAnyReg}, {OpAnyReg}},
+    true,  // invertible_branch
+};
 
 }  // namespace DSP::JITIR::x64
