@@ -109,7 +109,7 @@ DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter)
     xreg.guest_reg = DSP_REG_STATIC;
   }
 
-  m_xregs[RAX].guest_reg = DSP_REG_STATIC;  // reserved for MUL/DIV
+  m_xregs[RAX].guest_reg = DSP_REG_STATIC;  // reserved for MUL/DIV, ABICall returns
   m_xregs[RDX].guest_reg = DSP_REG_STATIC;  // reserved for MUL/DIV
   m_xregs[RCX].guest_reg = DSP_REG_STATIC;  // reserved for shifts
 
@@ -415,7 +415,7 @@ void DSPJitIRRegCache::SaveRegs()
   }
 }
 
-void DSPJitIRRegCache::PushRegs()
+void DSPJitIRRegCache::PushRegs(X64Reg returnreg)
 {
   for (size_t i = 0; i < m_regs.size(); i++)
   {
@@ -426,9 +426,10 @@ void DSPJitIRRegCache::PushRegs()
   }
 
   int push_count = 0;
-  for (X64CachedReg& xreg : m_xregs)
+  for (size_t i = 0; i < m_xregs.size(); i++)
   {
-    if (xreg.guest_reg != DSP_REG_NONE && xreg.guest_reg != DSP_REG_STATIC)
+    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC &&
+        static_cast<X64Reg>(i) != returnreg)
       push_count++;
   }
 
@@ -440,19 +441,24 @@ void DSPJitIRRegCache::PushRegs()
 
   for (size_t i = 0; i < m_xregs.size(); i++)
   {
-    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC)
+    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC &&
+        static_cast<X64Reg>(i) != returnreg)
     {
       m_emitter.PUSH(static_cast<X64Reg>(i));
     }
   }
 }
 
-void DSPJitIRRegCache::PopRegs()
+void DSPJitIRRegCache::PopRegs(X64Reg returnreg)
 {
+  if (returnreg != INVALID_REG && returnreg != RAX)
+    m_emitter.MOV(64, R(returnreg), R(RAX));
+
   int push_count = 0;
   for (int i = static_cast<int>(m_xregs.size() - 1); i >= 0; i--)
   {
-    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC)
+    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC &&
+        static_cast<X64Reg>(i) != returnreg)
     {
       push_count++;
 

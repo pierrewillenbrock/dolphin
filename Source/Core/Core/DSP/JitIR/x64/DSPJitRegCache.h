@@ -106,8 +106,13 @@ public:
   void LoadRegs(bool emit = true);  // Load statically allocated regs from memory
   void SaveRegs();                  // Save statically allocated regs to memory
 
-  void PushRegs();  // Save registers before ABI call
-  void PopRegs();   // Restore registers after ABI call
+  // Save registers before ABI call
+  // does not save returnreg
+  void PushRegs(Gen::X64Reg returnreg = Gen::INVALID_REG);
+  // Restore registers after ABI call
+  // does not restore content of returnreg,
+  // and puts contents of RAX there
+  void PopRegs(Gen::X64Reg returnreg = Gen::INVALID_REG);
 
   // Returns a register with the same contents as reg that is safe
   // to use through saveStaticRegs and for ABI-calls

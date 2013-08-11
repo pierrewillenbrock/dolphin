@@ -546,11 +546,9 @@ void DSPEmitterIR::dmem_read(X64Reg address, X64Reg host_dreg)
   //	else if (saddr == 0xf)
   //		return gdsp_ifx_read(addr);
   DSPJitIRRegCache c(m_gpr);
-  m_gpr.PushRegs();
+  m_gpr.PushRegs(host_dreg);
   ABI_CallFunctionPR(ReadIFXRegisterHelper, this, address);
-  m_gpr.PopRegs();  // todo: make gpr temporarily leave RAX alone
-  if (host_dreg != RAX)
-    MOV(16, R(host_dreg), R(RAX));
+  m_gpr.PopRegs(host_dreg);
   m_gpr.FlushRegs(c);
   SetJumpTarget(end);
   SetJumpTarget(end2);
@@ -572,11 +570,9 @@ void DSPEmitterIR::dmem_read_imm(u16 address, X64Reg host_dreg)
 
   case 0xf:  // Fxxx HW regs
   {
-    m_gpr.PushRegs();
+    m_gpr.PushRegs(host_dreg);
     ABI_CallFunctionPC(ReadIFXRegisterHelper, this, address);
-    m_gpr.PopRegs();  // todo: make gpr temporarily leave RAX alone
-    if (host_dreg != RAX)
-      MOV(16, R(host_dreg), R(RAX));
+    m_gpr.PopRegs(host_dreg);
     break;
   }
   default:  // Unmapped/non-existing memory
