@@ -129,8 +129,7 @@ void DSPEmitterIR::r_jmprcc(const UDSPInstruction opc, X64Reg tmp1, X64Reg tmp2)
   u8 reg = (opc >> 5) & 0x7;
   // reg can only be DSP_REG_ARx and DSP_REG_IXx now,
   // no need to handle DSP_REG_STx.
-  dsp_op_read_reg(reg, RAX, RegisterExtension::None, tmp1, tmp2,
-                  RAX);  // RAX+RAX is broken for ST accesses
+  m_gpr.ReadReg(reg, RAX, RegisterExtension::None);
   MOV(16, M_SDSP_pc(), R(EAX));
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutXReg(tmp2);
@@ -188,8 +187,7 @@ void DSPEmitterIR::r_callr(const UDSPInstruction opc, X64Reg tmp1, X64Reg tmp2)
   u8 reg = (opc >> 5) & 0x7;
   MOV(16, R(DX), Imm16(m_compile_pc + 1));
   dsp_reg_store_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
-  dsp_op_read_reg(reg, RAX, RegisterExtension::None, tmp1, tmp2,
-                  RAX);  // RAX+RAX is broken for ST accesses
+  m_gpr.ReadReg(reg, RAX, RegisterExtension::None);
   MOV(16, M_SDSP_pc(), R(EAX));
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutXReg(tmp2);

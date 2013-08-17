@@ -552,15 +552,13 @@ void DSPEmitterIR::addr(const UDSPInstruction opc)
 
   //	s64 acc = dsp_get_long_acc(dreg);
   X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
-  X64Reg tmp3 = m_gpr.GetFreeXReg();
 
   OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
   MOV(64, R(tmp1), accreg);
 
   MOV(64, R(RAX), R(tmp1));
   //	s64 ax = (s16)g_dsp.r[sreg];
-  dsp_op_read_reg(sreg, RDX, RegisterExtension::Sign, tmp2, tmp3, RAX);
+  m_gpr.ReadReg(sreg, RDX, RegisterExtension::Sign);
   //	ax <<= 16;
   SHL(64, R(RDX), Imm8(16));
   //	s64 res = acc + ax;
@@ -578,8 +576,6 @@ void DSPEmitterIR::addr(const UDSPInstruction opc)
     MOV(64, accreg, R(RAX));
   }
   m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
-  m_gpr.PutXReg(tmp3);
-  m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -893,15 +889,13 @@ void DSPEmitterIR::subr(const UDSPInstruction opc)
   u8 sreg = ((opc >> 9) & 0x3) + DSP_REG_AXL0;
 
   X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
-  X64Reg tmp3 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
   OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
   MOV(64, R(tmp1), accreg);
 
   MOV(64, R(RAX), R(tmp1));
   //	s64 ax = (s16)g_dsp.r[sreg];
-  dsp_op_read_reg(sreg, RDX, RegisterExtension::Sign, tmp2, tmp3, RAX);
+  m_gpr.ReadReg(sreg, RDX, RegisterExtension::Sign);
   //	ax <<= 16;
   SHL(64, R(RDX), Imm8(16));
   //	s64 res = acc - ax;
@@ -921,8 +915,6 @@ void DSPEmitterIR::subr(const UDSPInstruction opc)
     MOV(64, accreg, R(RAX));
   }
   m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
-  m_gpr.PutXReg(tmp3);
-  m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -1169,11 +1161,8 @@ void DSPEmitterIR::movr(const UDSPInstruction opc)
   u8 areg = (opc >> 8) & 0x1;
   u8 sreg = ((opc >> 9) & 0x3) + DSP_REG_AXL0;
 
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
-
   //	s64 acc = (s16)g_dsp.r[sreg];
-  dsp_op_read_reg(sreg, RAX, RegisterExtension::Sign, tmp1, tmp2, RAX);
+  m_gpr.ReadReg(sreg, RAX, RegisterExtension::Sign);
   //	acc <<= 16;
   SHL(64, R(RAX), Imm8(16));
   //	acc &= ~0xffff;
@@ -1183,8 +1172,6 @@ void DSPEmitterIR::movr(const UDSPInstruction opc)
   {
     Update_SR_Register64(RAX, RDX);
   }
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
 }
 
 // MOVAX $acD, $axS
