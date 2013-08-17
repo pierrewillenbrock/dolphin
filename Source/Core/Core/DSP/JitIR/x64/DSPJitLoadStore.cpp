@@ -13,6 +13,67 @@ using namespace Gen;
 
 namespace DSP::JITIR::x64
 {
+// MRR $D, $S
+// 0001 11dd ddds ssss
+// Move value from register $S to register $D.
+void DSPEmitterIR::mrr(const UDSPInstruction opc)
+{
+  u8 sreg = opc & 0x1f;
+  u8 dreg = (opc >> 5) & 0x1f;
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  X64Reg tmp2 = m_gpr.GetFreeXReg();
+
+  dsp_op_read_reg(sreg, EDX, RegisterExtension::None, tmp1, tmp2, RAX);
+  dsp_op_write_reg(dreg, EDX, tmp1, tmp2, RAX);
+  dsp_conditional_extend_accum(dreg, RAX);
+
+  m_gpr.PutXReg(tmp2);
+  m_gpr.PutXReg(tmp1);
+}
+
+// LRI $D, #I
+// 0000 0000 100d dddd
+// iiii iiii iiii iiii
+// Load immediate value I to register $D.
+//
+// DSPSpy discovery: This, and possibly other instructions that load a
+// register, has a different behaviour in S40 mode if loaded to AC0.M: The
+// value gets sign extended to the whole accumulator! This does not happen in
+// S16 mode.
+void DSPEmitterIR::lri(const UDSPInstruction opc)
+{
+  u8 reg = opc & 0x1F;
+  u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  X64Reg tmp2 = m_gpr.GetFreeXReg();
+
+  dsp_op_write_reg_imm(reg, imm, tmp1, tmp2, RAX);
+  dsp_conditional_extend_accum_imm(reg, imm);
+
+  m_gpr.PutXReg(tmp2);
+  m_gpr.PutXReg(tmp1);
+}
+
+// LRIS $(0x18+D), #I
+// 0000 1ddd iiii iiii
+// Load immediate value I (8-bit sign extended) to accumulator register.
+void DSPEmitterIR::lris(const UDSPInstruction opc)
+{
+  u8 reg = ((opc >> 8) & 0x7) + DSP_REG_AXL0;
+  u16 imm = (s8)opc;
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  X64Reg tmp2 = m_gpr.GetFreeXReg();
+
+  dsp_op_write_reg_imm(reg, imm, tmp1, tmp2, RAX);
+  dsp_conditional_extend_accum_imm(reg, imm);
+
+  m_gpr.PutXReg(tmp2);
+  m_gpr.PutXReg(tmp1);
+}
+
 // SRS @M, $(0x18+S)
 // 0010 1sss mmmm mmmm
 // Move value from register $(0x18+S) to data memory pointed by address
