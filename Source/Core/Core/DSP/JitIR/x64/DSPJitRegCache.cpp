@@ -107,7 +107,6 @@ DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter)
   for (X64CachedReg& xreg : m_xregs)
   {
     xreg.guest_reg = DSP_REG_STATIC;
-    xreg.pushed = false;
   }
 
   m_xregs[RAX].guest_reg = DSP_REG_STATIC;  // reserved for MUL/DIV
@@ -418,22 +417,18 @@ void DSPJitIRRegCache::SaveRegs()
 
 void DSPJitIRRegCache::PushRegs()
 {
-  FlushMemBackedRegs();
-
   for (size_t i = 0; i < m_regs.size(); i++)
   {
     if (m_regs[i].host_reg != INVALID_REG)
     {
       MovToMemory(i);
     }
-
-    ASSERT_MSG(DSPLLE, !m_regs[i].loc.IsSimpleReg(), "register %zu is still a simple reg", i);
   }
 
   int push_count = 0;
   for (X64CachedReg& xreg : m_xregs)
   {
-    if (xreg.guest_reg == DSP_REG_USED)
+    if (xreg.guest_reg != DSP_REG_NONE && xreg.guest_reg != DSP_REG_STATIC)
       push_count++;
   }
 
@@ -445,16 +440,10 @@ void DSPJitIRRegCache::PushRegs()
 
   for (size_t i = 0; i < m_xregs.size(); i++)
   {
-    if (m_xregs[i].guest_reg == DSP_REG_USED)
+    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC)
     {
       m_emitter.PUSH(static_cast<X64Reg>(i));
-      m_xregs[i].pushed = true;
-      m_xregs[i].guest_reg = DSP_REG_NONE;
     }
-
-    ASSERT_MSG(DSPLLE,
-               m_xregs[i].guest_reg == DSP_REG_NONE || m_xregs[i].guest_reg == DSP_REG_STATIC,
-               "register %zu is still used", i);
   }
 }
 
@@ -463,13 +452,11 @@ void DSPJitIRRegCache::PopRegs()
   int push_count = 0;
   for (int i = static_cast<int>(m_xregs.size() - 1); i >= 0; i--)
   {
-    if (m_xregs[i].pushed)
+    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC)
     {
       push_count++;
 
       m_emitter.POP(static_cast<X64Reg>(i));
-      m_xregs[i].pushed = false;
-      m_xregs[i].guest_reg = DSP_REG_USED;
     }
   }
 

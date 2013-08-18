@@ -134,7 +134,6 @@ private:
   struct X64CachedReg
   {
     size_t guest_reg;  // Including DSPJitRegSpecial
-    bool pushed;
   };
 
   struct DynamicReg
