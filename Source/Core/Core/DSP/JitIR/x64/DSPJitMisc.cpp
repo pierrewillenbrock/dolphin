@@ -11,17 +11,6 @@ using namespace Gen;
 
 namespace DSP::JITIR::x64
 {
-// NX
-// 1000 -000 xxxx xxxx
-// No operation, but can be extended with extended opcode.
-// This opcode is supposed to do nothing - it's used if you want to use
-// an opcode extension but not do anything. At least according to duddie.
-void DSPEmitterIR::nx(const UDSPInstruction opc)
-{
-}
-
-//----
-
 // DAR $arD
 // 0000 0000 0000 01dd
 // Decrement address register $arD.

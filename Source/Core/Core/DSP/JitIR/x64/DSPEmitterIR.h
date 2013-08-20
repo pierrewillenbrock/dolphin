@@ -72,7 +72,12 @@ public:
   void lri(UDSPInstruction opc);
   void lris(UDSPInstruction opc);
   void mrr(UDSPInstruction opc);
-  void nx(UDSPInstruction opc);
+  // NX
+  // 1000 -000 xxxx xxxx
+  // No operation, but can be extended with extended opcode.
+  // This opcode is supposed to do nothing - it's used if you want to use
+  // an opcode extension but not do anything.
+  void nx(UDSPInstruction opc) {}
 
   // Branch
   void jcc(UDSPInstruction opc);
