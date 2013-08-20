@@ -25,7 +25,7 @@ void DSPEmitterIR::ReJitConditional(const UDSPInstruction opc,
     return;
   }
 
-  dsp_op_read_reg(DSP_REG_SR, EAX, RegisterExtension::None, tmp1, tmp2);
+  m_gpr.ReadReg(DSP_REG_SR, EAX, RegisterExtension::None);
 
   switch (cond)
   {
@@ -129,7 +129,8 @@ void DSPEmitterIR::r_jmprcc(const UDSPInstruction opc, X64Reg tmp1, X64Reg tmp2)
   u8 reg = (opc >> 5) & 0x7;
   // reg can only be DSP_REG_ARx and DSP_REG_IXx now,
   // no need to handle DSP_REG_STx.
-  dsp_op_read_reg(reg, RAX, RegisterExtension::None, tmp1, tmp2);
+  dsp_op_read_reg(reg, RAX, RegisterExtension::None, tmp1, tmp2,
+                  RAX);  // RAX+RAX is broken for ST accesses
   MOV(16, M_SDSP_pc(), R(EAX));
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutXReg(tmp2);
@@ -155,7 +156,7 @@ void DSPEmitterIR::jmprcc(const UDSPInstruction opc)
 void DSPEmitterIR::r_call(const UDSPInstruction opc, X64Reg tmp1, X64Reg tmp2)
 {
   MOV(16, R(DX), Imm16(m_compile_pc + 2));
-  dsp_reg_store_stack(StackRegister::Call, RDX, tmp1, tmp2);
+  dsp_reg_store_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
   u16 dest = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
   MOV(16, M_SDSP_pc(), Imm16(dest));
   DSPJitIRRegCache c(m_gpr);
@@ -186,8 +187,9 @@ void DSPEmitterIR::r_callr(const UDSPInstruction opc, X64Reg tmp1, X64Reg tmp2)
 {
   u8 reg = (opc >> 5) & 0x7;
   MOV(16, R(DX), Imm16(m_compile_pc + 1));
-  dsp_reg_store_stack(StackRegister::Call, RDX, tmp1, tmp2);
-  dsp_op_read_reg(reg, RAX, RegisterExtension::None, tmp1, tmp2);
+  dsp_reg_store_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
+  dsp_op_read_reg(reg, RAX, RegisterExtension::None, tmp1, tmp2,
+                  RAX);  // RAX+RAX is broken for ST accesses
   MOV(16, M_SDSP_pc(), R(EAX));
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutXReg(tmp2);
@@ -238,7 +240,7 @@ void DSPEmitterIR::ifcc(const UDSPInstruction opc)
 
 void DSPEmitterIR::r_ret(const UDSPInstruction opc, X64Reg tmp1, X64Reg tmp2)
 {
-  dsp_reg_load_stack(StackRegister::Call, RDX, tmp1, tmp2);
+  dsp_reg_load_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
   MOV(16, M_SDSP_pc(), R(DX));
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutXReg(tmp2);
@@ -273,10 +275,10 @@ void DSPEmitterIR::rti(const UDSPInstruction opc)
   //	g_dsp.r[DSP_REG_SR] = dsp_reg_load_stack(StackRegister::Data);
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
-  dsp_reg_load_stack(StackRegister::Data, RDX, tmp1, tmp2);
-  dsp_op_write_reg(DSP_REG_SR, RDX, tmp1, tmp2);
+  dsp_reg_load_stack(StackRegister::Data, RDX, tmp1, tmp2, RAX);
+  m_gpr.WriteReg(DSP_REG_SR, R(RDX));
   //	g_dsp.pc = dsp_reg_load_stack(StackRegister::Call);
-  dsp_reg_load_stack(StackRegister::Call, RDX, tmp1, tmp2);
+  dsp_reg_load_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
   MOV(16, M_SDSP_pc(), R(DX));
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
@@ -319,9 +321,9 @@ void DSPEmitterIR::HandleLoop()
   DSPJitIRRegCache c(m_gpr);
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
-  dsp_reg_stack_pop(StackRegister::Call, tmp1, tmp2);
-  dsp_reg_stack_pop(StackRegister::LoopAddress, tmp1, tmp2);
-  dsp_reg_stack_pop(StackRegister::LoopCounter, tmp1, tmp2);
+  dsp_reg_stack_pop(StackRegister::Call, tmp1, tmp2, RAX);
+  dsp_reg_stack_pop(StackRegister::LoopAddress, tmp1, tmp2, RAX);
+  dsp_reg_stack_pop(StackRegister::LoopCounter, tmp1, tmp2, RAX);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
   m_gpr.FlushRegs(c);
@@ -346,7 +348,7 @@ void DSPEmitterIR::loop(const UDSPInstruction opc)
   // todo: check if we can use normal variant here
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
-  dsp_op_read_reg_dont_saturate(reg, RDX, RegisterExtension::Zero, tmp1, tmp2);
+  dsp_op_read_reg_dont_saturate(reg, RDX, RegisterExtension::Zero, tmp1, tmp2, RAX);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
   u16 loop_pc = m_compile_pc + 1;
@@ -356,11 +358,11 @@ void DSPEmitterIR::loop(const UDSPInstruction opc)
   FixupBranch cnt = J_CC(CC_Z, true);
   X64Reg tmp3 = m_gpr.GetFreeXReg();
   X64Reg tmp4 = m_gpr.GetFreeXReg();
-  dsp_reg_store_stack(StackRegister::LoopCounter, RDX, tmp3, tmp4);
+  dsp_reg_store_stack(StackRegister::LoopCounter, RDX, tmp3, tmp4, RAX);
   MOV(16, R(RDX), Imm16(m_compile_pc + 1));
-  dsp_reg_store_stack(StackRegister::Call, RDX, tmp3, tmp4);
+  dsp_reg_store_stack(StackRegister::Call, RDX, tmp3, tmp4, RAX);
   MOV(16, R(RDX), Imm16(loop_pc));
-  dsp_reg_store_stack(StackRegister::LoopAddress, RDX, tmp3, tmp4);
+  dsp_reg_store_stack(StackRegister::LoopAddress, RDX, tmp3, tmp4, RAX);
   m_gpr.PutXReg(tmp4);
   m_gpr.PutXReg(tmp3);
   m_gpr.FlushRegs(c);
@@ -394,11 +396,11 @@ void DSPEmitterIR::loopi(const UDSPInstruction opc)
     X64Reg tmp1 = m_gpr.GetFreeXReg();
     X64Reg tmp2 = m_gpr.GetFreeXReg();
     MOV(16, R(RDX), Imm16(m_compile_pc + 1));
-    dsp_reg_store_stack(StackRegister::Call, RDX, tmp1, tmp2);
+    dsp_reg_store_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
     MOV(16, R(RDX), Imm16(loop_pc));
-    dsp_reg_store_stack(StackRegister::LoopAddress, RDX, tmp1, tmp2);
+    dsp_reg_store_stack(StackRegister::LoopAddress, RDX, tmp1, tmp2, RAX);
     MOV(16, R(RDX), Imm16(cnt));
-    dsp_reg_store_stack(StackRegister::LoopCounter, RDX, tmp1, tmp2);
+    dsp_reg_store_stack(StackRegister::LoopCounter, RDX, tmp1, tmp2, RAX);
     m_gpr.PutXReg(tmp2);
     m_gpr.PutXReg(tmp1);
 
@@ -429,7 +431,7 @@ void DSPEmitterIR::bloop(const UDSPInstruction opc)
   // todo: check if we can use normal variant here
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
-  dsp_op_read_reg_dont_saturate(reg, RDX, RegisterExtension::Zero, tmp1, tmp2);
+  dsp_op_read_reg_dont_saturate(reg, RDX, RegisterExtension::Zero, tmp1, tmp2, RAX);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
   u16 loop_pc = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
@@ -439,11 +441,11 @@ void DSPEmitterIR::bloop(const UDSPInstruction opc)
   FixupBranch cnt = J_CC(CC_Z, true);
   X64Reg tmp3 = m_gpr.GetFreeXReg();
   X64Reg tmp4 = m_gpr.GetFreeXReg();
-  dsp_reg_store_stack(StackRegister::LoopCounter, RDX, tmp3, tmp4);
+  dsp_reg_store_stack(StackRegister::LoopCounter, RDX, tmp3, tmp4, RAX);
   MOV(16, R(RDX), Imm16(m_compile_pc + 2));
-  dsp_reg_store_stack(StackRegister::Call, RDX, tmp3, tmp4);
+  dsp_reg_store_stack(StackRegister::Call, RDX, tmp3, tmp4, RAX);
   MOV(16, R(RDX), Imm16(loop_pc));
-  dsp_reg_store_stack(StackRegister::LoopAddress, RDX, tmp3, tmp4);
+  dsp_reg_store_stack(StackRegister::LoopAddress, RDX, tmp3, tmp4, RAX);
   MOV(16, M_SDSP_pc(), Imm16(m_compile_pc + 2));
   m_gpr.PutXReg(tmp4);
   m_gpr.PutXReg(tmp3);
@@ -481,11 +483,11 @@ void DSPEmitterIR::bloopi(const UDSPInstruction opc)
     X64Reg tmp1 = m_gpr.GetFreeXReg();
     X64Reg tmp2 = m_gpr.GetFreeXReg();
     MOV(16, R(RDX), Imm16(m_compile_pc + 2));
-    dsp_reg_store_stack(StackRegister::Call, RDX, tmp1, tmp2);
+    dsp_reg_store_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
     MOV(16, R(RDX), Imm16(loop_pc));
-    dsp_reg_store_stack(StackRegister::LoopAddress, RDX, tmp1, tmp2);
+    dsp_reg_store_stack(StackRegister::LoopAddress, RDX, tmp1, tmp2, RAX);
     MOV(16, R(RDX), Imm16(cnt));
-    dsp_reg_store_stack(StackRegister::LoopCounter, RDX, tmp1, tmp2);
+    dsp_reg_store_stack(StackRegister::LoopCounter, RDX, tmp1, tmp2, RAX);
     m_gpr.PutXReg(tmp2);
     m_gpr.PutXReg(tmp1);
 

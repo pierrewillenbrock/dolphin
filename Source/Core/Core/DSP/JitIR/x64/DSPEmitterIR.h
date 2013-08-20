@@ -228,8 +228,8 @@ private:
 
   void get_long_prod(Gen::X64Reg long_prod, Gen::X64Reg tmp1);
   void get_long_prod_round_prodl(Gen::X64Reg long_prod, Gen::X64Reg tmp1);
-  void set_long_prod(Gen::X64Reg tmp1);
-  void round_long_acc(Gen::X64Reg long_acc = Gen::EAX);
+  void set_long_prod(Gen::X64Reg host_sreg, Gen::X64Reg tmp1);
+  void round_long_acc(Gen::X64Reg long_acc);
   void set_long_acc(int _reg, Gen::X64Reg acc = Gen::EAX);
   void get_acc_h(int _reg, Gen::X64Reg acc = Gen::EAX, bool sign = true);
   void set_acc_h(int _reg, const Gen::OpArg& arg = R(Gen::EAX));
@@ -258,34 +258,41 @@ private:
   void checkExceptions(u32 retval);
 
   // Memory helper functions
-  void increment_addr_reg(int reg, Gen::X64Reg tmp1);
-  void decrement_addr_reg(int reg, Gen::X64Reg tmp1);
-  void increase_addr_reg(int reg, int ix_reg, Gen::X64Reg tmp1);
-  void decrease_addr_reg(int reg, Gen::X64Reg tmp1);
-  void imem_read(Gen::X64Reg address);
-  void dmem_read(Gen::X64Reg address);
-  void dmem_read_imm(u16 addr);
-  void dmem_write(Gen::X64Reg value);
-  void dmem_write_imm(u16 addr, Gen::X64Reg value);
+  void increment_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
+                          Gen::X64Reg tmp4);
+  void decrement_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
+                          Gen::X64Reg tmp4);
+  void increase_addr_reg(int reg, int ix_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
+                         Gen::X64Reg tmp4);
+  void decrease_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
+                         Gen::X64Reg tmp4);
+  void imem_read(Gen::X64Reg address, Gen::X64Reg host_dreg);
+  void dmem_read(Gen::X64Reg address, Gen::X64Reg host_dreg);
+  void dmem_read_imm(u16 addr, Gen::X64Reg host_dreg);
+  void dmem_write(Gen::X64Reg value, Gen::X64Reg destaddr, Gen::X64Reg tmp1);
+  void dmem_write_imm(u16 addr, Gen::X64Reg value, Gen::X64Reg tmp1);
 
   // Command helpers
-  void dsp_reg_stack_push(StackRegister stack_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void dsp_reg_stack_pop(StackRegister stack_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+  void dsp_reg_stack_push(StackRegister stack_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
+                          Gen::X64Reg tmp3);
+  void dsp_reg_stack_pop(StackRegister stack_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
+                         Gen::X64Reg tmp3);
   void dsp_reg_store_stack(StackRegister stack_reg, Gen::X64Reg host_sreg, Gen::X64Reg tmp1,
-                           Gen::X64Reg tmp2);
+                           Gen::X64Reg tmp2, Gen::X64Reg tmp3);
   void dsp_reg_load_stack(StackRegister stack_reg, Gen::X64Reg host_dreg, Gen::X64Reg tmp1,
-                          Gen::X64Reg tmp2);
-  void dsp_reg_store_stack_imm(StackRegister stack_reg, u16 val, Gen::X64Reg tmp1,
-                               Gen::X64Reg tmp2);
-  void dsp_op_write_reg(int reg, Gen::X64Reg host_sreg, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void dsp_op_write_reg_imm(int reg, u16 val, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void dsp_conditional_extend_accum(int reg);
+                          Gen::X64Reg tmp2, Gen::X64Reg tmp3);
+  void dsp_reg_store_stack_imm(StackRegister stack_reg, u16 val, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
+                               Gen::X64Reg tmp3);
+  void dsp_op_write_reg(int reg, Gen::X64Reg host_sreg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
+                        Gen::X64Reg tmp3);
+  void dsp_op_write_reg_imm(int reg, u16 val, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3);
+  void dsp_conditional_extend_accum(int reg, Gen::X64Reg tmp1);
   void dsp_conditional_extend_accum_imm(int reg, u16 val);
   void dsp_op_read_reg_dont_saturate(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
-                                     Gen::X64Reg tmp1,
-                                     Gen::X64Reg tmp2);  // only used in the loop emitter
+                                     Gen::X64Reg tmp1, Gen::X64Reg tmp2,
+                                     Gen::X64Reg tmp3);  // only used in the loop emitter
   void dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend, Gen::X64Reg tmp1,
-                       Gen::X64Reg tmp2);
+                       Gen::X64Reg tmp2, Gen::X64Reg tmp3);
 
   // SDSP memory offset helpers
   Gen::OpArg M_SDSP_pc();

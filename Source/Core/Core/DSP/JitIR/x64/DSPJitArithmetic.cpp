@@ -23,7 +23,11 @@ void DSPEmitterIR::clr(const UDSPInstruction opc)
   u8 reg = (opc >> 11) & 0x1;
   //	dsp_set_long_acc(reg, 0);
   XOR(32, R(EAX), R(EAX));
-  set_long_acc(reg);
+
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + reg, false);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + reg);
+
   //	Update_SR_Register64(0);
   if (FlagsNeeded())
   {
@@ -40,10 +44,15 @@ void DSPEmitterIR::clrl(const UDSPInstruction opc)
 {
   u8 reg = (opc >> 8) & 0x1;
   //	s64 acc = dsp_round_long_acc(dsp_get_long_acc(reg));
-  get_long_acc(reg);
-  round_long_acc();
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + reg);
+  MOV(64, R(RAX), accreg);
+
+  round_long_acc(RAX);
   //	dsp_set_long_acc(reg, acc);
-  set_long_acc(reg);
+
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + reg);
+
   //	Update_SR_Register64(acc);
   if (FlagsNeeded())
   {
@@ -68,7 +77,7 @@ void DSPEmitterIR::andcf(const UDSPInstruction opc)
     //		u16 imm = dsp_fetch_code();
     const u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
     //		u16 val = dsp_get_acc_m(reg);
-    get_acc_m(reg);
+    m_gpr.ReadReg(reg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
     //		Update_SR_LZ(((val & imm) == imm) ? true : false);
     //		if ((val & imm) == imm)
     //			g_dsp.r.sr |= SR_LOGIC_ZERO;
@@ -103,7 +112,7 @@ void DSPEmitterIR::andf(const UDSPInstruction opc)
     //		u16 imm = dsp_fetch_code();
     const u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
     //		u16 val = dsp_get_acc_m(reg);
-    get_acc_m(reg);
+    m_gpr.ReadReg(reg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
     //		Update_SR_LZ(((val & imm) == 0) ? true : false);
     //		if ((val & imm) == 0)
     //			g_dsp.r.sr |= SR_LOGIC_ZERO;
@@ -134,7 +143,11 @@ void DSPEmitterIR::tst(const UDSPInstruction opc)
   {
     u8 reg = (opc >> 11) & 0x1;
     //		s64 acc = dsp_get_long_acc(reg);
-    get_long_acc(reg);
+
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + reg);
+    MOV(64, R(RAX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + reg, false);
+
     //		Update_SR_Register64(acc);
     Update_SR_Register64();
   }
@@ -151,7 +164,7 @@ void DSPEmitterIR::tstaxh(const UDSPInstruction opc)
   {
     u8 reg = (opc >> 8) & 0x1;
     //		s16 val = dsp_get_ax_h(reg);
-    get_ax_h(reg);
+    m_gpr.ReadReg(reg + DSP_REG_AXH0, RAX, RegisterExtension::Sign);
     //		Update_SR_Register16(val);
     Update_SR_Register16();
   }
@@ -170,10 +183,18 @@ void DSPEmitterIR::cmp(const UDSPInstruction opc)
   {
     X64Reg tmp1 = m_gpr.GetFreeXReg();
     //		s64 acc0 = dsp_get_long_acc(0);
-    get_long_acc(0, tmp1);
+
+    OpArg accreg0 = m_gpr.GetReg(DSP_REG_ACC0_64);
+    MOV(64, R(tmp1), accreg0);
+    m_gpr.PutReg(DSP_REG_ACC0_64, false);
+
     MOV(64, R(RAX), R(tmp1));
     //		s64 acc1 = dsp_get_long_acc(1);
-    get_long_acc(1, RDX);
+
+    OpArg accreg1 = m_gpr.GetReg(DSP_REG_ACC1_64);
+    MOV(64, R(RDX), accreg1);
+    m_gpr.PutReg(DSP_REG_ACC1_64, false);
+
     //		s64 res = dsp_convert_long_acc(acc0 - acc1);
     SUB(64, R(RAX), R(RDX));
     //		Update_SR_Register64(res, isCarry2(acc0, res), isOverflow(acc0, -acc1, res)); // CF ->
@@ -199,10 +220,14 @@ void DSPEmitterIR::cmpar(const UDSPInstruction opc)
 
     X64Reg tmp1 = m_gpr.GetFreeXReg();
     //		s64 sr = dsp_get_long_acc(sreg);
-    get_long_acc(sreg, tmp1);
+
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + sreg);
+    MOV(64, R(tmp1), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + sreg, false);
+
     MOV(64, R(RAX), R(tmp1));
     //		s64 rr = (s16)g_dsp.r.axh[rreg];
-    get_ax_h(rreg, RDX);
+    m_gpr.ReadReg(rreg + DSP_REG_AXH0, RDX, RegisterExtension::Sign);
     //		rr <<= 16;
     SHL(64, R(RDX), Imm8(16));
     //		s64 res = dsp_convert_long_acc(sr - rr);
@@ -228,7 +253,11 @@ void DSPEmitterIR::cmpi(const UDSPInstruction opc)
     const u8 reg = (opc >> 8) & 0x1;
     const X64Reg tmp1 = m_gpr.GetFreeXReg();
     //		s64 val = dsp_get_long_acc(reg);
-    get_long_acc(reg, tmp1);
+
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + reg);
+    MOV(64, R(tmp1), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + reg, false);
+
     MOV(64, R(RAX), R(tmp1));
     //		s64 imm = (s64)(s16)dsp_fetch_code() << 16; // Immediate is considered to be at M level in
     // the 40-bit accumulator.
@@ -257,7 +286,9 @@ void DSPEmitterIR::cmpis(const UDSPInstruction opc)
     u8 areg = (opc >> 8) & 0x1;
     //		s64 acc = dsp_get_long_acc(areg);
     X64Reg tmp1 = m_gpr.GetFreeXReg();
-    get_long_acc(areg, tmp1);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + areg);
+    MOV(64, R(tmp1), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + areg, false);
     MOV(64, R(RAX), R(tmp1));
     //		s64 val = (s8)opc;
     //		val <<= 16;
@@ -285,15 +316,18 @@ void DSPEmitterIR::xorr(const UDSPInstruction opc)
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] ^ g_dsp.r.axh[sreg];
-  get_acc_m(dreg, RAX);
-  get_ax_h(sreg, RDX);
+  m_gpr.ReadReg(dreg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
+  m_gpr.ReadReg(sreg + DSP_REG_AXH0, RDX, RegisterExtension::Sign);
   XOR(64, R(RAX), R(RDX));
   //	g_dsp.r.acm[dreg] = accm;
-  set_acc_m(dreg);
+  m_gpr.WriteReg(dreg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)accm, false, false, isOverS32(dsp_get_long_acc(dreg)));
   if (FlagsNeeded())
   {
-    get_long_acc(dreg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + dreg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -310,15 +344,18 @@ void DSPEmitterIR::andr(const UDSPInstruction opc)
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] & g_dsp.r.axh[sreg];
-  get_acc_m(dreg, RAX);
-  get_ax_h(sreg, RDX);
+  m_gpr.ReadReg(dreg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
+  m_gpr.ReadReg(sreg + DSP_REG_AXH0, RDX, RegisterExtension::Sign);
   AND(64, R(RAX), R(RDX));
   //	g_dsp.r.acm[dreg] = accm;
-  set_acc_m(dreg);
+  m_gpr.WriteReg(dreg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)accm, false, false, isOverS32(dsp_get_long_acc(dreg)));
   if (FlagsNeeded())
   {
-    get_long_acc(dreg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + dreg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -335,15 +372,18 @@ void DSPEmitterIR::orr(const UDSPInstruction opc)
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] | g_dsp.r.axh[sreg];
-  get_acc_m(dreg, RAX);
-  get_ax_h(sreg, RDX);
+  m_gpr.ReadReg(dreg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
+  m_gpr.ReadReg(sreg + DSP_REG_AXH0, RDX, RegisterExtension::Sign);
   OR(64, R(RAX), R(RDX));
   //	g_dsp.r.acm[dreg] = accm;
-  set_acc_m(dreg);
+  m_gpr.WriteReg(dreg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)accm, false, false, isOverS32(dsp_get_long_acc(dreg)));
   if (FlagsNeeded())
   {
-    get_long_acc(dreg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + dreg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -359,15 +399,18 @@ void DSPEmitterIR::andc(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] & g_dsp.r.acm[1 - dreg];
-  get_acc_m(dreg, RAX);
-  get_acc_m(1 - dreg, RDX);
+  m_gpr.ReadReg(dreg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
+  m_gpr.ReadReg(1 - dreg + DSP_REG_ACM0, RDX, RegisterExtension::Sign);
   AND(64, R(RAX), R(RDX));
   //	g_dsp.r.acm[dreg] = accm;
-  set_acc_m(dreg);
+  m_gpr.WriteReg(dreg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)accm, false, false, isOverS32(dsp_get_long_acc(dreg)));
   if (FlagsNeeded())
   {
-    get_long_acc(dreg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + dreg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -383,15 +426,18 @@ void DSPEmitterIR::orc(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] | g_dsp.r.acm[1 - dreg];
-  get_acc_m(dreg, RAX);
-  get_acc_m(1 - dreg, RDX);
+  m_gpr.ReadReg(dreg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
+  m_gpr.ReadReg(1 - dreg + DSP_REG_ACM0, RDX, RegisterExtension::Sign);
   OR(64, R(RAX), R(RDX));
   //	g_dsp.r.acm[dreg] = accm;
-  set_acc_m(dreg);
+  m_gpr.WriteReg(dreg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)accm, false, false, isOverS32(dsp_get_long_acc(dreg)));
   if (FlagsNeeded())
   {
-    get_long_acc(dreg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + dreg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -406,15 +452,18 @@ void DSPEmitterIR::xorc(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] ^ g_dsp.r.acm[1 - dreg];
-  get_acc_m(dreg, RAX);
-  get_acc_m(1 - dreg, RDX);
+  m_gpr.ReadReg(dreg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
+  m_gpr.ReadReg(1 - dreg + DSP_REG_ACM0, RDX, RegisterExtension::Sign);
   XOR(64, R(RAX), R(RDX));
   //	g_dsp.r.acm[dreg] = accm;
-  set_acc_m(dreg);
+  m_gpr.WriteReg(dreg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)accm, false, false, isOverS32(dsp_get_long_acc(dreg)));
   if (FlagsNeeded())
   {
-    get_long_acc(dreg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + dreg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -429,14 +478,17 @@ void DSPEmitterIR::notc(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] ^ 0xffff;
-  get_acc_m(dreg, RAX);
+  m_gpr.ReadReg(dreg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
   NOT(16, R(AX));
   //	g_dsp.r.acm[dreg] = accm;
-  set_acc_m(dreg);
+  m_gpr.WriteReg(dreg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)accm, false, false, isOverS32(dsp_get_long_acc(dreg)));
   if (FlagsNeeded())
   {
-    get_long_acc(dreg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + dreg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -454,13 +506,16 @@ void DSPEmitterIR::xori(const UDSPInstruction opc)
   //	u16 imm = dsp_fetch_code();
   const u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
   //	g_dsp.r.acm[reg] ^= imm;
-  get_acc_m(reg, RAX);
+  m_gpr.ReadReg(reg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
   XOR(16, R(RAX), Imm16(imm));
-  set_acc_m(reg);
+  m_gpr.WriteReg(reg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)g_dsp.r.acm[reg], false, false, isOverS32(dsp_get_long_acc(reg)));
   if (FlagsNeeded())
   {
-    get_long_acc(reg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + reg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + reg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -477,13 +532,16 @@ void DSPEmitterIR::andi(const UDSPInstruction opc)
   //	u16 imm = dsp_fetch_code();
   const u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
   //	g_dsp.r.acm[reg] &= imm;
-  get_acc_m(reg, RAX);
+  m_gpr.ReadReg(reg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
   AND(16, R(RAX), Imm16(imm));
-  set_acc_m(reg);
+  m_gpr.WriteReg(reg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)g_dsp.r.acm[reg], false, false, isOverS32(dsp_get_long_acc(reg)));
   if (FlagsNeeded())
   {
-    get_long_acc(reg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + reg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + reg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -500,13 +558,16 @@ void DSPEmitterIR::ori(const UDSPInstruction opc)
   //	u16 imm = dsp_fetch_code();
   const u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
   //	g_dsp.r.acm[reg] |= imm;
-  get_acc_m(reg, RAX);
+  m_gpr.ReadReg(reg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
   OR(16, R(RAX), Imm16(imm));
-  set_acc_m(reg);
+  m_gpr.WriteReg(reg + DSP_REG_ACM0, R(RAX));
   //	Update_SR_Register16((s16)g_dsp.r.acm[reg], false, false, isOverS32(dsp_get_long_acc(reg)));
   if (FlagsNeeded())
   {
-    get_long_acc(reg, RCX);
+    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + reg);
+    MOV(64, R(RCX), accreg);
+    m_gpr.PutReg(DSP_REG_ACC0_64 + reg, false);
+
     Update_SR_Register16_OverS32();
   }
 }
@@ -527,10 +588,13 @@ void DSPEmitterIR::addr(const UDSPInstruction opc)
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
   X64Reg tmp3 = m_gpr.GetFreeXReg();
-  get_long_acc(dreg, tmp1);
+
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 ax = (s16)g_dsp.r[sreg];
-  dsp_op_read_reg(sreg, RDX, RegisterExtension::Sign, tmp2, tmp3);
+  dsp_op_read_reg(sreg, RDX, RegisterExtension::Sign, tmp2, tmp3, RAX);
   //	ax <<= 16;
   SHL(64, R(RDX), Imm8(16));
   //	s64 res = acc + ax;
@@ -540,13 +604,14 @@ void DSPEmitterIR::addr(const UDSPInstruction opc)
   if (FlagsNeeded())
   {
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp3);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
@@ -564,10 +629,12 @@ void DSPEmitterIR::addax(const UDSPInstruction opc)
 
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 ax  = dsp_get_long_acx(sreg);
-  get_long_acx(sreg, RDX);
+  m_gpr.ReadReg(sreg + DSP_REG_AX0_32, RDX, RegisterExtension::Sign);
   //	s64 res = acc + ax;
   ADD(64, R(RAX), R(RDX));
   //	dsp_set_long_acc(dreg, res);
@@ -576,13 +643,14 @@ void DSPEmitterIR::addax(const UDSPInstruction opc)
   if (FlagsNeeded())
   {
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -597,10 +665,16 @@ void DSPEmitterIR::add(const UDSPInstruction opc)
 
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc0 = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 acc1 = dsp_get_long_acc(1 - dreg);
-  get_long_acc(1 - dreg, RDX);
+
+  OpArg accreg2 = m_gpr.GetReg(DSP_REG_ACC0_64 + 1 - dreg);
+  MOV(64, R(RDX), accreg2);
+  m_gpr.PutReg(DSP_REG_ACC0_64 + 1 - dreg, false);
+
   //	s64 res = acc0 + acc1;
   ADD(64, R(RAX), R(RDX));
   //	dsp_set_long_acc(dreg, res);
@@ -609,13 +683,14 @@ void DSPEmitterIR::add(const UDSPInstruction opc)
   if (FlagsNeeded())
   {
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -631,7 +706,9 @@ void DSPEmitterIR::addp(const UDSPInstruction opc)
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 prod = dsp_get_long_prod();
   get_long_prod(RDX, tmp2);
@@ -643,13 +720,14 @@ void DSPEmitterIR::addp(const UDSPInstruction opc)
   if (FlagsNeeded())
   {
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
 }
@@ -667,10 +745,12 @@ void DSPEmitterIR::addaxl(const UDSPInstruction opc)
 
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	u64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	u16 acx = (u16)dsp_get_ax_l(sreg);
-  get_ax_l(sreg, RDX);
+  m_gpr.ReadReg(sreg + DSP_REG_AXL0, RDX, RegisterExtension::Sign);
   MOVZX(64, 16, RDX, R(RDX));
   //	u64 res = acc + acx;
   ADD(64, R(RAX), R(RDX));
@@ -680,13 +760,14 @@ void DSPEmitterIR::addaxl(const UDSPInstruction opc)
   if (FlagsNeeded())
   {
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -701,7 +782,9 @@ void DSPEmitterIR::addi(const UDSPInstruction opc)
   u8 areg = (opc >> 8) & 0x1;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(areg);
-  get_long_acc(areg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + areg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 imm = (s16)dsp_fetch_code();
   const s16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
@@ -715,13 +798,14 @@ void DSPEmitterIR::addi(const UDSPInstruction opc)
   if (FlagsNeeded())
   {
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(areg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1);
   }
   else
   {
-    set_long_acc(areg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + areg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -736,7 +820,9 @@ void DSPEmitterIR::addis(const UDSPInstruction opc)
 
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 imm = (s8)(u8)opc;
   //	imm <<= 16;
@@ -750,13 +836,14 @@ void DSPEmitterIR::addis(const UDSPInstruction opc)
   if (FlagsNeeded())
   {
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -771,7 +858,9 @@ void DSPEmitterIR::incm(const UDSPInstruction opc)
   s64 subtract = 0x10000;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   //	s64 res = acc + sub;
   LEA(64, RAX, MDisp(tmp1, subtract));
   //	dsp_set_long_acc(dreg, res);
@@ -781,13 +870,16 @@ void DSPEmitterIR::incm(const UDSPInstruction opc)
   {
     MOV(64, R(RDX), Imm32((u32)subtract));
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+
+    MOV(64, accreg, R(RCX));
+
     Update_SR_Register64_Carry(EAX, tmp1);
   }
   else
   {
-    set_long_acc(dreg);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -801,7 +893,9 @@ void DSPEmitterIR::inc(const UDSPInstruction opc)
   u8 dreg = (opc >> 8) & 0x1;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   //	s64 res = acc + 1;
   LEA(64, RAX, MDisp(tmp1, 1));
   //	dsp_set_long_acc(dreg, res);
@@ -811,13 +905,14 @@ void DSPEmitterIR::inc(const UDSPInstruction opc)
   {
     MOV(64, R(RDX), Imm64(1));
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1);
   }
   else
   {
-    set_long_acc(dreg);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -837,10 +932,12 @@ void DSPEmitterIR::subr(const UDSPInstruction opc)
   X64Reg tmp2 = m_gpr.GetFreeXReg();
   X64Reg tmp3 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 ax = (s16)g_dsp.r[sreg];
-  dsp_op_read_reg(sreg, RDX, RegisterExtension::Sign, tmp2, tmp3);
+  dsp_op_read_reg(sreg, RDX, RegisterExtension::Sign, tmp2, tmp3, RAX);
   //	ax <<= 16;
   SHL(64, R(RDX), Imm8(16));
   //	s64 res = acc - ax;
@@ -852,13 +949,14 @@ void DSPEmitterIR::subr(const UDSPInstruction opc)
   {
     NEG(64, R(RDX));
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1, true);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp3);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
@@ -876,10 +974,12 @@ void DSPEmitterIR::subax(const UDSPInstruction opc)
 
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 acx = dsp_get_long_acx(sreg);
-  get_long_acx(sreg, RDX);
+  m_gpr.ReadReg(sreg + DSP_REG_AX0_32, RDX, RegisterExtension::Sign);
   //	s64 res = acc - acx;
   SUB(64, R(RAX), R(RDX));
   //	dsp_set_long_acc(dreg, res);
@@ -889,13 +989,14 @@ void DSPEmitterIR::subax(const UDSPInstruction opc)
   {
     NEG(64, R(RDX));
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1, true);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -909,10 +1010,14 @@ void DSPEmitterIR::sub(const UDSPInstruction opc)
   u8 dreg = (opc >> 8) & 0x1;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc1 = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 acc2 = dsp_get_long_acc(1 - dreg);
-  get_long_acc(1 - dreg, RDX);
+  OpArg accreg2 = m_gpr.GetReg(DSP_REG_ACC0_64 + 1 - dreg);
+  MOV(64, R(RDX), accreg2);
+  m_gpr.PutReg(DSP_REG_ACC0_64 + 1 - dreg, false);
   //	s64 res = acc1 - acc2;
   SUB(64, R(RAX), R(RDX));
   //	dsp_set_long_acc(dreg, res);
@@ -922,13 +1027,14 @@ void DSPEmitterIR::sub(const UDSPInstruction opc)
   {
     NEG(64, R(RDX));
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1, true);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -943,7 +1049,9 @@ void DSPEmitterIR::subp(const UDSPInstruction opc)
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   MOV(64, R(RAX), R(tmp1));
   //	s64 prod = dsp_get_long_prod();
   get_long_prod(RDX, tmp2);
@@ -956,13 +1064,14 @@ void DSPEmitterIR::subp(const UDSPInstruction opc)
   {
     NEG(64, R(RDX));
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1, true);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
 }
@@ -978,7 +1087,9 @@ void DSPEmitterIR::decm(const UDSPInstruction opc)
   s64 subtract = 0x10000;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   //	s64 res = acc - sub;
   LEA(64, RAX, MDisp(tmp1, -subtract));
   //	dsp_set_long_acc(dreg, res);
@@ -988,13 +1099,14 @@ void DSPEmitterIR::decm(const UDSPInstruction opc)
   {
     MOV(64, R(RDX), Imm64(-subtract));
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1, true);
   }
   else
   {
-    set_long_acc(dreg, RAX);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -1008,7 +1120,9 @@ void DSPEmitterIR::dec(const UDSPInstruction opc)
   u8 dreg = (opc >> 8) & 0x01;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, tmp1);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(tmp1), accreg);
+
   //	s64 res = acc - 1;
   LEA(64, RAX, MDisp(tmp1, -1));
   //	dsp_set_long_acc(dreg, res);
@@ -1018,13 +1132,14 @@ void DSPEmitterIR::dec(const UDSPInstruction opc)
   {
     MOV(64, R(RDX), Imm64(-1));
     MOV(64, R(RCX), R(RAX));
-    set_long_acc(dreg, RCX);
+    MOV(64, accreg, R(RCX));
     Update_SR_Register64_Carry(EAX, tmp1, true);
   }
   else
   {
-    set_long_acc(dreg);
+    MOV(64, accreg, R(RAX));
   }
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   m_gpr.PutXReg(tmp1);
 }
 
@@ -1039,11 +1154,13 @@ void DSPEmitterIR::neg(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(RAX), accreg);
   //	acc = 0 - acc;
   NEG(64, R(RAX));
   //	dsp_set_long_acc(dreg, acc);
-  set_long_acc(dreg);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   //	Update_SR_Register64(dsp_get_long_acc(dreg));
   if (FlagsNeeded())
   {
@@ -1061,13 +1178,15 @@ void DSPEmitterIR::abs(const UDSPInstruction opc)
   u8 dreg = (opc >> 11) & 0x1;
 
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(RAX), accreg);
   //	if (acc < 0) acc = 0 - acc;
   TEST(64, R(RAX), R(RAX));
   FixupBranch GreaterThanOrEqual = J_CC(CC_GE);
   NEG(64, R(RAX));
-  set_long_acc(dreg);
+  MOV(64, accreg, R(RAX));
   SetJumpTarget(GreaterThanOrEqual);
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   //	Update_SR_Register64(dsp_get_long_acc(dreg));
   if (FlagsNeeded())
   {
@@ -1092,12 +1211,14 @@ void DSPEmitterIR::movr(const UDSPInstruction opc)
   X64Reg tmp2 = m_gpr.GetFreeXReg();
 
   //	s64 acc = (s16)g_dsp.r[sreg];
-  dsp_op_read_reg(sreg, RAX, RegisterExtension::Sign, tmp1, tmp2);
+  dsp_op_read_reg(sreg, RAX, RegisterExtension::Sign, tmp1, tmp2, RAX);
   //	acc <<= 16;
   SHL(64, R(RAX), Imm8(16));
   //	acc &= ~0xffff;
   //	dsp_set_long_acc(areg, acc);
-  set_long_acc(areg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + areg, false);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + areg);
   if (FlagsNeeded())
   {
     Update_SR_Register64();
@@ -1117,9 +1238,11 @@ void DSPEmitterIR::movax(const UDSPInstruction opc)
   u8 sreg = (opc >> 9) & 0x1;
 
   //	s64 acx = dsp_get_long_acx(sreg);
-  get_long_acx(sreg);
+  m_gpr.ReadReg(sreg + DSP_REG_AX0_32, RAX, RegisterExtension::Sign);
   //	dsp_set_long_acc(dreg, acx);
-  set_long_acc(dreg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg, false);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   //	Update_SR_Register64(acx);
   if (FlagsNeeded())
   {
@@ -1136,9 +1259,13 @@ void DSPEmitterIR::mov(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u64 acc = dsp_get_long_acc(1 - dreg);
-  get_long_acc(1 - dreg);
+  OpArg accreg2 = m_gpr.GetReg(DSP_REG_ACC0_64 + 1 - dreg);
+  MOV(64, R(RAX), accreg2);
+  m_gpr.PutReg(DSP_REG_ACC0_64 + 1 - dreg, false);
   //	dsp_set_long_acc(dreg, acc);
-  set_long_acc(dreg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg, false);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   //	Update_SR_Register64(acc);
   if (FlagsNeeded())
   {
@@ -1157,11 +1284,13 @@ void DSPEmitterIR::lsl16(const UDSPInstruction opc)
 {
   u8 areg = (opc >> 8) & 0x1;
   //	s64 acc = dsp_get_long_acc(areg);
-  get_long_acc(areg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + areg);
+  MOV(64, R(RAX), accreg);
   //	acc <<= 16;
   SHL(64, R(RAX), Imm8(16));
   //	dsp_set_long_acc(areg, acc);
-  set_long_acc(areg);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + areg);
   //	Update_SR_Register64(dsp_get_long_acc(areg));
   if (FlagsNeeded())
   {
@@ -1179,14 +1308,16 @@ void DSPEmitterIR::lsr16(const UDSPInstruction opc)
   u8 areg = (opc >> 8) & 0x1;
 
   //	u64 acc = dsp_get_long_acc(areg);
-  get_long_acc(areg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + areg);
+  MOV(64, R(RAX), accreg);
   //	acc &= 0x000000FFFFFFFFFFULL; 	// Lop off the extraneous sign extension our 64-bit fake accum
   // causes
   //	acc >>= 16;
   SHR(64, R(RAX), Imm8(16));
   AND(32, R(EAX), Imm32(0xffffff));
   //	dsp_set_long_acc(areg, (s64)acc);
-  set_long_acc(areg);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + areg);
   //	Update_SR_Register64(dsp_get_long_acc(areg));
   if (FlagsNeeded())
   {
@@ -1204,11 +1335,13 @@ void DSPEmitterIR::asr16(const UDSPInstruction opc)
   u8 areg = (opc >> 11) & 0x1;
 
   //	s64 acc = dsp_get_long_acc(areg);
-  get_long_acc(areg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + areg);
+  MOV(64, R(RAX), accreg);
   //	acc >>= 16;
   SAR(64, R(RAX), Imm8(16));
   //	dsp_set_long_acc(areg, acc);
-  set_long_acc(areg);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + areg);
   //	Update_SR_Register64(dsp_get_long_acc(areg));
   if (FlagsNeeded())
   {
@@ -1226,13 +1359,15 @@ void DSPEmitterIR::lsl(const UDSPInstruction opc)
   u8 rreg = (opc >> 8) & 0x01;
   u16 shift = opc & 0x3f;
   //	u64 acc = dsp_get_long_acc(rreg);
-  get_long_acc(rreg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + rreg);
+  MOV(64, R(RAX), accreg);
 
   //	acc <<= shift;
   SHL(64, R(RAX), Imm8((u8)shift));
 
   //	dsp_set_long_acc(rreg, acc);
-  set_long_acc(rreg);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + rreg);
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
@@ -1251,7 +1386,8 @@ void DSPEmitterIR::lsr(const UDSPInstruction opc)
   u8 rreg = (opc >> 8) & 0x01;
   u16 shift;
   //	u64 acc = dsp_get_long_acc(rreg);
-  get_long_acc(rreg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + rreg);
+  MOV(64, R(RAX), accreg);
 
   if ((opc & 0x3f) == 0)
     shift = 0;
@@ -1268,7 +1404,8 @@ void DSPEmitterIR::lsr(const UDSPInstruction opc)
   }
 
   //	dsp_set_long_acc(rreg, (s64)acc);
-  set_long_acc(rreg);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + rreg);
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
@@ -1286,11 +1423,13 @@ void DSPEmitterIR::asl(const UDSPInstruction opc)
   u8 rreg = (opc >> 8) & 0x01;
   u16 shift = opc & 0x3f;
   //	u64 acc = dsp_get_long_acc(rreg);
-  get_long_acc(rreg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + rreg);
+  MOV(64, R(RAX), accreg);
   //	acc <<= shift;
   SHL(64, R(RAX), Imm8((u8)shift));
   //	dsp_set_long_acc(rreg, acc);
-  set_long_acc(rreg);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + rreg);
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
@@ -1316,12 +1455,14 @@ void DSPEmitterIR::asr(const UDSPInstruction opc)
 
   // arithmetic shift
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(RAX), accreg);
   //	acc >>= shift;
   SAR(64, R(RAX), Imm8((u8)shift));
 
   //	dsp_set_long_acc(dreg, acc);
-  set_long_acc(dreg);
+  MOV(64, accreg, R(RAX));
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   //	Update_SR_Register64(dsp_get_long_acc(dreg));
   if (FlagsNeeded())
   {
@@ -1339,9 +1480,10 @@ void DSPEmitterIR::lsrn(const UDSPInstruction opc)
 {
   //	s16 shift;
   //	u16 accm = (u16)dsp_get_acc_m(1);
-  get_acc_m(1);
+  m_gpr.ReadReg(DSP_REG_ACM1, RAX, RegisterExtension::Sign);
   //	u64 acc = dsp_get_long_acc(0);
-  get_long_acc(0, RDX);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64);
+  MOV(64, R(RDX), accreg);
   //	acc &= 0x000000FFFFFFFFFFULL;
   SHL(64, R(RDX), Imm8(24));
   SHR(64, R(RDX), Imm8(24));
@@ -1382,8 +1524,11 @@ void DSPEmitterIR::lsrn(const UDSPInstruction opc)
   SetJumpTarget(exit);
 
   //	dsp_set_long_acc(0, (s64)acc);
-  set_long_acc(0, RDX);
+
+  MOV(64, accreg, R(RDX));
+
   SetJumpTarget(zero);
+  m_gpr.PutReg(DSP_REG_ACC0_64);
   //	Update_SR_Register64(dsp_get_long_acc(0));
   if (FlagsNeeded())
   {
@@ -1401,9 +1546,10 @@ void DSPEmitterIR::asrn(const UDSPInstruction opc)
 {
   //	s16 shift;
   //	u16 accm = (u16)dsp_get_acc_m(1);
-  get_acc_m(1);
+  m_gpr.ReadReg(DSP_REG_ACM1, RAX, RegisterExtension::Sign);
   //	s64 acc = dsp_get_long_acc(0);
-  get_long_acc(0, RDX);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64);
+  MOV(64, R(RDX), accreg);
 
   //	if ((accm & 0x3f) == 0)
   //		shift = 0;
@@ -1440,8 +1586,11 @@ void DSPEmitterIR::asrn(const UDSPInstruction opc)
 
   //	dsp_set_long_acc(0, acc);
   //	Update_SR_Register64(dsp_get_long_acc(0));
-  set_long_acc(0, RDX);
+
+  MOV(64, accreg, R(RDX));
+
   SetJumpTarget(zero);
+  m_gpr.PutReg(DSP_REG_ACC0_64);
   if (FlagsNeeded())
   {
     Update_SR_Register64(RDX, RCX);
@@ -1461,9 +1610,10 @@ void DSPEmitterIR::lsrnrx(const UDSPInstruction opc)
 
   //	s16 shift;
   //	u16 axh = g_dsp.r.axh[sreg];
-  get_ax_h(sreg);
+  m_gpr.ReadReg(sreg + DSP_REG_AXH0, RAX, RegisterExtension::Sign);
   //	u64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, RDX);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(RDX), accreg);
   //	acc &= 0x000000FFFFFFFFFFULL;
   SHL(64, R(RDX), Imm8(24));
   SHR(64, R(RDX), Imm8(24));
@@ -1503,8 +1653,11 @@ void DSPEmitterIR::lsrnrx(const UDSPInstruction opc)
 
   //	dsp_set_long_acc(dreg, (s64)acc);
   //	Update_SR_Register64(dsp_get_long_acc(dreg));
-  set_long_acc(dreg, RDX);
+
+  MOV(64, accreg, R(RDX));
+
   SetJumpTarget(zero);
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   if (FlagsNeeded())
   {
     Update_SR_Register64(RDX, RCX);
@@ -1524,9 +1677,10 @@ void DSPEmitterIR::asrnrx(const UDSPInstruction opc)
 
   //	s16 shift;
   //	u16 axh = g_dsp.r.axh[sreg];
-  get_ax_h(sreg);
+  m_gpr.ReadReg(sreg + DSP_REG_AXH0, RAX, RegisterExtension::Sign);
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, RDX);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(RDX), accreg);
 
   //	if ((axh & 0x3f) == 0)
   //		shift = 0;
@@ -1559,8 +1713,11 @@ void DSPEmitterIR::asrnrx(const UDSPInstruction opc)
   SetJumpTarget(exit);
 
   //	dsp_set_long_acc(dreg, acc);
-  set_long_acc(dreg, RDX);
+
+  MOV(64, accreg, R(RDX));
+
   SetJumpTarget(zero);
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   //	Update_SR_Register64(dsp_get_long_acc(dreg));
   if (FlagsNeeded())
   {
@@ -1580,9 +1737,10 @@ void DSPEmitterIR::lsrnr(const UDSPInstruction opc)
 
   //	s16 shift;
   //	u16 accm = (u16)dsp_get_acc_m(1 - dreg);
-  get_acc_m(1 - dreg);
+  m_gpr.ReadReg(1 - dreg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
   //	u64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, RDX);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(RDX), accreg);
   //	acc &= 0x000000FFFFFFFFFFULL;
   SHL(64, R(RDX), Imm8(24));
   SHR(64, R(RDX), Imm8(24));
@@ -1617,8 +1775,11 @@ void DSPEmitterIR::lsrnr(const UDSPInstruction opc)
   SetJumpTarget(exit);
 
   //	dsp_set_long_acc(dreg, (s64)acc);
-  set_long_acc(dreg, RDX);
+
+  MOV(64, accreg, R(RDX));
+
   SetJumpTarget(zero);
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   //	Update_SR_Register64(dsp_get_long_acc(dreg));
   if (FlagsNeeded())
   {
@@ -1638,9 +1799,10 @@ void DSPEmitterIR::asrnr(const UDSPInstruction opc)
 
   //	s16 shift;
   //	u16 accm = (u16)dsp_get_acc_m(1 - dreg);
-  get_acc_m(1 - dreg);
+  m_gpr.ReadReg(1 - dreg + DSP_REG_ACM0, RAX, RegisterExtension::Sign);
   //	s64 acc = dsp_get_long_acc(dreg);
-  get_long_acc(dreg, RDX);
+  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg);
+  MOV(64, R(RDX), accreg);
 
   //	if ((accm & 0x3f) == 0)
   //		shift = 0;
@@ -1672,8 +1834,11 @@ void DSPEmitterIR::asrnr(const UDSPInstruction opc)
   SetJumpTarget(exit);
 
   //	dsp_set_long_acc(dreg, acc);
-  set_long_acc(dreg, RDX);
+
+  MOV(64, accreg, R(RDX));
+
   SetJumpTarget(zero);
+  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
   //	Update_SR_Register64(dsp_get_long_acc(dreg));
   if (FlagsNeeded())
   {

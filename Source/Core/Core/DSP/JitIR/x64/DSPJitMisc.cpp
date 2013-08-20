@@ -22,9 +22,9 @@ void DSPEmitterIR::mrr(const UDSPInstruction opc)
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
 
-  dsp_op_read_reg(sreg, EDX, RegisterExtension::None, tmp1, tmp2);
-  dsp_op_write_reg(dreg, EDX, tmp1, tmp2);
-  dsp_conditional_extend_accum(dreg);
+  dsp_op_read_reg(sreg, EDX, RegisterExtension::None, tmp1, tmp2, RAX);
+  dsp_op_write_reg(dreg, EDX, tmp1, tmp2, RAX);
+  dsp_conditional_extend_accum(dreg, RAX);
 
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
@@ -47,7 +47,7 @@ void DSPEmitterIR::lri(const UDSPInstruction opc)
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
 
-  dsp_op_write_reg_imm(reg, imm, tmp1, tmp2);
+  dsp_op_write_reg_imm(reg, imm, tmp1, tmp2, RAX);
   dsp_conditional_extend_accum_imm(reg, imm);
 
   m_gpr.PutXReg(tmp2);
@@ -65,7 +65,7 @@ void DSPEmitterIR::lris(const UDSPInstruction opc)
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
 
-  dsp_op_write_reg_imm(reg, imm, tmp1, tmp2);
+  dsp_op_write_reg_imm(reg, imm, tmp1, tmp2, RAX);
   dsp_conditional_extend_accum_imm(reg, imm);
 
   m_gpr.PutXReg(tmp2);
@@ -93,7 +93,7 @@ void DSPEmitterIR::dar(const UDSPInstruction opc)
   X64Reg tmp1 = m_gpr.GetFreeXReg();
 
   //	g_dsp.r[opc & 0x3] = dsp_decrement_addr_reg(opc & 0x3);
-  decrement_addr_reg(opc & 0x3, tmp1);
+  decrement_addr_reg(opc & 0x3, tmp1, RAX, RDX, RCX);
 
   m_gpr.PutXReg(tmp1);
 }
@@ -106,7 +106,7 @@ void DSPEmitterIR::iar(const UDSPInstruction opc)
   X64Reg tmp1 = m_gpr.GetFreeXReg();
 
   //	g_dsp.r[opc & 0x3] = dsp_increment_addr_reg(opc & 0x3);
-  increment_addr_reg(opc & 0x3, tmp1);
+  increment_addr_reg(opc & 0x3, tmp1, RAX, RDX, RCX);
 
   m_gpr.PutXReg(tmp1);
 }
@@ -121,7 +121,7 @@ void DSPEmitterIR::subarn(const UDSPInstruction opc)
 
   //	u8 dreg = opc & 0x3;
   //	g_dsp.r[dreg] = dsp_decrease_addr_reg(dreg, (s16)g_dsp.r[DSP_REG_IX0 + dreg]);
-  decrease_addr_reg(opc & 0x3, tmp1);
+  decrease_addr_reg(opc & 0x3, tmp1, RAX, RDX, RCX);
 
   m_gpr.PutXReg(tmp1);
 }
@@ -139,7 +139,7 @@ void DSPEmitterIR::addarn(const UDSPInstruction opc)
   //	g_dsp.r[dreg] = dsp_increase_addr_reg(dreg, (s16)g_dsp.r[DSP_REG_IX0 + sreg]);
 
   // From looking around it is always called with the matching index register
-  increase_addr_reg(opc & 0x3, (opc >> 2) & 0x3, tmp1);
+  increase_addr_reg(opc & 0x3, (opc >> 2) & 0x3, tmp1, RAX, RDX, RCX);
 
   m_gpr.PutXReg(tmp1);
 }
