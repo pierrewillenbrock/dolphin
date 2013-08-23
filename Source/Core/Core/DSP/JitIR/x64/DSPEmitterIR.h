@@ -201,11 +201,9 @@ private:
   // The emitter emits calls to this function. It's present here
   // within the class itself to allow access to member variables.
   static void CompileCurrentIR(DSPEmitterIR& emitter);
-
   static u16 ReadIFXRegisterHelper(DSPEmitterIR& emitter, u16 address);
   static void WriteIFXRegisterHelper(DSPEmitterIR& emitter, u16 address, u16 value);
 
-  void EmitInstruction(UDSPInstruction inst);
   void ClearIRAMandDSPJITCodespaceReset();
 
   void CompileDispatcher();
@@ -300,6 +298,8 @@ private:
   void multiply(Gen::X64Reg dst, Gen::X64Reg mul);
   void multiply_uu(Gen::X64Reg dst, Gen::X64Reg mul);
   void multiply_us(Gen::X64Reg dst, Gen::X64Reg mul);
+
+  void EmitInstruction(UDSPInstruction inst);
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
 
