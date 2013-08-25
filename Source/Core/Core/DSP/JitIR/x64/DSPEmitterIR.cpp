@@ -37,8 +37,7 @@ DSPEmitterIR::DSPEmitterIR(DSPCore& dsp)
   x64::InitInstructionTables();
   AllocCodeSpace(COMPILED_CODE_SIZE);
 
-  CompileDispatcher();
-  m_stub_entry_point = CompileStub();
+  CompileStaticHelpers();
 
   // Clear all of the block references
   std::fill(m_blocks.begin(), m_blocks.end(), (DSPCompiledCode)m_stub_entry_point);
@@ -85,8 +84,7 @@ void DSPEmitterIR::ClearIRAM()
 void DSPEmitterIR::ClearIRAMandDSPJITCodespaceReset()
 {
   ClearCodeSpace();
-  CompileDispatcher();
-  m_stub_entry_point = CompileStub();
+  CompileStaticHelpers();
 
   for (size_t i = 0; i < MAX_BLOCKS; i++)
   {
@@ -364,17 +362,7 @@ void DSPEmitterIR::CompileCurrentIR(DSPEmitterIR& emitter)
   emitter.Compile(emitter.m_dsp_core.DSPState().pc);
 }
 
-const u8* DSPEmitterIR::CompileStub()
-{
-  const u8* entryPoint = AlignCode16();
-  MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(this)));
-  ABI_CallFunction(CompileCurrentIR);
-  XOR(32, R(EAX), R(EAX));  // Return 0 cycles executed
-  JMP(m_return_dispatcher);
-  return entryPoint;
-}
-
-void DSPEmitterIR::CompileDispatcher()
+void DSPEmitterIR::CompileStaticHelpers()
 {
   m_enter_dispatcher = AlignCode16();
   // We don't use floating point (high 16 bits).
@@ -401,7 +389,7 @@ void DSPEmitterIR::CompileDispatcher()
   MOV(64, R(RBX), ImmPtr(m_blocks.data()));
   JMPptr(MComplex(RBX, RCX, SCALE_8, 0));
 
-  m_return_dispatcher = GetCodePtr();
+  m_return_dispatcher = AlignCode16();
 
   // Decrement cyclesLeft
   MOV(64, R(RCX), ImmPtr(&m_cycles_left));
@@ -418,6 +406,19 @@ void DSPEmitterIR::CompileDispatcher()
   // MOV(32, M(&cyclesLeft), Imm32(0));
   ABI_PopRegistersAndAdjustStack(registers_used, 8);
   RET();
+
+  m_int3_loop = AlignCode16();
+  INT3();
+  JMP(m_int3_loop);
+
+  m_unused_jump = J(true);
+
+  m_stub_entry_point = AlignCode16();
+  //there is no ABI_CallFunctionP, but this is how it would look like
+  MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(this)));
+  ABI_CallFunction(CompileCurrentIR);
+  XOR(32, R(EAX), R(EAX));  // Return 0 cycles executed
+  JMP(m_return_dispatcher);
 }
 
 Gen::OpArg DSPEmitterIR::M_SDSP_pc()

@@ -206,8 +206,7 @@ private:
 
   void ClearIRAMandDSPJITCodespaceReset();
 
-  void CompileDispatcher();
-  Block CompileStub();
+  void CompileStaticHelpers();
   void Compile(u16 start_addr);
 
   bool FlagsNeeded() const;
@@ -322,6 +321,8 @@ private:
   const u8* m_enter_dispatcher;
   const u8* m_return_dispatcher;
   const u8* m_stub_entry_point;
+  const u8* m_int3_loop;
+  Gen::FixupBranch m_unused_jump;
 
   DSPCore& m_dsp_core;
 };
