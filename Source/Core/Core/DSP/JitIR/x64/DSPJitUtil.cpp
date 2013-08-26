@@ -600,10 +600,10 @@ void DSPEmitterIR::get_long_prod(Gen::X64Reg long_prod, Gen::X64Reg tmp1)
 void DSPEmitterIR::set_long_prod(X64Reg host_sreg, X64Reg tmp1)
 {
   MOV(64, R(tmp1), Imm64(0x000000ffffffffffULL));
-  AND(64, R(host_sreg), R(tmp1));
+  AND(64, R(tmp1), R(host_sreg));
 
   //	g_dsp.r[DSP_REG_PRODL] = (u16)val;
-  m_gpr.WriteReg(DSP_REG_PROD_64, R(host_sreg));
+  m_gpr.WriteReg(DSP_REG_PROD_64, R(tmp1));
 }
 
 void DSPEmitterIR::round_long(X64Reg long_acc)
