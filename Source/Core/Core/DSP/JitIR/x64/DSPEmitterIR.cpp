@@ -955,6 +955,18 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   bool known_regs[32] = {false};
   u16 known_val_regs[32] = {0};
+  // the assumption here is that these registers are statically assigned.
+  // This breaks if guests have code fragments that run with changing
+  // register values.
+  // mp3player seems to do that with wr.
+  for (int i = 0; i < 32; i++)
+  {
+    if ((i >= DSP_REG_WR0 && i <= DSP_REG_WR3 && false) || (i == DSP_REG_CR))
+    {
+      known_regs[i] = true;
+      known_val_regs[i] = m_dsp_core.ReadRegister(i);
+    }
+  }
 
   m_start_bb->start_node->value_SR = 0;
   m_start_bb->start_node->const_SR = 0;
