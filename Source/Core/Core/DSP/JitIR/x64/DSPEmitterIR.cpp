@@ -744,6 +744,10 @@ void DSPEmitterIR::ir_add_op(IRInsn insn)
   insn.addr = m_compile_pc;
   insn.original = dsp_imem_read(m_compile_pc);
   insn.cycle_count = m_block_size[m_start_address];
+  insn.needs_SR |= insn.emitter->needs_SR;
+  insn.modifies_SR |= insn.emitter->modifies_SR;
+  insn.constant_mask_SR |= insn.emitter->constant_mask_SR;
+  insn.constant_val_SR |= insn.emitter->constant_val_SR;
   insn.later_needs_SR = 0;
   insn.modified_SR = 0;
   insn.const_SR = 0;
