@@ -205,7 +205,6 @@ private:
   {
     OpRAX = 0x0001,     // i can take R(RAX) (usually used alone)
     OpRCX = 0x0002,     // i can take R(RCX) (usually used alone)
-    OpRDX = 0x0004,     // i can take R(RDX) (usually used alone)
     OpAnyReg = 0x000f,  // i can take any R
     OpMem = 0x0010,     // i can take M(and derivatives)
     OpImm = 0x0020,     // i can take Imm32,16,8

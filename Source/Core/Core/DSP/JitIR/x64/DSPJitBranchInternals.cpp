@@ -97,7 +97,7 @@ void DSPEmitterIR::dropAllRegs(IRInsn const& insn)
   for (int i = 0; i < NUM_TEMPS; i++)
   {
     if (insn.temps[i].oparg.IsSimpleReg() && insn.temps[i].oparg.GetSimpleReg() != RCX &&
-        insn.temps[i].oparg.GetSimpleReg() != RAX && insn.temps[i].oparg.GetSimpleReg() != RDX)
+        insn.temps[i].oparg.GetSimpleReg() != RAX)
       m_gpr.PutXReg(insn.temps[i].oparg.GetSimpleReg());
   }
 }

@@ -493,8 +493,6 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
     // don't need to do anything for these. yet.
     if ((insn.emitter->temps[i].reqs & OpMask) == OpRAX)
       insn.temps[i].oparg = R(RAX);
-    if ((insn.emitter->temps[i].reqs & OpMask) == OpRDX)
-      insn.temps[i].oparg = R(RDX);
     if ((insn.emitter->temps[i].reqs & OpMask) == OpRCX)
       insn.temps[i].oparg = R(RCX);
   }

@@ -109,8 +109,8 @@ DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter)
     xreg.guest_reg = DSP_REG_STATIC;
   }
 
-  m_xregs[RAX].guest_reg = DSP_REG_STATIC;  // reserved for MUL/DIV, ABICall returns
-  m_xregs[RDX].guest_reg = DSP_REG_STATIC;  // reserved for MUL/DIV
+  m_xregs[RAX].guest_reg = DSP_REG_STATIC;  // reserved for ABICall returns
+  m_xregs[RDX].guest_reg = DSP_REG_NONE;
   m_xregs[RCX].guest_reg = DSP_REG_STATIC;  // reserved for shifts
 
   m_xregs[RBX].guest_reg = DSP_REG_NONE;
@@ -374,6 +374,9 @@ void DSPJitIRRegCache::FlushRegs()
   }
 
   ASSERT_MSG(DSPLLE, m_xregs[RSP].guest_reg == DSP_REG_STATIC, "wrong xreg state for %d", RSP);
+  ASSERT_MSG(DSPLLE, m_xregs[RAX].guest_reg == DSP_REG_STATIC, "wrong xreg state for %d", RAX);
+  ASSERT_MSG(DSPLLE, m_xregs[RCX].guest_reg == DSP_REG_STATIC, "wrong xreg state for %d", RCX);
+  ASSERT_MSG(DSPLLE, m_xregs[RDX].guest_reg == DSP_REG_NONE, "wrong xreg state for %d", RDX);
   ASSERT_MSG(DSPLLE, m_xregs[RBX].guest_reg == DSP_REG_NONE, "wrong xreg state for %d", RBX);
   ASSERT_MSG(DSPLLE, m_xregs[RBP].guest_reg == DSP_REG_NONE, "wrong xreg state for %d", RBP);
   ASSERT_MSG(DSPLLE, m_xregs[RSI].guest_reg == DSP_REG_NONE, "wrong xreg state for %d", RSI);
