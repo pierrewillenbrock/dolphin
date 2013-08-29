@@ -35,6 +35,7 @@ public:
   void DoState(PointerWrap& p) override;
   void ClearIRAM() override;
 
+  // ******* Parsers *******
   // Ext commands
   void l(UDSPInstruction opc);
   void ln(UDSPInstruction opc);
@@ -304,6 +305,7 @@ private:
 
   DSPJitIRRegCache m_gpr{*this};
 
+  // during parsing: PC of the instruction being parsed
   u16 m_compile_pc;
   u16 m_start_address;
 
@@ -318,9 +320,12 @@ private:
 
   // CALL this to start the dispatcher
   const u8* m_enter_dispatcher;
+  // JMP here to leave dispatcher
   const u8* m_return_dispatcher;
+  // JMP here enters compiler
   const u8* m_stub_entry_point;
   const u8* m_int3_loop;
+  // placeholder for when we need a branch, but don't actually branch
   Gen::FixupBranch m_unused_jump;
 
   DSPCore& m_dsp_core;
