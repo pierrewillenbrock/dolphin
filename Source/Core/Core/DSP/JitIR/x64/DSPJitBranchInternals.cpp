@@ -71,11 +71,10 @@ void DSPEmitterIR::checkExceptions(u32 retval, u16 pc, OpArg const& sr_reg)
 
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutReg(DSP_REG_SR);
-  m_gpr.SaveRegs();
+  m_gpr.PushRegs();
   ABI_CallFunctionP(CheckExceptionsThunk, &m_dsp_core);
-  MOV(32, R(EAX), Imm32(retval));
-  JMP(m_return_dispatcher, true);
-  m_gpr.LoadRegs(false);
+  m_gpr.PopRegs();
+  WriteBranchExit(retval, true);
   m_gpr.FlushRegs(c, false);
 
   SetJumpTarget(skipCheck);
