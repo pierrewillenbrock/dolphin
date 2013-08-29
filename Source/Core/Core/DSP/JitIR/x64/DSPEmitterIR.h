@@ -624,8 +624,6 @@ private:
   void ir_commit_parallel_nodes(IRBB* bb);
   void assignVRegs(IRInsn& insn);
 
-  static int ir_to_regcache_reg(int reg);
-
   void DecodeInstruction(UDSPInstruction inst);
   void connectLoops();
   void handleOverlappingOps(IRBB* bb);

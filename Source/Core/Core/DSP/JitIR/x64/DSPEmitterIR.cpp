@@ -114,11 +114,6 @@ bool DSPEmitterIR::FlagsNeeded(IRInsn const& insn) const
   return (insn.later_needs_SR & insn.modifies_SR) != 0;
 }
 
-int DSPEmitterIR::ir_to_regcache_reg(int reg)
-{
-  return reg;
-}
-
 void DSPEmitterIR::DecodeInstruction(UDSPInstruction inst)
 {
   const auto jit_decode_function = GetOp(inst);

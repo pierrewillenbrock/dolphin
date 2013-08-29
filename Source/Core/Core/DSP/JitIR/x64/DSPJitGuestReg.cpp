@@ -179,7 +179,7 @@ void DSPEmitterIR::iremit_LoadGuestStackOp(IRInsn const& insn)
   X64Reg hreg = insn.output.oparg.GetSimpleReg();
 
   int reqs = m_vregs[insn.output.vreg].reqs;
-  int greg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int greg = insn.inputs[0].guest_reg;
 
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
@@ -223,7 +223,7 @@ void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
   int reqs = m_vregs[insn.output.vreg].reqs;
-  int greg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int greg = insn.inputs[0].guest_reg;
 
   OpArg mem = regMem(greg);
 
@@ -379,7 +379,7 @@ void DSPEmitterIR::iremit_LoadGuestFastOp(IRInsn const& insn)
   X64Reg hreg = insn.output.oparg.GetSimpleReg();
 
   int reqs = m_vregs[insn.output.vreg].reqs;
-  int greg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int greg = insn.inputs[0].guest_reg;
 
   const OpArg mem = regMem(greg);
   switch (regSize(greg))
@@ -502,7 +502,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestProdOp = {
 
 void DSPEmitterIR::iremit_StoreGuestStackOp(IRInsn const& insn)
 {
-  int greg = ir_to_regcache_reg(insn.output.guest_reg);
+  int greg = insn.output.guest_reg;
 
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
@@ -540,7 +540,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestSROp = {
 
 void DSPEmitterIR::iremit_StoreGuestACMOp(IRInsn const& insn)
 {
-  int greg = ir_to_regcache_reg(insn.output.guest_reg);
+  int greg = insn.output.guest_reg;
 
   OpArg mem = regMem(greg);
 
@@ -585,7 +585,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestACMOp = {
 
 void DSPEmitterIR::iremit_StoreGuestOp(IRInsn const& insn)
 {
-  int greg = ir_to_regcache_reg(insn.output.guest_reg);
+  int greg = insn.output.guest_reg;
 
   OpArg mem = regMem(greg);
   OpArg src = insn.inputs[0].oparg;
