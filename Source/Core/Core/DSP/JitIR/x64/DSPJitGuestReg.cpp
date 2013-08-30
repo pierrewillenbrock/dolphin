@@ -267,16 +267,57 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestSROp = {
     {{OpAny64}},  // not clobbered
     {}};
 
+void DSPEmitterIR::iremit_StoreGuestACMOp(IRInsn const& insn)
+{
+  int greg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  DSPJitIRRegCache c(m_gpr);
+  TEST(16, insn.SR, Imm16(SR_40_MODE_BIT));
+  FixupBranch not_40bit = J_CC(CC_Z, true);
+
+  if (insn.inputs[0].oparg.IsImm())
+  {
+    s16 val = insn.inputs[0].oparg.AsImm16().SImm16();
+    // using automatic 32=>64 bit sign extension by cpu
+    m_gpr.WriteReg(greg - DSP_REG_ACM0 + DSP_REG_ACC0_64, Imm32(((s32)val) << 16));
+  }
+  else if (insn.inputs[0].oparg.IsSimpleReg())
+  {
+    MOVSX(64, 16, insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[0].oparg);
+    SHL(64, insn.inputs[0].oparg, Imm8(16));
+    m_gpr.WriteReg(greg - DSP_REG_ACM0 + DSP_REG_ACC0_64, insn.inputs[0].oparg);
+  }
+  else
+  {
+    _assert_msg_(DSPLLE, 0, "StoreGuestACMOp only handles Imm and R");
+  }
+
+  m_gpr.FlushRegs(c);
+  FixupBranch is_40bit = J();
+  SetJumpTarget(not_40bit);
+
+  m_gpr.WriteReg(greg, insn.inputs[0].oparg);
+
+  m_gpr.FlushRegs(c);
+  SetJumpTarget(is_40bit);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestACMOp = {
+    "StoreGuestACMOp",
+    &DSPEmitterIR::iremit_StoreGuestACMOp,
+    0,
+    0,
+    0,
+    0,
+    false,
+    {{OpAny64 | Clobbered}},
+    {}};
+
 void DSPEmitterIR::iremit_StoreGuestOp(IRInsn const& insn)
 {
-  int reqs = m_vregs[insn.inputs[0].vreg].reqs;
   int greg = ir_to_regcache_reg(insn.output.guest_reg);
 
   m_gpr.WriteReg(greg, insn.inputs[0].oparg);
-  if (!(reqs & NoACMExtend))
-  {
-    dsp_conditional_extend_accum(greg, insn.SR, insn.inputs[0].oparg);
-  }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestOp = {
@@ -382,6 +423,11 @@ void DSPEmitterIR::addGuestLoadStore(IRNode* node, std::vector<IRNode*>& new_nod
     case DSP_REG_ACM0:
     case DSP_REG_ACM1:
       p.needs_SR |= SR_40_MODE_BIT;
+      if (!(insn.emitter->output.reqs & NoACMExtend))
+      {
+        p.emitter = &StoreGuestACMOp;
+        break;
+      }
     // fall through
     default:
       p.emitter = &StoreGuestOp;

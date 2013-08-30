@@ -590,7 +590,6 @@ private:
                            Gen::X64Reg tmp2, Gen::X64Reg tmp3);
   void dsp_reg_load_stack(StackRegister stack_reg, Gen::X64Reg host_dreg, Gen::X64Reg tmp1,
                           Gen::X64Reg tmp2, Gen::X64Reg tmp3);
-  void dsp_conditional_extend_accum(int reg, Gen::OpArg const& sr_reg, Gen::OpArg const& acm_val);
   void dsp_op_read_acm_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
                            Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
 
@@ -751,6 +750,7 @@ private:
   void iremit_StoreGuestProdOp(IRInsn const& insn);
   void iremit_StoreGuestStackOp(IRInsn const& insn);
   void iremit_StoreGuestSROp(IRInsn const& insn);
+  void iremit_StoreGuestACMOp(IRInsn const& insn);
   void iremit_StoreGuestOp(IRInsn const& insn);
   // helpers to combine concurrent outputs
   void iremit_GRegOrACCACCOp(IRInsn const& insn);
@@ -845,6 +845,7 @@ private:
   static IREmitInfo const StoreGuestProdOp;
   static IREmitInfo const StoreGuestStackOp;
   static IREmitInfo const StoreGuestSROp;
+  static IREmitInfo const StoreGuestACMOp;
   static IREmitInfo const StoreGuestOp;
   // helpers to combine concurrent outputs
   static IREmitInfo const GRegOrACCACCOp;

@@ -83,50 +83,6 @@ void DSPEmitterIR::dsp_reg_load_stack(StackRegister stack_reg, Gen::X64Reg host_
 }
 
 // if ACM reg: needs SR bits: SR_40_MODE_BIT
-void DSPEmitterIR::dsp_conditional_extend_accum(int reg, OpArg const& sr_reg, OpArg const& acm_val)
-{
-  switch (reg)
-  {
-  case DSP_REG_ACM0:
-  case DSP_REG_ACM1:
-  {
-    DSPJitIRRegCache c(m_gpr);
-    TEST(16, sr_reg, Imm16(SR_40_MODE_BIT));
-    FixupBranch not_40bit = J_CC(CC_Z, true);
-
-    if (acm_val.IsImm())
-    {
-      u16 val = acm_val.AsImm16().Imm16();
-      m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACH0, Imm16((val & 0x8000) ? 0xffff : 0x0000));
-      m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACL0, Imm16(0));
-    }
-    else if (acm_val.IsSimpleReg())
-    {
-      // if (g_dsp.r[DSP_REG_SR] & SR_40_MODE_BIT)
-      //{
-      // Sign extend into whole accum.
-      // u16 val = g_dsp.r[reg];
-      MOVSX(64, 16, acm_val.GetSimpleReg(), acm_val);
-      SHR(32, acm_val, Imm8(16));
-      // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACH0] = (val & 0x8000) ? 0xFFFF : 0x0000;
-      // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACL0] = 0;
-      m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACH0, acm_val);
-      m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACL0, Imm16(0));
-      //}
-    }
-    else
-    {
-      _assert_msg_(DSPLLE, 0,
-                   "dsp_conditional_extend_accum only handles Imm and R for the acm_val");
-    }
-
-    m_gpr.FlushRegs(c);
-    SetJumpTarget(not_40bit);
-  }
-  }
-}
-
-// if ACM reg: needs SR bits: SR_40_MODE_BIT
 void DSPEmitterIR::dsp_op_read_acm_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
                                        Gen::OpArg const& sr_reg, Gen::X64Reg tmp1)
 {
