@@ -584,27 +584,32 @@ void XEmitter::J_CC(CCFlags conditionCode, const u8* addr)
   }
 }
 
-void XEmitter::SetJumpTarget(const FixupBranch& branch)
+void XEmitter::SetJumpTarget(const FixupBranch& branch, const u8* addr)
 {
   if (!branch.ptr)
     return;
 
   if (branch.type == FixupBranch::Type::Branch8Bit)
   {
-    s64 distance = (s64)(code - branch.ptr);
+    s64 distance = (s64)(addr - branch.ptr);
     ASSERT_MSG(DYNA_REC, distance >= -0x80 && distance < 0x80,
                "Jump target too far away, needs force5Bytes = true");
     branch.ptr[-1] = (u8)(s8)distance;
   }
   else if (branch.type == FixupBranch::Type::Branch32Bit)
   {
-    s64 distance = (s64)(code - branch.ptr);
+    s64 distance = (s64)(addr - branch.ptr);
     ASSERT_MSG(DYNA_REC, distance >= -0x80000000LL && distance < 0x80000000LL,
                "Jump target too far away, needs indirect register");
 
     s32 valid_distance = static_cast<s32>(distance);
     std::memcpy(&branch.ptr[-4], &valid_distance, sizeof(s32));
   }
+}
+
+void XEmitter::SetJumpTarget(const FixupBranch& branch)
+{
+  SetJumpTarget(branch, code);
 }
 
 // Single byte opcodes

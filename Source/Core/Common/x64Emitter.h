@@ -462,6 +462,7 @@ public:
   void J_CC(CCFlags conditionCode, const u8* addr);
 
   void SetJumpTarget(const FixupBranch& branch);
+  void SetJumpTarget(const FixupBranch& branch, const u8* addr);
 
   void SETcc(CCFlags flag, OpArg dest);
   // Note: CMOV brings small if any benefit on current CPUs.
