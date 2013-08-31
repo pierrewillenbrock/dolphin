@@ -736,6 +736,7 @@ private:
 
   void iremit_HandleLoopOp(IRInsn const& insn);
   void iremit_CheckExceptionsOp(IRInsn const& insn);
+  void iremit_WriteBranchExitOp(IRInsn const& insn);
 
   // helpers for moving things between vregs and gregs
   void iremit_LoadImmOp(IRInsn const& insn);
@@ -831,6 +832,7 @@ private:
 
   static IREmitInfo const HandleLoopOp;
   static IREmitInfo const CheckExceptionsOp;
+  static IREmitInfo const WriteBranchExitOp;
   // helpers for moving things between vregs and gregs
   static IREmitInfo const LoadImmOp;
   static IREmitInfo const LoadGuestProdOp;

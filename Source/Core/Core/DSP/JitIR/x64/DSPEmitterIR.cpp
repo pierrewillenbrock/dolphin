@@ -884,6 +884,12 @@ void DSPEmitterIR::Compile(u16 start_addr)
     }
   }
 
+  IRInsn p = {&WriteBranchExitOp, {IROp::Imm(m_compile_pc)}};
+
+  ir_add_op(p);
+
+  ir_commit_parallel_nodes();
+
   // add final end_bb
   IRBB* new_end_bb = new IRBB();
   m_bb_storage.push_back(new_end_bb);

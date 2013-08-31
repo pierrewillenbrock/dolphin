@@ -183,6 +183,32 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsOp = {
     true,
     {{OpImmAny}}};
 
+void DSPEmitterIR::iremit_WriteBranchExitOp(IRInsn const& insn)
+{
+  if (insn.inputs[0].oparg.IsImm())
+  {
+    u16 dest = insn.inputs[0].oparg.AsImm16().Imm16();
+
+    MOV(16, M_SDSP_pc(), Imm16(dest));
+  }
+  else
+  {
+    MOV(16, M_SDSP_pc(), insn.inputs[0].oparg);
+  }
+  dropAllRegs(insn);  // actually, this is a noop. we don't modify SR.
+  WriteBranchExit(insn.cycle_count);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::WriteBranchExitOp = {
+    "WriteBranchExitOp",
+    &DSPEmitterIR::iremit_WriteBranchExitOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {{OpImmAny | OpAnyReg}}};
+
 }  // namespace x64
 }  // namespace JITIR
 }  // namespace DSP
