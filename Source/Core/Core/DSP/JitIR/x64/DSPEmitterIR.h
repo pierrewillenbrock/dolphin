@@ -893,6 +893,8 @@ private:
 
   // CALL this to start the dispatcher
   const u8* m_enter_dispatcher;
+  // JMP here to restart dispatching
+  const u8* m_reenter_dispatcher;
   // JMP here to leave dispatcher
   const u8* m_return_dispatcher;
   // JMP here enters compiler

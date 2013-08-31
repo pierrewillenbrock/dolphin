@@ -34,14 +34,21 @@ static constexpr size_t DSP_IDLE_SKIP_CYCLES = 0x1000;
 void DSPEmitterIR::WriteBranchExit(u16 execd_cycles, bool keepGpr)
 {
   leaveJitCode();
+  // Decrement m_cycles_left
+  MOV(64, R(RCX), ImmPtr(&m_cycles_left));
   if (m_dsp_core.DSPState().GetAnalyzer().IsIdleSkip(m_start_address))
   {
-    MOV(16, R(EAX), Imm16(DSP_IDLE_SKIP_CYCLES));
+    SUB(16, MatR(RCX), Imm16(DSP_IDLE_SKIP_CYCLES));
   }
   else
   {
-    MOV(16, R(EAX), Imm16(execd_cycles));
+    // Decrement m_cycles_left
+    SUB(16, MatR(RCX), Imm16(execd_cycles));
   }
+
+  // Check the result of the sub
+  J_CC(CC_A, m_reenter_dispatcher);
+
   JMP(m_return_dispatcher, true);
 }
 

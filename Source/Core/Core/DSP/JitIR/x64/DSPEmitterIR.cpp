@@ -1033,7 +1033,7 @@ void DSPEmitterIR::CompileStaticHelpers()
 
   MOV(64, R(R15), ImmPtr(&m_dsp_core.DSPState()));
 
-  const u8* dispatcherLoop = GetCodePtr();
+  m_reenter_dispatcher = GetCodePtr();
 
   FixupBranch exceptionExit;
   if (Host::OnThread())
@@ -1046,18 +1046,13 @@ void DSPEmitterIR::CompileStaticHelpers()
   TEST(8, M_SDSP_cr(), Imm8(CR_HALT));
   FixupBranch _halt = J_CC(CC_NE);
 
-  // Execute block. Cycles executed returned in EAX.
+  // Execute block. Block is responsible for updating m_cycles_left
+  // and jumping to either m_reenter_dispatcher or m_return_dispatcher
   MOVZX(64, 16, ECX, M_SDSP_pc());
   MOV(64, R(RBX), ImmPtr(m_blocks.data()));
   JMPptr(MComplex(RBX, RCX, SCALE_8, 0));
 
   m_return_dispatcher = AlignCode16();
-
-  // Decrement cyclesLeft
-  MOV(64, R(RCX), ImmPtr(&m_cycles_left));
-  SUB(16, MatR(RCX), R(EAX));
-
-  J_CC(CC_A, dispatcherLoop);
 
   // DSP gave up the remaining cycles.
   SetJumpTarget(_halt);
@@ -1079,8 +1074,7 @@ void DSPEmitterIR::CompileStaticHelpers()
   //there is no ABI_CallFunctionP, but this is how it would look like
   MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(this)));
   ABI_CallFunction(CompileCurrentIR);
-  XOR(32, R(EAX), R(EAX));  // Return 0 cycles executed
-  JMP(m_return_dispatcher);
+  JMP(m_reenter_dispatcher);
 }
 
 Gen::OpArg DSPEmitterIR::M_SDSP_pc()
