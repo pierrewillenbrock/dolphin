@@ -531,7 +531,13 @@ void DSPEmitterIR::Compile(u16 start_addr)
     m_parallel_nodes.clear();
 
     if (analyzer.IsCheckExceptions(m_compile_pc))
-      checkExceptions(m_block_size[start_addr]);
+    {
+      IRInsn p = {&CheckExceptionsOp,
+                  {IROp::Imm(m_block_size[start_addr]), IROp::Imm(m_compile_pc)}};
+
+      ir_add_op(p);
+      ir_commit_parallel_nodes();
+    }
 
     const UDSPInstruction inst = m_dsp_core.DSPState().ReadIMEM(m_compile_pc);
     const DSPOPCTemplate* opcode = GetOpTemplate(inst);

@@ -574,7 +574,7 @@ private:
   // Register helpers
   void setCompileSR(u16 bit);
   void clrCompileSR(u16 bit);
-  void checkExceptions(u32 retval);
+  void checkExceptions(u32 retval, u16 pc);
 
   // Memory helper functions
   void increment_addr_reg(Gen::X64Reg ar, Gen::X64Reg wr, Gen::X64Reg tmp1, Gen::X64Reg tmp4);
@@ -734,6 +734,8 @@ private:
   void iremit_JmpOp(IRInsn const& insn);
   void iremit_CallOp(IRInsn const& insn);
 
+  void iremit_CheckExceptionsOp(IRInsn const& insn);
+
   // ******* Information Structs for Emitters *******
 
   static IREmitInfo const InvalidOp;
@@ -799,6 +801,8 @@ private:
   static IREmitInfo const RtiOp;
   static IREmitInfo const JmpOp;
   static IREmitInfo const CallOp;
+
+  static IREmitInfo const CheckExceptionsOp;
 
   DSPJitIRRegCache m_gpr{*this};
 

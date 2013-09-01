@@ -33,7 +33,7 @@ static void CheckExceptionsThunk(DSPCore& dsp)
 }
 
 // Must go out of block if exception is detected
-void DSPEmitterIR::checkExceptions(u32 retval)
+void DSPEmitterIR::checkExceptions(u32 retval, u16 pc)
 {
   // no need to check for SR_INT_EXT_ENABLE here. the check in DSPCore
   // should be enough. SR_INT_EXT_ENABLE is only relevant in conjunction
@@ -49,7 +49,7 @@ void DSPEmitterIR::checkExceptions(u32 retval)
   TEST(8, M_SDSP_exceptions(), Imm8(0xff));
   FixupBranch skipCheck = J_CC(CC_Z, true);
 
-  MOV(16, M_SDSP_pc(), Imm16(m_compile_pc));
+  MOV(16, M_SDSP_pc(), Imm16(pc));
 
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutReg(DSP_REG_SR);
@@ -105,6 +105,20 @@ void DSPEmitterIR::HandleLoop()
   SetJumpTarget(rLoopAddrG);
   SetJumpTarget(rLoopCntG);
 }
+
+void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
+{
+  checkExceptions(insn.inputs[0].imm, insn.inputs[1].imm);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsOp = {
+    "CheckExceptionsOp",
+    &DSPEmitterIR::iremit_CheckExceptionsOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true};
 
 }  // namespace x64
 }  // namespace JITIR
