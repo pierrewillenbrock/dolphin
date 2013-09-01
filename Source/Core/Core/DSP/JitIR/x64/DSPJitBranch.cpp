@@ -4,7 +4,6 @@
 
 #include "Common/CommonTypes.h"
 
-#include "Core/DSP/DSPAnalyzer.h"
 #include "Core/DSP/DSPCore.h"
 #include "Core/DSP/DSPTables.h"
 #include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
@@ -78,23 +77,6 @@ void DSPEmitterIR::IRReJitConditional(
   (this->*conditional_fn)(insn, tmp1, tmp2);
   m_gpr.FlushRegs(c1);
   SetJumpTarget(skip_code);
-}
-
-void DSPEmitterIR::WriteBranchExit()
-{
-  DSPJitIRRegCache c(m_gpr);
-  m_gpr.SaveRegs();
-  if (m_dsp_core.DSPState().GetAnalyzer().IsIdleSkip(m_start_address))
-  {
-    MOV(16, R(EAX), Imm16(0x1000));
-  }
-  else
-  {
-    MOV(16, R(EAX), Imm16(m_block_size[m_start_address]));
-  }
-  JMP(m_return_dispatcher, true);
-  m_gpr.LoadRegs(false);
-  m_gpr.FlushRegs(c, false);
 }
 
 // Generic jmp implementation
@@ -362,8 +344,7 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoopOp = {
-    "LoopOp", &DSPEmitterIR::iremit_LoopOp, 0x0000, 0x0000, 0x0000,
-    0x0000,  // really? no loop active flags in SR?
+    "LoopOp", &DSPEmitterIR::iremit_LoopOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
 };
 
 void DSPEmitterIR::iremit_HaltOp(IRInsn const& insn)
@@ -373,8 +354,7 @@ void DSPEmitterIR::iremit_HaltOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HaltOp = {
-    "HaltOp", &DSPEmitterIR::iremit_HaltOp, 0x0000, 0x0000, 0x0000, 0x0000,
-};
+    "HaltOp", &DSPEmitterIR::iremit_HaltOp, 0x0000, 0x0000, 0x0000, 0x0000, true};
 
 void DSPEmitterIR::irr_ret(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg tmp2)
 {
@@ -398,7 +378,7 @@ void DSPEmitterIR::iremit_RetOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RetOp = {
-    "RetOp", &DSPEmitterIR::iremit_RetOp, 0x0000, 0x0000, 0x0000, 0x0000,
+    "RetOp", &DSPEmitterIR::iremit_RetOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
 };
 
 void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
@@ -416,6 +396,7 @@ void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RtiOp = {
     "RtiOp", &DSPEmitterIR::iremit_RtiOp, 0x0000, 0xffff, 0x0000,
     0x0000,  // restores SR from stack 1
+    true,
 };
 
 void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg tmp2)
@@ -458,7 +439,7 @@ void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::JmpOp = {
-    "JmpOp", &DSPEmitterIR::iremit_JmpOp, 0x0000, 0x0000, 0x0000, 0x0000,
+    "JmpOp", &DSPEmitterIR::iremit_JmpOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
 };
 
 void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg tmp2)
@@ -499,7 +480,7 @@ void DSPEmitterIR::iremit_CallOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CallOp = {
-    "CallOp", &DSPEmitterIR::iremit_CallOp, 0x0000, 0x0000, 0x0000, 0x0000,
+    "CallOp", &DSPEmitterIR::iremit_CallOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
 };
 
 }  // namespace DSP::JITIR::x64

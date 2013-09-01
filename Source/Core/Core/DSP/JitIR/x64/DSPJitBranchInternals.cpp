@@ -15,6 +15,7 @@
 // Official SVN repository and contact information can be found at
 // http://code.google.com/p/dolphin-emu/
 
+#include "Core/DSP/DSPAnalyzer.h"
 #include "Core/DSP/DSPCore.h"
 #include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
 
@@ -26,6 +27,23 @@ namespace JITIR
 {
 namespace x64
 {
+
+void DSPEmitterIR::WriteBranchExit()
+{
+  DSPJitIRRegCache c(m_gpr);
+  m_gpr.SaveRegs();
+  if (m_dsp_core.DSPState().GetAnalyzer().IsIdleSkip(m_start_address))
+  {
+    MOV(16, R(EAX), Imm16(0x1000));
+  }
+  else
+  {
+    MOV(16, R(EAX), Imm16(m_block_size[m_start_address]));
+  }
+  JMP(m_return_dispatcher, true);
+  m_gpr.LoadRegs(false);
+  m_gpr.FlushRegs(c, false);
+}
 
 static void CheckExceptionsThunk(DSPCore& dsp)
 {
@@ -72,14 +90,24 @@ void DSPEmitterIR::checkExceptions(u32 retval, u16 pc)
 // then PC is modified with value from call stack $st0. Otherwise values from
 // call stack $st0 and both loop stacks $st2 and $st3 are popped and execution
 // continues at next opcode.
-void DSPEmitterIR::HandleLoop()
+void DSPEmitterIR::HandleLoop(u16 pc)
 {
+  MOV(16, M_SDSP_pc(), Imm16(pc));
+
+  MOVZX(32, 16, EAX, M_SDSP_r_st(2));
+  TEST(32, R(EAX), R(EAX));
+  FixupBranch rLoopAddressExit = J_CC(CC_LE, true);
+
+  MOVZX(32, 16, EAX, M_SDSP_r_st(3));
+  TEST(32, R(EAX), R(EAX));
+  FixupBranch rLoopCounterExit = J_CC(CC_LE, true);
+
   MOVZX(32, 16, EAX, M_SDSP_r_st(2));
   MOVZX(32, 16, ECX, M_SDSP_r_st(3));
 
   TEST(32, R(RCX), R(RCX));
   FixupBranch rLoopCntG = J_CC(CC_E, true);
-  CMP(16, R(RAX), Imm16(m_compile_pc - 1));
+  CMP(16, R(RAX), Imm16(pc - 1));
   FixupBranch rLoopAddrG = J_CC(CC_NE, true);
 
   SUB(16, M_SDSP_r_st(3), Imm16(1));
@@ -104,7 +132,20 @@ void DSPEmitterIR::HandleLoop()
   SetJumpTarget(loopUpdated);
   SetJumpTarget(rLoopAddrG);
   SetJumpTarget(rLoopCntG);
+
+  WriteBranchExit();
+
+  SetJumpTarget(rLoopAddressExit);
+  SetJumpTarget(rLoopCounterExit);
 }
+
+void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
+{
+  HandleLoop(insn.inputs[0].imm);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopOp = {
+    "HandleLoopOp", &DSPEmitterIR::iremit_HandleLoopOp, 0x0000, 0x0000, 0x0000, 0x0000, true};
 
 void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
 {

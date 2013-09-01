@@ -562,7 +562,7 @@ private:
   void round_long(Gen::X64Reg long_acc);
 
   // Branch helpers
-  void HandleLoop();
+  void HandleLoop(u16 pc);
 
   // CC helpers
   void Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg tmp1);
@@ -734,6 +734,7 @@ private:
   void iremit_JmpOp(IRInsn const& insn);
   void iremit_CallOp(IRInsn const& insn);
 
+  void iremit_HandleLoopOp(IRInsn const& insn);
   void iremit_CheckExceptionsOp(IRInsn const& insn);
 
   // ******* Information Structs for Emitters *******
@@ -802,6 +803,7 @@ private:
   static IREmitInfo const JmpOp;
   static IREmitInfo const CallOp;
 
+  static IREmitInfo const HandleLoopOp;
   static IREmitInfo const CheckExceptionsOp;
 
   DSPJitIRRegCache m_gpr{*this};

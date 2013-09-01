@@ -550,6 +550,17 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     ir_commit_parallel_nodes();
 
+    if (analyzer.IsLoopEnd(m_compile_pc - 1))
+    {
+      ASSERT_MSG(DSPLLE, !opcode->branch, "jumps at end of loops are forbidden");
+      // actually, we don't know what happens
+
+      IRInsn p = {&HandleLoopOp, {IROp::Imm(m_compile_pc)}};
+
+      ir_add_op(p);
+      ir_commit_parallel_nodes();
+    }
+
     // split should go here
 
     // add final end_bb
@@ -576,45 +587,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
       EmitBB(bb);
 
     clearNodeStorage();
-
-    // Handle loop condition, only if current instruction was flagged as a loop destination
-    // by the analyzer.
-    if (analyzer.IsLoopEnd(static_cast<u16>(m_compile_pc - 1u)))
-    {
-      MOVZX(32, 16, EAX, M_SDSP_r_st(2));
-      TEST(32, R(EAX), R(EAX));
-      FixupBranch rLoopAddressExit = J_CC(CC_LE, true);
-
-      MOVZX(32, 16, EAX, M_SDSP_r_st(3));
-      TEST(32, R(EAX), R(EAX));
-      FixupBranch rLoopCounterExit = J_CC(CC_LE, true);
-
-      if (!opcode->branch)
-      {
-        // branch insns update the g_dsp.pc
-        MOV(16, M_SDSP_pc(), Imm16(m_compile_pc));
-      }
-
-      // These functions branch and therefore only need to be called in the
-      // end of each block and in this order
-      DSPJitIRRegCache c(m_gpr);
-      HandleLoop();
-      m_gpr.SaveRegs();
-      if (!Host::OnThread() && analyzer.IsIdleSkip(start_addr))
-      {
-        MOV(16, R(EAX), Imm16(DSP_IDLE_SKIP_CYCLES));
-      }
-      else
-      {
-        MOV(16, R(EAX), Imm16(m_block_size[start_addr]));
-      }
-      JMP(m_return_dispatcher, true);
-      m_gpr.LoadRegs(false);
-      m_gpr.FlushRegs(c, false);
-
-      SetJumpTarget(rLoopAddressExit);
-      SetJumpTarget(rLoopCounterExit);
-    }
 
     if (opcode->branch)
     {
