@@ -120,7 +120,7 @@ void DSPEmitterIR::ir_jcc(const UDSPInstruction opc)
               0x0000,
               0x0000,
               0x0000};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // Generic jmpr implementation
@@ -141,7 +141,7 @@ void DSPEmitterIR::ir_jmprcc(const UDSPInstruction opc)
               0x0000,
               0x0000,
               0x0000};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // Generic call implementation
@@ -165,7 +165,7 @@ void DSPEmitterIR::ir_call(const UDSPInstruction opc)
               0x0000,
               0x0000,
               0x0000};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // Generic callr implementation
@@ -188,7 +188,7 @@ void DSPEmitterIR::ir_callr(const UDSPInstruction opc)
               0x0000,
               0x0000,
               0x0000};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // Generic if implementation
@@ -212,7 +212,7 @@ void DSPEmitterIR::ir_ifcc(const UDSPInstruction opc)
               0x0000,
               0x0000,
               0x0000};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // Generic ret implementation
@@ -231,7 +231,7 @@ void DSPEmitterIR::ir_ret(const UDSPInstruction opc)
               0x0000,
               0x0000,
               0x0000};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // RTI
@@ -244,7 +244,7 @@ void DSPEmitterIR::ir_rti(const UDSPInstruction opc)
   IRInsn p = {
       &RtiOp,
   };
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // HALT
@@ -255,7 +255,7 @@ void DSPEmitterIR::ir_halt(const UDSPInstruction opc)
   IRInsn p = {
       &HaltOp,
   };
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // LOOP $R
@@ -272,7 +272,7 @@ void DSPEmitterIR::ir_loop(const UDSPInstruction opc)
   u16 loop_pc = m_compile_pc + 1;
   IRInsn p = {
       &LoopOp, {IROp::R(reg), IROp::Imm(m_compile_pc + 1), IROp::Imm(loop_pc)}, IROp::None()};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // LOOPI #I
@@ -289,7 +289,7 @@ void DSPEmitterIR::ir_loopi(const UDSPInstruction opc)
   u16 loop_pc = m_compile_pc + 1;
   IRInsn p = {
       &LoopOp, {IROp::Imm(cnt), IROp::Imm(m_compile_pc + 1), IROp::Imm(loop_pc)}, IROp::None()};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // BLOOP $R, addrA
@@ -307,7 +307,7 @@ void DSPEmitterIR::ir_bloop(const UDSPInstruction opc)
   u16 loop_pc = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
   IRInsn p = {
       &LoopOp, {IROp::R(reg), IROp::Imm(m_compile_pc + 2), IROp::Imm(loop_pc)}, IROp::None()};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 // BLOOPI #I, addrA
@@ -326,7 +326,7 @@ void DSPEmitterIR::ir_bloopi(const UDSPInstruction opc)
   u16 loop_pc = state.ReadIMEM(m_compile_pc + 1);
   IRInsn p = {
       &LoopOp, {IROp::Imm(cnt), IROp::Imm(m_compile_pc + 2), IROp::Imm(loop_pc)}, IROp::None()};
-  ir_add_op(p);
+  ir_add_branch(p);
 }
 
 void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)

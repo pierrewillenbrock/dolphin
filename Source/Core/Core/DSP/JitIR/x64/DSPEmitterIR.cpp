@@ -851,8 +851,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
     {
       IRInsn p = {&CheckExceptionsOp, {IROp::Imm(m_compile_pc)}};
 
-      ir_add_op(p);
-      ir_commit_parallel_nodes();
+      ir_add_branch(p);
     }
 
     const UDSPInstruction inst = m_dsp_core.DSPState().ReadIMEM(m_compile_pc);
@@ -870,8 +869,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
       IRInsn p = {&HandleLoopOp, {IROp::Imm(m_compile_pc)}};
 
-      ir_add_op(p);
-      ir_commit_parallel_nodes();
+      ir_add_branch(p);
     }
 
     if (opcode->branch && opcode->uncond_branch)
