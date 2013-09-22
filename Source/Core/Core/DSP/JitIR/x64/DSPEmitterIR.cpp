@@ -881,6 +881,14 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   while (m_compile_pc < start_addr + MAX_BLOCK_SIZE)
   {
+    IRNode* tn = makeIRNode();
+    m_end_bb->nodes.insert(tn);
+    m_end_bb->end_node->addNext(tn);
+    m_end_bb->end_node = tn;
+
+    m_addr_info[m_compile_pc].node = tn;
+    m_node_addr_map[tn] = m_compile_pc;
+
     if (analyzer.IsCheckExceptions(m_compile_pc))
     {
       IRInsn p = {&CheckExceptionsOp, {IROp::Imm(m_compile_pc)}};
