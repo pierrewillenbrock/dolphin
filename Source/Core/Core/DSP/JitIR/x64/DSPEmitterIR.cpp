@@ -506,29 +506,27 @@ void DSPEmitterIR::Compile(u16 start_addr)
   m_block_size[start_addr] = 0;
 
   auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
+  clearNodeStorage();
+
+  // create start_bb and preliminary end_bb
+  m_start_bb = new IRBB();
+  m_bb_storage.push_back(m_start_bb);
+  IRNode* start_bb_node = makeIRNode();
+  m_start_bb->start_node = m_start_bb->end_node = start_bb_node;
+  m_start_bb->nodes.insert(start_bb_node);
+
+  m_end_bb = new IRBB();
+  m_bb_storage.push_back(m_end_bb);
+  IRNode* end_bb_node = makeIRNode();
+  m_end_bb->start_node = m_end_bb->end_node = end_bb_node;
+  m_end_bb->nodes.insert(end_bb_node);
+
+  m_start_bb->setNextNonBranched(m_end_bb);
+
+  m_parallel_nodes.clear();
+
   while (m_compile_pc < start_addr + MAX_BLOCK_SIZE)
   {
-    clearNodeStorage();
-
-    // create start_bb and preliminary end_bb
-    m_start_bb = new IRBB();
-    m_bb_storage.push_back(m_start_bb);
-    IRNode* start_bb_node = makeIRNode();
-    m_start_bb->start_node = m_start_bb->end_node = start_bb_node;
-    m_start_bb->nodes.insert(start_bb_node);
-
-    m_end_bb = new IRBB();
-    m_bb_storage.push_back(m_end_bb);
-    IRNode* end_bb_node = makeIRNode();
-    m_end_bb->start_node = m_end_bb->end_node = end_bb_node;
-    m_end_bb->nodes.insert(end_bb_node);
-
-    m_start_bb->next.insert(m_end_bb);
-    m_start_bb->nextNonBranched = m_end_bb;
-    m_end_bb->prev.insert(m_start_bb);
-
-    m_parallel_nodes.clear();
-
     if (analyzer.IsCheckExceptions(m_compile_pc))
     {
       IRInsn p = {&CheckExceptionsOp, {IROp::Imm(m_compile_pc)}};
@@ -573,30 +571,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     // split should go here
 
-    // add final end_bb
-    IRBB* new_end_bb = new IRBB();
-    m_bb_storage.push_back(new_end_bb);
-    IRNode* new_end_bb_node = makeIRNode();
-    new_end_bb->start_node = new_end_bb->end_node = new_end_bb_node;
-    new_end_bb->nodes.insert(new_end_bb_node);
-
-    m_end_bb->next.insert(new_end_bb);
-    m_end_bb->nextNonBranched = new_end_bb;
-    new_end_bb->prev.insert(m_end_bb);
-    m_end_bb = new_end_bb;
-
-    // now, we can drop all UpdatePCOp again, and need to know if
-    // the last modifies_PC insn was an UpdatePCOp
-    dumpIRNodes();
-
-    for (auto bb : m_bb_storage)
-      deparallelize(bb);
-
-    for (IRBB* bb = m_start_bb; bb != m_end_bb; bb = bb->nextNonBranched)
-      EmitBB(bb);
-
-    clearNodeStorage();
-
     if (opcode->branch && opcode->uncond_branch)
       break;
 
@@ -606,6 +580,28 @@ void DSPEmitterIR::Compile(u16 start_addr)
       break;
     }
   }
+
+  // add final end_bb
+  IRBB* new_end_bb = new IRBB();
+  m_bb_storage.push_back(new_end_bb);
+  IRNode* new_end_bb_node = makeIRNode();
+  new_end_bb->start_node = new_end_bb->end_node = new_end_bb_node;
+  new_end_bb->nodes.insert(new_end_bb_node);
+
+  m_end_bb->setNextNonBranched(new_end_bb);
+  m_end_bb = new_end_bb;
+
+  // now, we can drop all UpdatePCOp again, and need to know if
+  // the last modifies_PC insn was an UpdatePCOp
+  dumpIRNodes();
+
+  for (auto bb : m_bb_storage)
+    deparallelize(bb);
+
+  for (IRBB* bb = m_start_bb; bb != m_end_bb; bb = bb->nextNonBranched)
+    EmitBB(bb);
+
+  clearNodeStorage();
 
   m_blocks[start_addr] = (DSPCompiledCode)entryPoint;
 
