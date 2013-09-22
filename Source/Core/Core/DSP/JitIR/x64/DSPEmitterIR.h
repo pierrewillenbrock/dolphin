@@ -734,6 +734,7 @@ private:
   void iremit_JmpOp(IRInsn const& insn);
   void iremit_CallOp(IRInsn const& insn);
 
+  void iremit_UpdatePCOp(IRInsn const& insn);
   void iremit_HandleLoopOp(IRInsn const& insn);
   void iremit_CheckExceptionsOp(IRInsn const& insn);
 
@@ -803,6 +804,7 @@ private:
   static IREmitInfo const JmpOp;
   static IREmitInfo const CallOp;
 
+  static IREmitInfo const UpdatePCOp;
   static IREmitInfo const HandleLoopOp;
   static IREmitInfo const CheckExceptionsOp;
 

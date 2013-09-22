@@ -503,7 +503,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
   m_gpr.LoadRegs();
 
   m_compile_pc = start_addr;
-  bool fixup_pc = false;
   m_block_size[start_addr] = 0;
 
   auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
@@ -541,13 +540,25 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     const UDSPInstruction inst = m_dsp_core.DSPState().ReadIMEM(m_compile_pc);
     const DSPOPCTemplate* opcode = GetOpTemplate(inst);
-    const auto jit_decode_function = GetOp(inst);
 
     DecodeInstruction(inst);
     m_block_size[start_addr]++;
 
     m_compile_pc += opcode->size;
 
+    if (opcode->branch)
+    {
+      if (opcode->uncond_branch)
+      {
+        // we can end the BB after this
+      }
+    }
+    else
+    {
+      // this one can be parallel to the rest
+      IRInsn p = {&UpdatePCOp, {IROp::Imm(m_compile_pc)}};
+      ir_add_op(p);
+    }
     ir_commit_parallel_nodes();
 
     if (analyzer.IsLoopEnd(m_compile_pc - 1))
@@ -577,7 +588,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     // now, we can drop all UpdatePCOp again, and need to know if
     // the last modifies_PC insn was an UpdatePCOp
-    fixup_pc = true;
     dumpIRNodes();
 
     for (auto bb : m_bb_storage)
@@ -588,50 +598,14 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     clearNodeStorage();
 
-    if (opcode->branch)
-    {
-      // don't update g_dsp.pc -- the branch insn already did
-      fixup_pc = false;
-      if (opcode->uncond_branch)
-      {
-        break;
-      }
-      else if (!jit_decode_function)
-      {
-        // look at g_dsp.pc if we actually branched
-        MOV(16, R(AX), M_SDSP_pc());
-        CMP(16, R(AX), Imm16(m_compile_pc));
-        FixupBranch rNoBranch = J_CC(CC_Z, true);
-
-        DSPJitIRRegCache c(m_gpr);
-        // don't update g_dsp.pc -- the branch insn already did
-        m_gpr.SaveRegs();
-        if (!Host::OnThread() && analyzer.IsIdleSkip(start_addr))
-        {
-          MOV(16, R(EAX), Imm16(DSP_IDLE_SKIP_CYCLES));
-        }
-        else
-        {
-          MOV(16, R(EAX), Imm16(m_block_size[start_addr]));
-        }
-        JMP(m_return_dispatcher, true);
-        m_gpr.LoadRegs(false);
-        m_gpr.FlushRegs(c, false);
-
-        SetJumpTarget(rNoBranch);
-      }
-    }
+    if (opcode->branch && opcode->uncond_branch)
+      break;
 
     // End the block if we're before an idle skip address
     if (analyzer.IsIdleSkip(m_compile_pc))
     {
       break;
     }
-  }
-
-  if (fixup_pc)
-  {
-    MOV(16, M_SDSP_pc(), Imm16(m_compile_pc));
   }
 
   m_blocks[start_addr] = (DSPCompiledCode)entryPoint;

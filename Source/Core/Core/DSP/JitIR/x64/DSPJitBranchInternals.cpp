@@ -147,6 +147,14 @@ void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopOp = {
     "HandleLoopOp", &DSPEmitterIR::iremit_HandleLoopOp, 0x0000, 0x0000, 0x0000, 0x0000, true};
 
+void DSPEmitterIR::iremit_UpdatePCOp(IRInsn const& insn)
+{
+  MOV(16, M_SDSP_pc(), Imm16(insn.inputs[0].imm));
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::UpdatePCOp = {
+    "UpdatePCOp", &DSPEmitterIR::iremit_UpdatePCOp, 0x0000, 0x0000, 0x0000, 0x0000, true};
+
 void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
 {
   checkExceptions(insn.inputs[0].imm, insn.inputs[1].imm);
