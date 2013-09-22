@@ -114,8 +114,6 @@ void DSPEmitterIR::setCompileSR(u16 bit)
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   OR(16, sr_reg, Imm16(bit));
   m_gpr.PutReg(DSP_REG_SR);
-
-  m_compile_status_register |= bit;
 }
 
 void DSPEmitterIR::clrCompileSR(u16 bit)
@@ -124,8 +122,6 @@ void DSPEmitterIR::clrCompileSR(u16 bit)
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   AND(16, sr_reg, Imm16(~bit));
   m_gpr.PutReg(DSP_REG_SR);
-
-  m_compile_status_register &= ~bit;
 }
 // SBCLR #I
 // 0001 0011 aaaa aiii

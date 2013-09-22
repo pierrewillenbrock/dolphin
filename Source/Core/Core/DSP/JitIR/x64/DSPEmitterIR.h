@@ -305,7 +305,6 @@ private:
   DSPJitIRRegCache m_gpr{*this};
 
   u16 m_compile_pc;
-  u16 m_compile_status_register;
   u16 m_start_address;
 
   std::vector<DSPCompiledCode> m_blocks;
