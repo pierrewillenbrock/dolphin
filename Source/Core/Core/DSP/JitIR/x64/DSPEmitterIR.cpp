@@ -1076,13 +1076,16 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   while (m_compile_pc < start_addr + MAX_BLOCK_SIZE)
   {
-    IRNode* tn = makeIRNode();
-    m_end_bb->nodes.insert(tn);
-    m_end_bb->end_node->addNext(tn);
-    m_end_bb->end_node = tn;
+    if (reinterpret_cast<IRInsnNode*>(m_end_bb->end_node) || m_end_bb->end_node->prev.size() > 1)
+    {
+      IRNode* tn = makeIRNode();
+      m_end_bb->nodes.insert(tn);
+      m_end_bb->end_node->addNext(tn);
+      m_end_bb->end_node = tn;
+    }
 
-    m_addr_info[m_compile_pc].node = tn;
-    m_node_addr_map[tn] = m_compile_pc;
+    m_addr_info[m_compile_pc].node = m_end_bb->end_node;
+    m_node_addr_map[m_end_bb->end_node] = m_compile_pc;
 
     if (analyzer.IsCheckExceptions(m_compile_pc))
     {
