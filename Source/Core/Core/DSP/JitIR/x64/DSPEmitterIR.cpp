@@ -499,25 +499,26 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
       insn.temps[i].oparg = R(RCX);
   }
 
-  // when we start retrieving guest regs for the emitters,
-  // we will be able to capsule a lot of the load/store
-  // from these, that is currently living in the emitter,
-  // for example, temporaries needed for STx, and SR_40_BIT_MODE
-
   if (insn.needs_SR || insn.modifies_SR)
     insn.SR = m_gpr.GetReg(DSP_REG_SR, true);
   else
     insn.SR = M_SDSP_r_sr();
 
+  // when we start retrieving guest regs for the emitters,
+  // we will be able to capsule a lot of the load/store
+  // from these, that is currently living in the emitter,
+  // for example, temporaries needed for STx, and SR_40_BIT_MODE
+
   (this->*insn.emitter->func)(insn);
 
-  if (insn.needs_SR || insn.modifies_SR)
-    m_gpr.PutReg(DSP_REG_SR, insn.modifies_SR);
   for (unsigned int i = 0; i < NUM_TEMPS; i++)
   {
     if ((insn.emitter->temps[i].reqs & OpMask) == OpAnyReg)
       m_gpr.PutXReg(insn.temps[i].oparg.GetSimpleReg());
   }
+
+  if (insn.needs_SR || insn.modifies_SR)
+    m_gpr.PutReg(DSP_REG_SR, insn.modifies_SR);
 }
 
 void DSPEmitterIR::EmitBB(IRBB* bb)
