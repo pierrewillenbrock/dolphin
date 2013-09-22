@@ -111,15 +111,7 @@ void DSPEmitterIR::iremit_LoadGuestOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoadGuestOp = {
-    "LoadGuestOp",
-    NULL,
-    0,
-    0,
-    0,
-    0,  // todo: actually, we need a bit of SR. in some cases(...)
-    false,
-    {},
-    {OpAny64}};
+    "LoadGuestOp", NULL, 0, 0, 0, 0, false, {}, {OpAny64}};
 
 void DSPEmitterIR::iremit_StoreGuestOp(IRInsn const& insn)
 {

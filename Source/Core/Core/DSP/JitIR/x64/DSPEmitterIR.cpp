@@ -643,6 +643,10 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
       else if (insn.inputs[i].type == IROp::REG)
       {
         IRInsn p = {&LoadGuestOp, {insn.inputs[i]}, IROp::Vreg(insn.inputs[i].vreg)};
+
+        if (insn.inputs[i].guest_reg == DSP_REG_ACM0 || insn.inputs[i].guest_reg == DSP_REG_ACM1)
+          p.needs_SR |= SR_40_MODE_BIT;
+
         p.SR = insn.SR;
         p.output.oparg = m_vregs[p.output.vreg].oparg;
         iremit_LoadGuestOp(p);
@@ -662,6 +666,8 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
   if (insn.emitter->output.reqs)
   {
     IRInsn p = {&StoreGuestOp, {IROp::Vreg(insn.output.vreg)}, insn.output};
+    if (insn.output.guest_reg == DSP_REG_ACM0 || insn.output.guest_reg == DSP_REG_ACM1)
+      p.needs_SR |= SR_40_MODE_BIT;
     p.SR = insn.SR;
     p.inputs[0].oparg = m_vregs[p.inputs[0].vreg].oparg;
     iremit_StoreGuestOp(p);
