@@ -613,6 +613,7 @@ private:
   void ir_finish_insn(IRInsn& insn);
   void ir_finish_irnodes(IRNode* first, IRNode* last);
   void ir_add_op(IRInsn insn);
+  void ir_add_branch(IRInsn insn);
   void ir_add_irnodes(IRNode* first, IRNode* last);
   void ir_commit_parallel_nodes();
   void assignVRegs(IRInsn& insn);

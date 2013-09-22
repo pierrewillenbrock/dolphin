@@ -1088,6 +1088,30 @@ void DSPEmitterIR::ir_add_op(IRInsn insn)
   ir_add_irnodes(n, n);
 }
 
+void DSPEmitterIR::ir_add_branch(IRInsn insn)
+{
+  // commit anything thats supposed to be parallel
+  ir_commit_parallel_nodes();
+
+  IRBranchNode* bn = makeIRBranchNode(insn);
+  ir_finish_irnodes(bn, bn);
+
+  m_end_bb->end_node->addNext(bn);
+  m_end_bb->end_node = bn;
+
+  // generate new BB
+  IRBB* new_end_bb = new IRBB();
+  m_bb_storage.push_back(new_end_bb);
+  IRNode* new_end_bb_node = makeIRNode();
+  new_end_bb->start_node = new_end_bb->end_node = new_end_bb_node;
+  new_end_bb->nodes.insert(new_end_bb_node);
+
+  m_end_bb->next.insert(new_end_bb);
+  m_end_bb->nextNonBranched = new_end_bb;
+  new_end_bb->prev.insert(m_end_bb);
+  m_end_bb = new_end_bb;
+}
+
 void DSPEmitterIR::ir_finish_irnodes(IRNode* first, IRNode* last)
 {
   std::unordered_set<IRNode*> nodes;
@@ -1125,6 +1149,7 @@ void DSPEmitterIR::ir_commit_parallel_nodes()
     return;
   // need to make sure there is always a "normal" IRNode at the
   // begin and end of parallel sections. at least for now.
+  // ir_add_branch does this by itself to avoid the final added end node
   IRNode* new_end = makeIRNode();
   m_end_bb->nodes.insert(new_end);
   if (m_parallel_nodes.size() == 1)
