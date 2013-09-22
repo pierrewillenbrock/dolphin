@@ -317,14 +317,9 @@ void DSPEmitterIR::ir_ilrrn(const UDSPInstruction opc)
   ir_add_op(p2);
 }
 
-void DSPEmitterIR::iremit_Mov16Op(IRInsn const& insn)
-{
-  // pure register move. the kind, that can be optimized.
-}
-
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Mov16Op = {
-    "Mov16Op", &DSPEmitterIR::iremit_Mov16Op, 0x0000,     0x0000, 0x0000, 0x0000,
-    false,     {{OpAnyReg | SameAsOutput}},   {OpAnyReg}, {}};
+    "Mov16Op", &DSPEmitterIR::iremit_NoOp,  0x0000,     0x0000, 0x0000, 0x0000,
+    false,     {{OpAnyReg | SameAsOutput}}, {OpAnyReg}, {}};
 
 void DSPEmitterIR::iremit_Load16Op(IRInsn const& insn)
 {

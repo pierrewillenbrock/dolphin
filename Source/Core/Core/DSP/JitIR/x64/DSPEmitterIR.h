@@ -633,6 +633,7 @@ private:
   void addGuestLoadStore(IRBB* bb);
   void deparallelize(IRNode* node);
   void deparallelize(IRBB* bb);
+  void dropNoOps();
   void analyseSRNeed();
   void analyseSRNeed(IRBB* bb);
   void checkImmVRegs();
@@ -678,8 +679,6 @@ private:
   // ******* Emitters *******
 
   // Load store
-  void
-  iremit_Mov16Op(IRInsn const& insn);  // 16 => 16  //fits better here than in arith, no SR changes
   void iremit_Load16Op(IRInsn const& insn);
   void iremit_Load16ConcurrentOp(IRInsn const& insn);
   void iremit_ILoad16Op(IRInsn const& insn);
@@ -771,6 +770,10 @@ private:
   void iremit_GRegOrAXAXLOp(IRInsn const& insn);
   void iremit_GRegOrAXAXHOp(IRInsn const& insn);
   void iremit_GRegOr1616Op(IRInsn const& insn);
+
+  // noop that can be removed when the load stores have been taken
+  // care of
+  void iremit_NoOp(IRInsn const& insn);
 
   // ******* Information Structs for Emitters *******
 

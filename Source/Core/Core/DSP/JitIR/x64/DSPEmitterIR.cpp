@@ -437,6 +437,40 @@ void DSPEmitterIR::deparallelize(IRBB* bb)
   deparallelize(bb->start_node);
 }
 
+void DSPEmitterIR::dropNoOps()
+{
+  for (auto bb : m_bb_storage)
+  {
+    std::list<IRNode*> new_nodes;
+    std::list<IRNode*> old_nodes;
+    for (auto bbn : bb->nodes)
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(bbn);
+      if (in)
+      {
+        if (in->insn.emitter->func == &DSPEmitterIR::iremit_NoOp)
+        {
+          IRNode* n = makeIRNode();
+          for (auto n2 : in->next)
+            n->addNext(n2);
+          for (auto n2 : in->prev)
+            n->addPrev(n2);
+          while (in->next.begin() != in->next.end())
+            in->removeNext(*(in->next.begin()));
+          while (in->prev.begin() != in->prev.end())
+            in->removePrev(*(in->prev.begin()));
+          new_nodes.push_back(n);
+          old_nodes.push_back(in);
+        }
+      }
+    }
+    for (auto n : new_nodes)
+      bb->nodes.insert(n);
+    for (auto n : old_nodes)
+      bb->nodes.erase(n);
+  }
+}
+
 void DSPEmitterIR::checkImmVRegs()
 {
   // check if we can assign the imms
@@ -888,6 +922,8 @@ void DSPEmitterIR::Compile(u16 start_addr)
   for (auto bb : m_bb_storage)
     deparallelize(bb);
 
+  dropNoOps();
+
   // fills in needs_SR
   analyseSRNeed();
 
@@ -1139,5 +1175,10 @@ void DSPEmitterIR::ir_commit_parallel_nodes()
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::InvalidOp = {"InvalidOp", NULL};
+
+void DSPEmitterIR::iremit_NoOp(IRInsn const& insn)
+{
+  // really, does nothing
+}
 
 }  // namespace DSP::JITIR::x64
