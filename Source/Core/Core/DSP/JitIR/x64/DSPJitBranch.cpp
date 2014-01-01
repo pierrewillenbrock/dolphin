@@ -107,6 +107,7 @@ void DSPEmitterIR::r_jcc(const UDSPInstruction opc, X64Reg tmp1, X64Reg tmp2)
   WriteBranchExit();
   m_gpr.FlushRegs(c, false);
 }
+
 // Generic jmp implementation
 // Jcc addressA
 // 0000 0010 1001 cccc
@@ -289,46 +290,6 @@ void DSPEmitterIR::halt(const UDSPInstruction)
 {
   OR(16, M_SDSP_cr(), Imm16(CR_HALT));
   SUB(16, M_SDSP_pc(), Imm16(1));
-}
-
-// LOOP handling: Loop stack is used to control execution of repeated blocks of
-// instructions. Whenever there is value on stack $st2 and current PC is equal
-// value at $st2, then value at stack $st3 is decremented. If value is not zero
-// then PC is modified with value from call stack $st0. Otherwise values from
-// call stack $st0 and both loop stacks $st2 and $st3 are popped and execution
-// continues at next opcode.
-void DSPEmitterIR::HandleLoop()
-{
-  MOVZX(32, 16, EAX, M_SDSP_r_st(2));
-  MOVZX(32, 16, ECX, M_SDSP_r_st(3));
-
-  TEST(32, R(RCX), R(RCX));
-  FixupBranch rLoopCntG = J_CC(CC_E, true);
-  CMP(16, R(RAX), Imm16(m_compile_pc - 1));
-  FixupBranch rLoopAddrG = J_CC(CC_NE, true);
-
-  SUB(16, M_SDSP_r_st(3), Imm16(1));
-  CMP(16, M_SDSP_r_st(3), Imm16(0));
-
-  FixupBranch loadStack = J_CC(CC_LE, true);
-  MOVZX(32, 16, ECX, M_SDSP_r_st(0));
-  MOV(16, M_SDSP_pc(), R(RCX));
-  FixupBranch loopUpdated = J(true);
-
-  SetJumpTarget(loadStack);
-  DSPJitIRRegCache c(m_gpr);
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
-  dsp_reg_stack_pop(StackRegister::Call, tmp1, tmp2, RAX);
-  dsp_reg_stack_pop(StackRegister::LoopAddress, tmp1, tmp2, RAX);
-  dsp_reg_stack_pop(StackRegister::LoopCounter, tmp1, tmp2, RAX);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
-  m_gpr.FlushRegs(c);
-
-  SetJumpTarget(loopUpdated);
-  SetJumpTarget(rLoopAddrG);
-  SetJumpTarget(rLoopCntG);
 }
 
 // LOOP $R

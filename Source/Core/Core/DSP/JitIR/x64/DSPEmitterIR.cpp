@@ -93,31 +93,6 @@ void DSPEmitterIR::ClearIRAMandDSPJITCodespaceReset()
   m_dsp_core.DSPState().reset_dspjit_codespace = false;
 }
 
-static void CheckExceptionsThunk(DSPCore& dsp)
-{
-  dsp.CheckExceptions();
-}
-
-// Must go out of block if exception is detected
-void DSPEmitterIR::checkExceptions(u32 retval)
-{
-  // Check for interrupts and exceptions
-  TEST(8, M_SDSP_exceptions(), Imm8(0xff));
-  FixupBranch skipCheck = J_CC(CC_Z, true);
-
-  MOV(16, M_SDSP_pc(), Imm16(m_compile_pc));
-
-  DSPJitIRRegCache c(m_gpr);
-  m_gpr.SaveRegs();
-  ABI_CallFunctionP(CheckExceptionsThunk, &m_dsp_core);
-  MOV(32, R(EAX), Imm32(retval));
-  JMP(m_return_dispatcher, true);
-  m_gpr.LoadRegs(false);
-  m_gpr.FlushRegs(c, false);
-
-  SetJumpTarget(skipCheck);
-}
-
 bool DSPEmitterIR::FlagsNeeded() const
 {
   const auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
