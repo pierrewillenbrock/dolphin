@@ -750,6 +750,89 @@ void DSPEmitterIR::checkImmVRegs()
   }
 }
 
+void DSPEmitterIR::removeCheckExceptions()
+{
+  // must run after constant register evaluation,
+  // but before StoreGuest*Op moves
+
+  for (auto bb : m_bb_storage)
+  {
+    IRInsnNode* ein = dynamic_cast<IRInsnNode*>(bb->end_node);
+    if (!ein)
+      continue;
+    if (ein->insn.emitter != &CheckExceptionsOp)
+      continue;
+    bool need_check = false;
+    for (auto n : bb->nodes)
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+      if (!in)
+        continue;
+      IRInsn& insn = in->insn;
+      if (insn.emitter == &Load16Op || insn.emitter == &Load16ConcurrentOp)
+      {
+        // check if we can avoid the exception check
+        if (!m_vregs[insn.inputs[0].vreg].isImm ||
+            m_vregs[insn.inputs[0].vreg].imm == DSP_ACCELERATOR)
+          need_check = true;
+      }
+      if (insn.emitter == &Load16SOp)
+      {
+        // check if we can avoid the exception check
+        if ((!m_vregs[insn.inputs[1].vreg].isImm ||
+             m_vregs[insn.inputs[1].vreg].imm == (DSP_ACCELERATOR >> 8)) &&
+            m_vregs[insn.inputs[0].vreg].imm == (DSP_ACCELERATOR & 0xff))
+          need_check = true;
+      }
+    }
+    if (need_check)
+      continue;
+    // drop the check at the end
+    IRNode* e = bb->end_node;
+    bb->end_node = *e->prev.begin();
+    bb->end_node->removeNext(e);
+    bb->nodes.erase(e);
+    // drop the link to the branch bb
+    bb->next.erase(bb->nextBranched);
+    bb->nextBranched->prev.erase(bb);
+    bb->nextBranched = NULL;
+
+    // todo: make it its own function? may be useful at other
+    // points
+    // try to join with the next bb
+    IRBB* nbb = bb->nextNonBranched;
+    if (nbb->prev.size() == 1)
+    {
+      // move the nodes over
+      bb->nodes.insert(nbb->nodes.begin(), nbb->nodes.end());
+      nbb->nodes.clear();
+      // move the exits over
+      bb->nextNonBranched = nbb->nextNonBranched;
+      bb->nextBranched = nbb->nextBranched;
+      bb->next = nbb->next;
+      for (auto nn : nbb->next)
+      {
+        nn->prev.erase(nbb);
+        nn->prev.insert(bb);
+      }
+      nbb->nextNonBranched = NULL;
+      nbb->nextBranched = m_end_bb;
+      nbb->next.clear();
+      nbb->next.insert(m_end_bb);
+      nbb->prev.clear();
+      nbb->prev.insert(nbb);
+      // connect nodes
+      bb->end_node->addNext(nbb->start_node);
+      bb->end_node = nbb->end_node;
+
+      // we stole its node. make it a new one.
+      IRNode* nnode = makeIRNode();
+      nbb->start_node = nbb->end_node = nnode;
+      nbb->nodes.insert(nnode);
+    }
+  }
+}
+
 void DSPEmitterIR::analyseVRegLifetime(IRBB* bb)
 {
   // step 2: repeatedly go through all insns and fix up live depending on
@@ -1345,6 +1428,8 @@ void DSPEmitterIR::Compile(u16 start_addr)
   analyseKnownRegs();
 
   checkImmVRegs();
+
+  removeCheckExceptions();
 
   // fills insns.*.live_vregs
   analyseVRegLifetime();

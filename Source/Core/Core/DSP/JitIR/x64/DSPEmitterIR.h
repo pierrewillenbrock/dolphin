@@ -643,6 +643,7 @@ private:
   void analyseKnownRegs(IRBB* bb);
   void analyseKnownRegs();
   void checkImmVRegs();
+  void removeCheckExceptions();
   void analyseVRegLifetime(IRBB* bb);
   void analyseVRegLifetime();
   void findLiveVRegs();
