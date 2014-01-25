@@ -228,7 +228,7 @@ void SDSP::CheckExceptions()
 
         pc = static_cast<u16>(i * 2);
         exceptions &= ~(1 << i);
-        if (i == 7)
+        if (i == static_cast<int>(ExceptionType::ExternalInterrupt))
           r.sr &= ~SR_EXT_INT_ENABLE;
         else
           r.sr &= ~SR_INT_ENABLE;

@@ -97,6 +97,7 @@ void Analyzer::FindInstructionStarts(const SDSP& dsp, u16 start_addr, u16 end_ad
   {
     const UDSPInstruction inst = dsp.ReadIMEM(addr);
     const DSPOPCTemplate* opcode = GetOpTemplate(inst);
+    const DSPOPCTemplate* opcodeext = GetExtOpTemplate(inst);
     if (!opcode)
     {
       addr++;
@@ -132,9 +133,19 @@ void Analyzer::FindInstructionStarts(const SDSP& dsp, u16 start_addr, u16 end_ad
 
     // If an instruction potentially raises exceptions, mark the following
     // instruction as needing to check for exceptions
-    if (opcode->opcode == 0x00c0 || opcode->opcode == 0x1800 || opcode->opcode == 0x1880 ||
-        opcode->opcode == 0x1900 || opcode->opcode == 0x1980 || opcode->opcode == 0x2000 ||
-        opcode->extended)
+    // exceptions can be raised through three (known) mechanisms:
+    // * external exception (asynchronous)
+    // * accelerator address overflow on reading from the registers
+    // * stack overflow (not implemented)
+    if (opcode->opcode == 0x00c0 ||  // LR
+        opcode->opcode == 0x1800 ||  // LRR
+        opcode->opcode == 0x1880 ||  // LRRD
+        opcode->opcode == 0x1900 ||  // LRRI
+        opcode->opcode == 0x1980 ||  // LRRN
+        opcode->opcode == 0x2000 ||  // LRS
+        (opcode->extended &&
+         // the extended loads are conveniently all lined up
+         (opcodeext->opcode >= 0x0040)))
     {
       m_code_flags[static_cast<u16>(addr + opcode->size)] |= CODE_CHECK_EXC;
     }
