@@ -125,7 +125,7 @@ void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
     break;
   }
 
-  dsp_op_read_acm_reg(greg, hreg, extend, insn.SR, tmp1);
+  dsp_op_read_acm_reg(greg - DSP_REG_ACC0_64 + DSP_REG_ACM0, hreg, extend, insn.SR, tmp1);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoadGuestACMOp = {
@@ -279,13 +279,13 @@ void DSPEmitterIR::iremit_StoreGuestACMOp(IRInsn const& insn)
   {
     s16 val = insn.inputs[0].oparg.AsImm16().SImm16();
     // using automatic 32=>64 bit sign extension by cpu
-    m_gpr.WriteReg(greg - DSP_REG_ACM0 + DSP_REG_ACC0_64, Imm32(((s32)val) << 16));
+    m_gpr.WriteReg(greg, Imm32(((s32)val) << 16));
   }
   else if (insn.inputs[0].oparg.IsSimpleReg())
   {
     MOVSX(64, 16, insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[0].oparg);
     SHL(64, insn.inputs[0].oparg, Imm8(16));
-    m_gpr.WriteReg(greg - DSP_REG_ACM0 + DSP_REG_ACC0_64, insn.inputs[0].oparg);
+    m_gpr.WriteReg(greg, insn.inputs[0].oparg);
   }
   else
   {
@@ -296,7 +296,7 @@ void DSPEmitterIR::iremit_StoreGuestACMOp(IRInsn const& insn)
   FixupBranch is_40bit = J();
   SetJumpTarget(not_40bit);
 
-  m_gpr.WriteReg(greg, insn.inputs[0].oparg);
+  m_gpr.WriteReg(greg - DSP_REG_ACC0_64 + DSP_REG_ACM0, insn.inputs[0].oparg);
 
   m_gpr.FlushRegs(c);
   SetJumpTarget(is_40bit);
@@ -376,6 +376,7 @@ void DSPEmitterIR::addGuestLoadStore(IRNode* node, std::vector<IRNode*>& new_nod
       {
         p.emitter = &LoadGuestACMOp;
         p.needs_SR |= SR_40_MODE_BIT;
+        p.inputs[0].guest_reg = p.inputs[0].guest_reg - DSP_REG_ACM0 + IROp::DSP_REG_ACC0_ALL;
         break;
       }
     // fall through
@@ -426,6 +427,7 @@ void DSPEmitterIR::addGuestLoadStore(IRNode* node, std::vector<IRNode*>& new_nod
       if (!(insn.emitter->output.reqs & NoACMExtend))
       {
         p.emitter = &StoreGuestACMOp;
+        p.output.guest_reg = p.output.guest_reg - DSP_REG_ACM0 + IROp::DSP_REG_ACC0_ALL;
         break;
       }
     // fall through
