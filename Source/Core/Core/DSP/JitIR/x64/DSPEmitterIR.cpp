@@ -174,8 +174,6 @@ void DSPEmitterIR::assignVRegs(IRInsn& insn)
         insn.output.vreg = m_vregs.size();
         VReg vr = {insn.emitter->output.reqs, 0, false, M((void*)0)};
         m_vregs.push_back(vr);
-        m_vregs[insn.output.vreg].same_hostreg_vregs.insert(insn.inputs[i].vreg);
-        m_vregs[insn.inputs[i].vreg].same_hostreg_vregs.insert(insn.output.vreg);
       }
     }
   }
@@ -833,6 +831,26 @@ void DSPEmitterIR::removeCheckExceptions()
   }
 }
 
+void DSPEmitterIR::extractSameHostReg()
+{
+  for (auto n : m_node_storage)
+  {
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (in)
+    {
+      IRInsn& insn = in->insn;
+      for (int i = 0; i < NUM_INPUTS; i++)
+      {
+        if (insn.emitter->inputs[i].reqs & SameAsOutput)
+        {
+          m_vregs[insn.output.vreg].same_hostreg_vregs.insert(insn.inputs[i].vreg);
+          m_vregs[insn.inputs[i].vreg].same_hostreg_vregs.insert(insn.output.vreg);
+        }
+      }
+    }
+  }
+}
+
 void DSPEmitterIR::analyseVRegLifetime(IRBB* bb)
 {
   // step 2: repeatedly go through all insns and fix up live depending on
@@ -1465,6 +1483,9 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   removeCheckExceptions();
 
+  // fills sameHostReg information in vregs
+  extractSameHostReg();
+
   // fills insns.*.live_vregs
   analyseVRegLifetime();
 
@@ -1474,6 +1495,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   // fills vregs[*].parallel_live_vregs from insns.*.live_vreg
   findLiveVRegs();
+
   while (!allocHostRegs(false))
   {
     //* find candidate for spilling
