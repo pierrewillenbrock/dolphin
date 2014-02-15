@@ -504,6 +504,89 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
   else
     insn.SR = M_SDSP_r_sr();
 
+  // todo: implement a temporary reg pool that gets filled here
+  // but is used similar to the get/putXReg in m_gpr
+
+  bool output_is_input = false;
+  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  {
+    if (insn.inputs[i].type == IROp::IMM)
+    {
+      if ((insn.emitter->inputs[i].reqs & OpImm) && (s16)insn.inputs[i].imm == insn.inputs[i].imm)
+      {
+        insn.inputs[i].oparg = Imm16(insn.inputs[i].imm);
+      }
+      else if ((insn.emitter->inputs[i].reqs & OpImm) &&
+               (s32)insn.inputs[i].imm == insn.inputs[i].imm)
+      {
+        insn.inputs[i].oparg = Imm32(insn.inputs[i].imm);
+      }
+      else if (insn.emitter->inputs[i].reqs & OpImm64)
+      {
+        insn.inputs[i].oparg = Imm64(insn.inputs[i].imm);
+      }
+      else if ((insn.emitter->inputs[i].reqs & OpAnyReg) == OpAnyReg)
+      {
+        X64Reg hreg = m_gpr.GetFreeXReg();
+        MOV(64, R(hreg), Imm64(insn.inputs[i].imm));
+        insn.inputs[i].oparg = R(hreg);
+      }
+    }
+    else if (insn.inputs[i].type == IROp::REG)
+    {
+      if ((insn.emitter->inputs[i].reqs & OpAnyReg) == OpAnyReg)
+      {
+        X64Reg hreg = m_gpr.GetFreeXReg();
+        if (insn.inputs[i].guest_reg == IROp::DSP_REG_PROD_ALL)
+        {
+          X64Reg tmp1 = m_gpr.GetFreeXReg();
+          get_long_prod(hreg, tmp1);
+          m_gpr.PutXReg(tmp1);
+        }
+        else
+        {
+          int greg = ir_to_regcache_reg(insn.inputs[i].guest_reg);
+
+          RegisterExtension extend;
+
+          switch (insn.emitter->inputs[i].reqs & ExtendMask)
+          {
+          case ExtendSign16:
+            extend = RegisterExtension::Sign;
+            break;
+          case ExtendZero16:
+            extend = RegisterExtension::Zero;
+            break;
+          case ExtendNone:
+            extend = RegisterExtension::None;
+            break;
+          default:
+            _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+            extend = RegisterExtension::None;
+            break;
+          }
+
+          m_gpr.ReadReg(greg, hreg, extend);
+        }
+        insn.inputs[i].oparg = R(hreg);
+      }
+    }
+    if (insn.emitter->inputs[i].reqs & SameAsOutput)
+    {
+      insn.output.oparg = insn.inputs[i].oparg;
+      output_is_input = true;
+    }
+  }
+
+  if ((insn.emitter->output.reqs & OpAnyReg) == OpAnyReg)
+  {
+    if (!output_is_input)
+    {
+      X64Reg hreg = m_gpr.GetFreeXReg();
+      insn.output.oparg = R(hreg);
+    }
+  }
+
   // when we start retrieving guest regs for the emitters,
   // we will be able to capsule a lot of the load/store
   // from these, that is currently living in the emitter,
@@ -517,8 +600,93 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
       m_gpr.PutXReg(insn.temps[i].oparg.GetSimpleReg());
   }
 
+  if ((insn.emitter->output.reqs & OpAnyReg) && insn.output.oparg.IsSimpleReg())
+  {
+    X64Reg hreg = insn.output.oparg.GetSimpleReg();
+    if (insn.output.guest_reg == IROp::DSP_REG_PROD_ALL)
+    {
+      X64Reg tmp1 = m_gpr.GetFreeXReg();
+      set_long_prod(hreg, tmp1);
+      m_gpr.PutXReg(tmp1);
+    }
+    else
+    {
+      int greg = ir_to_regcache_reg(insn.output.guest_reg);
+      if (greg >= DSP_REG_ST0 && greg <= DSP_REG_ST3)
+      {
+        X64Reg tmp1 = m_gpr.GetFreeXReg();
+        X64Reg tmp2 = m_gpr.GetFreeXReg();
+        X64Reg tmp3 = m_gpr.GetFreeXReg();
+        dsp_reg_store_stack((StackRegister)(greg - DSP_REG_ST0), hreg, tmp1, tmp2, tmp3);
+        m_gpr.PutXReg(tmp3);
+        m_gpr.PutXReg(tmp2);
+        m_gpr.PutXReg(tmp1);
+      }
+      else
+      {
+        m_gpr.WriteReg(greg, R(hreg));
+      }
+      if (!(insn.emitter->output.reqs & NoACMExtend))
+      {
+        X64Reg tmp1 = m_gpr.GetFreeXReg();
+        dsp_conditional_extend_accum(greg, insn.SR, tmp1);
+        m_gpr.PutXReg(tmp1);
+      }
+    }
+    if (!output_is_input)
+    {
+      m_gpr.PutXReg(hreg);
+    }
+  }
+  else if ((insn.emitter->output.reqs & OpImmAny) && insn.output.oparg.IsImm())
+  {
+    if (insn.output.guest_reg == IROp::DSP_REG_PROD_ALL)
+    {
+      X64Reg tmp1 = m_gpr.GetFreeXReg();
+      X64Reg tmp2 = m_gpr.GetFreeXReg();
+      MOV(64, R(tmp2), insn.output.oparg);
+      set_long_prod(tmp2, tmp1);
+      m_gpr.PutXReg(tmp2);
+      m_gpr.PutXReg(tmp1);
+    }
+    else
+    {
+      int greg = ir_to_regcache_reg(insn.output.guest_reg);
+      if (greg >= DSP_REG_ST0 && greg <= DSP_REG_ST3)
+      {
+        X64Reg tmp1 = m_gpr.GetFreeXReg();
+        X64Reg tmp2 = m_gpr.GetFreeXReg();
+        X64Reg tmp3 = m_gpr.GetFreeXReg();
+        X64Reg tmp4 = m_gpr.GetFreeXReg();
+        MOV(64, R(tmp4), insn.output.oparg);
+        dsp_reg_store_stack((StackRegister)(greg - DSP_REG_ST0), tmp4, tmp1, tmp2, tmp3);
+        m_gpr.PutXReg(tmp4);
+        m_gpr.PutXReg(tmp3);
+        m_gpr.PutXReg(tmp2);
+        m_gpr.PutXReg(tmp1);
+      }
+      else
+      {
+        m_gpr.WriteReg(greg, insn.output.oparg);
+      }
+      if (!(insn.emitter->output.reqs & NoACMExtend))
+      {
+        dsp_conditional_extend_accum_imm(greg, insn.output.oparg.AsImm64().Imm64(), insn.SR);
+      }
+    }
+  }
+
   if (insn.needs_SR || insn.modifies_SR)
     m_gpr.PutReg(DSP_REG_SR, insn.modifies_SR);
+
+  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  {
+    if ((insn.emitter->inputs[i].reqs & OpAnyReg) == OpAnyReg && insn.inputs[i].oparg.IsSimpleReg())
+    {
+      X64Reg hreg = insn.inputs[i].oparg.GetSimpleReg();
+      m_gpr.PutXReg(hreg);
+    }
+  }
 }
 
 void DSPEmitterIR::EmitBB(IRBB* bb)
