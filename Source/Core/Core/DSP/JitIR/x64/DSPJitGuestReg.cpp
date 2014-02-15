@@ -92,45 +92,62 @@ void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
   int reqs = m_vregs[insn.output.vreg].reqs;
   int greg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
 
-  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  const OpArg acc_reg = m_gpr.GetReg(greg);
 
-  RegisterExtension extend;
+  TEST(16, insn.SR, Imm16(SR_40_MODE_BIT));
+  FixupBranch not_40bit = J_CC(CC_Z, true);
 
+  MOVSX(64, 32, hreg, acc_reg);
+  CMP(64, R(hreg), acc_reg);
+  FixupBranch no_saturate = J_CC(CC_Z);
+
+  TEST(64, acc_reg, acc_reg);
+  FixupBranch negative = J_CC(CC_LE);
+
+  MOV(64, R(hreg), Imm32(0x7fff));  // this works for all extend modes
+  FixupBranch done_positive = J();
+
+  SetJumpTarget(negative);
   switch (reqs & ExtendMask)
   {
   case ExtendSign16:
-    extend = RegisterExtension::Sign;
+    MOV(64, R(hreg), Imm32(0xffff8000));
     break;
   case ExtendZero16:
-    extend = RegisterExtension::Zero;
-    break;
-  case ExtendSign32:
-    extend = RegisterExtension::Sign;
-    break;
-  case ExtendZero32:
-    extend = RegisterExtension::Zero;
-    break;
-  case ExtendSign64:
-    extend = RegisterExtension::Sign;
-    break;
-  case ExtendZero64:
-    extend = RegisterExtension::Zero;
-    break;
   case ExtendNone:
-    extend = RegisterExtension::None;
+    MOV(64, R(hreg), Imm32(0x00008000));
     break;
   default:
     _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
-    extend = RegisterExtension::None;
     break;
   }
+  FixupBranch done_negative = J();
 
-  dsp_op_read_acm_reg(greg - DSP_REG_ACC0_64 + DSP_REG_ACM0, hreg, extend, insn.SR, tmp1);
+  SetJumpTarget(no_saturate);
+  SetJumpTarget(not_40bit);
+
+  MOV(64, R(hreg), acc_reg);
+  switch (reqs & ExtendMask)
+  {
+  case ExtendSign16:
+    SAR(64, R(hreg), Imm8(16));
+    break;
+  case ExtendZero16:
+  case ExtendNone:
+    SHR(64, R(hreg), Imm8(16));
+    break;
+  default:
+    _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+    break;
+  }
+  SetJumpTarget(done_positive);
+  SetJumpTarget(done_negative);
+  m_gpr.PutReg(greg, false);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoadGuestACMOp = {
-    "LoadGuestACMOp", &DSPEmitterIR::iremit_LoadGuestACMOp, 0, 0, 0, 0, false, {}, {OpAny64},
-    {{OpAnyReg}}};
+    "LoadGuestACMOp", &DSPEmitterIR::iremit_LoadGuestACMOp, SR_40_MODE_BIT, 0, 0, 0, false, {},
+    {OpAny64}};
 
 void DSPEmitterIR::iremit_LoadGuestFastOp(IRInsn const& insn)
 {
@@ -305,7 +322,7 @@ void DSPEmitterIR::iremit_StoreGuestACMOp(IRInsn const& insn)
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestACMOp = {
     "StoreGuestACMOp",
     &DSPEmitterIR::iremit_StoreGuestACMOp,
-    0,
+    SR_40_MODE_BIT,
     0,
     0,
     0,

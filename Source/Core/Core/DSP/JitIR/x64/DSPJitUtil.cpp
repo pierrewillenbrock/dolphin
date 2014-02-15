@@ -82,47 +82,6 @@ void DSPEmitterIR::dsp_reg_load_stack(StackRegister stack_reg, Gen::X64Reg host_
   dsp_reg_stack_pop(stack_reg, tmp1, tmp2, tmp3);
 }
 
-// if ACM reg: needs SR bits: SR_40_MODE_BIT
-void DSPEmitterIR::dsp_op_read_acm_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
-                                       Gen::OpArg const& sr_reg, Gen::X64Reg tmp1)
-{
-  // we already know this is ACCM0 or ACCM1
-  const OpArg acc_reg = m_gpr.GetReg(reg - DSP_REG_ACM0 + DSP_REG_ACC0_64);
-  DSPJitIRRegCache c(m_gpr);
-  TEST(16, sr_reg, Imm16(SR_40_MODE_BIT));
-  FixupBranch not_40bit = J_CC(CC_Z, true);
-
-  MOVSX(64, 32, host_dreg, acc_reg);
-  CMP(64, R(host_dreg), acc_reg);
-  FixupBranch no_saturate = J_CC(CC_Z);
-
-  TEST(64, acc_reg, acc_reg);
-  FixupBranch negative = J_CC(CC_LE);
-
-  MOV(64, R(host_dreg), Imm32(0x7fff));  // this works for all extend modes
-  FixupBranch done_positive = J();
-
-  SetJumpTarget(negative);
-  if (extend == RegisterExtension::None || extend == RegisterExtension::Zero)
-    MOV(64, R(host_dreg), Imm32(0x00008000));
-  else
-    MOV(64, R(host_dreg), Imm32(0xffff8000));
-  FixupBranch done_negative = J();
-
-  SetJumpTarget(no_saturate);
-  SetJumpTarget(not_40bit);
-
-  MOV(64, R(host_dreg), acc_reg);
-  if (extend == RegisterExtension::None || extend == RegisterExtension::Zero)
-    SHR(64, R(host_dreg), Imm8(16));
-  else
-    SAR(64, R(host_dreg), Imm8(16));
-  SetJumpTarget(done_positive);
-  SetJumpTarget(done_negative);
-  m_gpr.FlushRegs(c);
-  m_gpr.PutReg(reg - DSP_REG_ACM0 + DSP_REG_ACC0_64, false);
-}
-
 // addr math
 //
 // These functions detect overflow by checking if

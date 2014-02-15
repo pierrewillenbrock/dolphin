@@ -590,8 +590,6 @@ private:
                            Gen::X64Reg tmp2, Gen::X64Reg tmp3);
   void dsp_reg_load_stack(StackRegister stack_reg, Gen::X64Reg host_dreg, Gen::X64Reg tmp1,
                           Gen::X64Reg tmp2, Gen::X64Reg tmp3);
-  void dsp_op_read_acm_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
-                           Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
 
   // SDSP memory offset helpers
   Gen::OpArg M_SDSP_pc();
