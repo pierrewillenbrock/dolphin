@@ -165,6 +165,8 @@ void DSPEmitterIR::DecodeInstruction(UDSPInstruction inst)
   }
 
   (this->*jit_decode_function)(inst);
+
+  ir_commit_parallel_nodes();
 }
 
 void DSPEmitterIR::assignVRegs(IRInsn& insn)
@@ -861,14 +863,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     m_compile_pc += opcode->size;
 
-    if (!opcode->branch)
-    {
-      // this one can be parallel to the rest
-      IRInsn p = {&UpdatePCOp, {IROp::Imm(m_compile_pc)}};
-      ir_add_op(p);
-    }
-    ir_commit_parallel_nodes();
-
     if (analyzer.IsLoopEnd(m_compile_pc - 1))
     {
       ASSERT_MSG(DSPLLE, !opcode->branch, "jumps at end of loops are forbidden");
@@ -953,6 +947,8 @@ void DSPEmitterIR::Compile(u16 start_addr)
     m_block_size[start_addr] = 1;
   }
 
+  // we do it like this everwhere: load g_dsp.pc, then WriteBranchExit.
+  MOV(16, M_SDSP_pc(), Imm16(m_compile_pc));
   m_gpr.SaveRegs();
 
   WriteBranchExit(m_block_size[start_addr], false);

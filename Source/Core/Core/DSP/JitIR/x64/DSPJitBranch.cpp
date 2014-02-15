@@ -346,8 +346,6 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
       dsp_reg_store_stack(StackRegister::Call, Imm16(loop_start), tmp1, tmp2, tmp3);
       dsp_reg_store_stack(StackRegister::LoopAddress, Imm16(loop_end), tmp1, tmp2, tmp3);
       dsp_reg_store_stack(StackRegister::LoopCounter, Imm16(cnt), tmp1, tmp2, tmp3);
-
-      MOV(16, M_SDSP_pc(), Imm16(loop_start));
     }
     else
     {
@@ -365,7 +363,6 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     dsp_reg_store_stack(StackRegister::LoopCounter, insn.inputs[0].oparg, tmp1, tmp2, tmp3);
     dsp_reg_store_stack(StackRegister::Call, Imm16(loop_start), tmp1, tmp2, tmp3);
     dsp_reg_store_stack(StackRegister::LoopAddress, Imm16(loop_end), tmp1, tmp2, tmp3);
-    MOV(16, M_SDSP_pc(), Imm16(loop_start));
     FixupBranch exit = J(true);
 
     SetJumpTarget(cnt);
@@ -389,6 +386,10 @@ void DSPEmitterIR::iremit_HaltOp(IRInsn const& insn)
 {
   OR(16, M_SDSP_cr(), Imm16(CR_HALT));
   SUB(16, M_SDSP_pc(), Imm16(1));
+  DSPJitIRRegCache c(m_gpr);
+  dropAllRegs(insn);
+  WriteBranchExit(insn.cycle_count);
+  m_gpr.FlushRegs(c, false);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HaltOp = {
@@ -413,7 +414,6 @@ void DSPEmitterIR::iremit_RetOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  MOV(16, M_SDSP_pc(), insn.inputs[1].oparg.AsImm16());
   uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
   IRReJitConditional(cc, insn, &DSPEmitterIR::irr_ret, insn.SR, false, tmp1, tmp2);
 }
@@ -436,6 +436,10 @@ void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
   MOV(16, insn.SR, R(tmp4));
   dsp_reg_load_stack(StackRegister::Call, tmp4, tmp1, tmp2, tmp3);
   MOV(16, M_SDSP_pc(), R(tmp4));
+  DSPJitIRRegCache c(m_gpr);
+  dropAllRegs(insn);
+  WriteBranchExit(insn.cycle_count);
+  m_gpr.FlushRegs(c, false);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RtiOp = {
@@ -466,7 +470,6 @@ void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  MOV(16, M_SDSP_pc(), insn.inputs[2].oparg.AsImm16());
   uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
   IRReJitConditional(cc & 0xf, insn, &DSPEmitterIR::irr_jmp, insn.SR, cc & 0x80, tmp1, tmp2);
 }
@@ -504,7 +507,6 @@ void DSPEmitterIR::iremit_CallOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  MOV(16, M_SDSP_pc(), insn.inputs[2].oparg.AsImm16());
   uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
   IRReJitConditional(cc, insn, &DSPEmitterIR::irr_call, insn.SR, false, tmp1, tmp2);
 }

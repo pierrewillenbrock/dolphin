@@ -112,8 +112,6 @@ void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
   X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
 
-  MOV(16, M_SDSP_pc(), Imm16(pc));
-
   MOVZX(32, 16, tmp1, M_SDSP_r_st(2));
   TEST(32, R(tmp1), R(tmp1));
   FixupBranch rLoopAddressExit = J_CC(CC_LE, true);
@@ -124,6 +122,8 @@ void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
 
   MOVZX(32, 16, tmp1, M_SDSP_r_st(2));
   MOVZX(32, 16, tmp2, M_SDSP_r_st(3));
+
+  MOV(16, M_SDSP_pc(), Imm16(pc));
 
   TEST(32, R(tmp2), R(tmp2));
   FixupBranch rLoopCntG = J_CC(CC_E, true);
@@ -167,15 +167,6 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopOp = {
     {{OpImmAny}},
     {},
     {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
-
-void DSPEmitterIR::iremit_UpdatePCOp(IRInsn const& insn)
-{
-  MOV(16, M_SDSP_pc(), insn.inputs[0].oparg.AsImm16());
-}
-
-struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::UpdatePCOp = {
-    "UpdatePCOp", &DSPEmitterIR::iremit_UpdatePCOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
-    {{OpImmAny}}};
 
 void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
 {
