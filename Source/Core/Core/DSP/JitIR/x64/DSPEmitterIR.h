@@ -536,12 +536,20 @@ private:
                         void (DSPEmitterIR::*conditional_fn)(UDSPInstruction, Gen::X64Reg tmp1,
                                                              Gen::X64Reg tmp2),
                         Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+  void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn,
+                          void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn,
+                                                               Gen::X64Reg tmp1, Gen::X64Reg tmp2),
+                          Gen::X64Reg tmp1, Gen::X64Reg tmp2);
   void r_jcc(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
   void r_jmprcc(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
   void r_call(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
   void r_callr(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
   void r_ifcc(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
   void r_ret(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+
+  void irr_ret(IRInsn const& insn, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+  void irr_jmp(IRInsn const& insn, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+  void irr_call(IRInsn const& insn, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
 
   void Update_SR_Register(Gen::X64Reg val, Gen::X64Reg tmp1);
 
@@ -615,6 +623,8 @@ private:
   void multiply_uu(Gen::X64Reg dst, Gen::X64Reg mul);
   void multiply_us(Gen::X64Reg dst, Gen::X64Reg mul);
 
+  static int ir_to_regcache_reg(int reg);
+
   void EmitInstruction(UDSPInstruction inst);
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
@@ -642,6 +652,141 @@ private:
     n->insn = insn;
     return n;
   }
+
+  // ******* Emitters *******
+
+  // Load store
+  void
+  iremit_Mov16Op(IRInsn const& insn);  // 16 => 16  //fits better here than in arith, no SR changes
+  void iremit_Load16Op(IRInsn const& insn);
+  void iremit_ILoad16Op(IRInsn const& insn);
+  void iremit_Store16Op(IRInsn const& insn);
+  void iremit_Load16SOp(IRInsn const& insn);
+  void iremit_Store16SOp(IRInsn const& insn);
+  // AR arith
+  void iremit_AddAOp(IRInsn const& insn);
+  void iremit_SubAOp(IRInsn const& insn);
+  // acc arith
+  void iremit_MovToAccOp(IRInsn const& insn);  // moves ax to acc, 32=>40, changes SR
+  void
+  iremit_MovROp(IRInsn const& insn);  // 16 => extended to 40. possibly already covered., changes SR
+  void iremit_Mov40Op(IRInsn const& insn);
+  void iremit_RoundOp(IRInsn const& insn);
+  void iremit_AndCFOp(IRInsn const& insn);
+  void iremit_AndFOp(IRInsn const& insn);
+  void iremit_Tst40Op(IRInsn const& insn);
+  void iremit_Tst16Op(IRInsn const& insn);
+  void iremit_Cmp40Op(IRInsn const& insn);
+  void iremit_Cmp16Op(IRInsn const& insn);
+  void iremit_XorOp(IRInsn const& insn);
+  void iremit_AndOp(IRInsn const& insn);
+  void iremit_OrOp(IRInsn const& insn);
+  void iremit_NotOp(IRInsn const& insn);
+  void iremit_Add16Op(IRInsn const& insn);  // 0:16 fix point logic
+  void iremit_Add32Op(IRInsn const& insn);  // 0:32 fix point
+  void iremit_Add40Op(IRInsn const& insn);  // 8:32 fix point
+  void iremit_AddPOp(IRInsn const& insn);   // prod is not precalculated
+  void iremit_AddUOp(IRInsn const& insn);   // unsigned integer logic
+  void iremit_Sub16Op(IRInsn const& insn);  // 0:16 fix point logic
+  void iremit_Sub32Op(IRInsn const& insn);  // 0:32 fix point
+  void iremit_Sub40Op(IRInsn const& insn);  // 8:32 fix point
+  void iremit_SubPOp(IRInsn const& insn);   // prod is not precalculated
+  void iremit_SubUOp(IRInsn const& insn);   // unsigned integer logic
+  void iremit_NegOp(IRInsn const& insn);
+  void iremit_AbsOp(IRInsn const& insn);
+  void iremit_LslOp(IRInsn const& insn);
+  void iremit_AslOp(IRInsn const& insn);
+  // multiply
+  void iremit_ClrPOp(IRInsn const& insn);
+  void iremit_TstPOp(IRInsn const& insn);
+  void iremit_MovPOp(IRInsn const& insn);
+  void iremit_MovNPOp(IRInsn const& insn);
+  void iremit_MovPZOp(IRInsn const& insn);  // similar to MovROp in the storing part. also, RoundOp.
+  void iremit_AddPAxZOp(IRInsn const& insn);  // another one of the xxxZ series, similar to MovROp
+  void iremit_MulOp(IRInsn const& insn);      // signed*signed
+  void iremit_MulUUOp(IRInsn const& insn);    // unsigned*unsigned
+  void iremit_MulSUOp(IRInsn const& insn);    // signed*unsigned
+  void iremit_MulUSOp(IRInsn const& insn);    // unsigned*signed
+  void iremit_MAddOp(IRInsn const& insn);     // signed*signed
+  void iremit_MSubOp(IRInsn const& insn);     // signed*signed
+  // SR bits
+  void iremit_SBSetOp(IRInsn const& insn);
+  void iremit_SBClrOp(IRInsn const& insn);
+  // Branches
+  void iremit_LoopOp(IRInsn const& insn);
+  void iremit_HaltOp(IRInsn const& insn);
+  void iremit_RetOp(IRInsn const& insn);
+  void iremit_RtiOp(IRInsn const& insn);
+  void iremit_JmpOp(IRInsn const& insn);
+  void iremit_CallOp(IRInsn const& insn);
+
+  // ******* Information Structs for Emitters *******
+
+  static IREmitInfo const InvalidOp;
+  // Load store
+  static IREmitInfo const
+      Mov16Op;  // 16 => 16  //fits better here than in arith, no SR changes
+  static IREmitInfo const Load16Op;
+  static IREmitInfo const ILoad16Op;
+  static IREmitInfo const Store16Op;
+  static IREmitInfo const Load16SOp;
+  static IREmitInfo const Store16SOp;
+  // AR arith
+  static IREmitInfo const AddAOp;
+  static IREmitInfo const SubAOp;
+  // acc arith
+  static IREmitInfo const MovToAccOp;  // moves ax to acc, 32=>40, changes SR
+  static IREmitInfo const
+      MovROp;  // 16 => extended to 40. possibly already covered., changes SR
+  static IREmitInfo const Mov40Op;
+  static IREmitInfo const RoundOp;
+  static IREmitInfo const AndCFOp;
+  static IREmitInfo const AndFOp;
+  static IREmitInfo const Tst40Op;
+  static IREmitInfo const Tst16Op;
+  static IREmitInfo const Cmp40Op;
+  static IREmitInfo const Cmp16Op;
+  static IREmitInfo const XorOp;
+  static IREmitInfo const AndOp;
+  static IREmitInfo const OrOp;
+  static IREmitInfo const NotOp;
+  static IREmitInfo const Add16Op;  // 0:16 fix point logic
+  static IREmitInfo const Add32Op;  // 0:32 fix point
+  static IREmitInfo const Add40Op;  // 8:32 fix point
+  static IREmitInfo const AddPOp;   // prod is not precalculated
+  static IREmitInfo const AddUOp;   // unsigned integer logic
+  static IREmitInfo const Sub16Op;  // 0:16 fix point logic
+  static IREmitInfo const Sub32Op;  // 0:32 fix point
+  static IREmitInfo const Sub40Op;  // 8:32 fix point
+  static IREmitInfo const SubPOp;   // prod is not precalculated
+  static IREmitInfo const SubUOp;   // unsigned integer logic
+  static IREmitInfo const NegOp;
+  static IREmitInfo const AbsOp;
+  static IREmitInfo const LslOp;
+  static IREmitInfo const AslOp;
+  // multiply
+  static IREmitInfo const ClrPOp;
+  static IREmitInfo const TstPOp;
+  static IREmitInfo const MovPOp;
+  static IREmitInfo const MovNPOp;
+  static IREmitInfo const MovPZOp;  // similar to MovROp in the storing part. also, RoundOp.
+  static IREmitInfo const AddPAxZOp;  // another one of the xxxZ series, similar to MovROp
+  static IREmitInfo const MulOp;      // signed*signed
+  static IREmitInfo const MulUUOp;    // unsigned*unsigned
+  static IREmitInfo const MulSUOp;    // signed*unsigned
+  static IREmitInfo const MulUSOp;    // unsigned*signed
+  static IREmitInfo const MAddOp;     // signed*signed
+  static IREmitInfo const MSubOp;     // signed*signed
+  // SR bits
+  static IREmitInfo const SBSetOp;
+  static IREmitInfo const SBClrOp;
+  // Branches
+  static IREmitInfo const LoopOp;
+  static IREmitInfo const HaltOp;
+  static IREmitInfo const RetOp;
+  static IREmitInfo const RtiOp;
+  static IREmitInfo const JmpOp;
+  static IREmitInfo const CallOp;
 
   DSPJitIRRegCache m_gpr{*this};
 

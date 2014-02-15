@@ -100,6 +100,59 @@ bool DSPEmitterIR::FlagsNeeded() const
   return !analyzer.IsStartOfInstruction(m_compile_pc) || analyzer.IsUpdateSR(m_compile_pc);
 }
 
+int DSPEmitterIR::ir_to_regcache_reg(int reg)
+{
+  switch (reg)
+  {
+  case DSPEmitterIR::IROp::DSP_REG_ACC0_ALL:
+    return DSP_REG_ACC0_64;
+  case DSPEmitterIR::IROp::DSP_REG_ACC1_ALL:
+    return DSP_REG_ACC1_64;
+  case DSPEmitterIR::IROp::DSP_REG_AX0_ALL:
+    return DSP_REG_AX0_32;
+  case DSPEmitterIR::IROp::DSP_REG_AX1_ALL:
+    return DSP_REG_AX1_32;
+  case DSPEmitterIR::IROp::DSP_REG_PROD_ALL:
+    return DSP_REG_PROD_64;
+  case 0:
+  case 1:
+  case 2:
+  case 3:
+  case 4:
+  case 5:
+  case 6:
+  case 7:
+  case 8:
+  case 9:
+  case 10:
+  case 11:
+  case 12:
+  case 13:
+  case 14:
+  case 15:
+  case 16:
+  case 17:
+  case 18:
+  case 19:
+  case 20:
+  case 21:
+  case 22:
+  case 23:
+  case 24:
+  case 25:
+  case 26:
+  case 27:
+  case 28:
+  case 29:
+  case 30:
+  case 31:
+    return reg;
+  default:
+    _assert_msg_(DSPLLE, 0, "cannot convert il reg %d to regcache", reg);
+    return -1;
+  }
+}
+
 static void FallbackThunk(Interpreter::Interpreter& interpreter, UDSPInstruction inst)
 {
   (interpreter.*Interpreter::GetOp(inst))(inst);
@@ -428,5 +481,7 @@ Gen::OpArg DSPEmitterIR::M_SDSP_reg_stack_ptrs(size_t index)
   return MDisp(R15, static_cast<int>(offsetof(SDSP, reg_stack_ptrs) +
                                      sizeof(SDSP::reg_stack_ptrs[0]) * index));
 }
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::InvalidOp = {"InvalidOp", NULL};
 
 }  // namespace DSP::JITIR::x64

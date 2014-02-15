@@ -302,8 +302,8 @@ void DSPEmitterIR::dumpIRNodes() const
       IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n);
       if (bn)
       {
-        std::string branched = buf2.str() + "_BR";
-        std::string fallthrough = buf2.str() + "_FT";
+        std::string branched = buf3.str() + "_BR";
+        std::string fallthrough = buf3.str() + "_FT";
 
         ERROR_LOG(DSPLLE, "%s [%s];", branched.c_str(), node_opts.c_str());
         ERROR_LOG(DSPLLE, "%s [%s];", fallthrough.c_str(), node_opts.c_str());

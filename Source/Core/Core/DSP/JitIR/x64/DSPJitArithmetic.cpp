@@ -1787,4 +1787,770 @@ void DSPEmitterIR::asrnr(const UDSPInstruction opc)
   }
 }
 
+//
+void DSPEmitterIR::iremit_MovToAccOp(IRInsn const& insn)
+{
+  int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+    Update_SR_Register64(RAX, RDX);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MovToAccOp = {
+    "MovToAccOp", &DSPEmitterIR::iremit_MovToAccOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_MovROp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
+  SHL(64, R(RAX), Imm8(16));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64(RAX, RDX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MovROp = {
+    "MovROp", &DSPEmitterIR::iremit_MovROp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_Mov40Op(IRInsn const& insn)
+{
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  if (insn.inputs[0].type == IROp::REG)
+  {
+    int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+    m_gpr.ReadReg(in_reg, RAX, RegisterExtension::None);
+    m_gpr.WriteReg(out_reg, R(RAX));
+  }
+  else if (insn.inputs[0].type == IROp::IMM)
+  {
+    m_gpr.WriteReg(out_reg, Imm64(insn.inputs[0].imm));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled Mov40Op variant");
+  }
+  if (FlagsNeeded())
+  {
+    m_gpr.ReadReg(out_reg, RAX, RegisterExtension::None);
+    Update_SR_Register64(RAX, RDX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Mov40Op = {
+    "Mov40Op", &DSPEmitterIR::iremit_Mov40Op, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_RoundOp(IRInsn const& insn)
+{
+  int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
+  round_long(RAX);
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+    Update_SR_Register64(RAX, RDX);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RoundOp = {
+    "RoundOp", &DSPEmitterIR::iremit_RoundOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_AndCFOp(IRInsn const& insn)
+{
+  if (FlagsNeeded())
+  {
+    int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+    m_gpr.ReadReg(in_reg, RAX, RegisterExtension::None);
+    u16 imm = insn.inputs[1].imm;
+    const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
+    AND(16, R(RAX), Imm16(imm));
+    CMP(16, R(RAX), Imm16(imm));
+    FixupBranch notLogicZero = J_CC(CC_NE);
+    OR(16, sr_reg, Imm16(SR_LOGIC_ZERO));
+    FixupBranch exit = J();
+    SetJumpTarget(notLogicZero);
+    AND(16, sr_reg, Imm16(~SR_LOGIC_ZERO));
+    SetJumpTarget(exit);
+    m_gpr.PutReg(DSP_REG_SR);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AndCFOp = {
+    "AndCFOp", &DSPEmitterIR::iremit_AndCFOp, 0x0000, SR_LOGIC_ZERO, 0x0000, 0x0000};
+
+void DSPEmitterIR::iremit_AndFOp(IRInsn const& insn)
+{
+  if (FlagsNeeded())
+  {
+    int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+    m_gpr.ReadReg(in_reg, RAX, RegisterExtension::None);
+    u16 imm = insn.inputs[1].imm;
+    const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
+    TEST(16, R(RAX), Imm16(imm));
+    FixupBranch notLogicZero = J_CC(CC_NE);
+    OR(16, sr_reg, Imm16(SR_LOGIC_ZERO));
+    FixupBranch exit = J();
+    SetJumpTarget(notLogicZero);
+    AND(16, sr_reg, Imm16(~SR_LOGIC_ZERO));
+    SetJumpTarget(exit);
+    m_gpr.PutReg(DSP_REG_SR);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AndFOp = {
+    "AndFOp", &DSPEmitterIR::iremit_AndFOp, 0x0000, SR_LOGIC_ZERO, 0x0000, 0x0000};
+
+void DSPEmitterIR::iremit_Tst40Op(IRInsn const& insn)
+{
+  if (FlagsNeeded())
+  {
+    int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+    m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
+    Update_SR_Register64(RAX, RDX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Tst40Op = {
+    "Tst40Op", &DSPEmitterIR::iremit_Tst40Op, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_Tst16Op(IRInsn const& insn)
+{
+  if (FlagsNeeded())
+  {
+    int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+    m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
+    Update_SR_Register16(RAX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Tst16Op = {
+    "Tst16Op", &DSPEmitterIR::iremit_Tst16Op, 0x0000, SR_CMP_MASK, 0x0013, 0x0000};
+
+void DSPEmitterIR::iremit_Cmp40Op(IRInsn const& insn)
+{
+  if (FlagsNeeded())
+  {
+    int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+    int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+    X64Reg tmp1 = m_gpr.GetFreeXReg();
+    m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::None);
+    MOV(64, R(RAX), R(tmp1));
+    SUB(64, R(RAX), R(RDX));
+    NEG(64, R(RDX));
+    Update_SR_Register64_Carry(RAX, tmp1, RDX, true);
+    m_gpr.PutXReg(tmp1);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Cmp40Op = {
+    "Cmp40Op", &DSPEmitterIR::iremit_Cmp40Op, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_Cmp16Op(IRInsn const& insn)
+{
+  if (FlagsNeeded())
+  {
+    X64Reg tmp1 = m_gpr.GetFreeXReg();
+    int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+    m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+    if (insn.inputs[1].type == IROp::REG)
+    {
+      int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+      m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+    }
+    else if (insn.inputs[1].type == IROp::IMM)
+    {
+      MOV(64, R(RDX), Imm64(insn.inputs[1].imm));
+    }
+    else
+    {
+      ASSERT_MSG(DSPLLE, 0, "unhandled Cmp16Op variant");
+    }
+    MOV(64, R(RAX), R(tmp1));
+    SHL(64, R(RDX), Imm8(16));
+    SUB(64, R(RAX), R(RDX));
+    NEG(64, R(RDX));
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+    m_gpr.PutXReg(tmp1);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Cmp16Op = {
+    "Cmp16Op", &DSPEmitterIR::iremit_Cmp16Op, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_XorOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    MOV(16, R(RDX), Imm16(insn.inputs[1].imm));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled XorOp variant");
+  }
+  XOR(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
+    Update_SR_Register16_OverS32(RAX, RCX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::XorOp = {
+    "XorOp", &DSPEmitterIR::iremit_XorOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_AndOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    MOV(16, R(RDX), Imm16(insn.inputs[1].imm));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled XorOp variant");
+  }
+  AND(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
+    Update_SR_Register16_OverS32(RAX, RCX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AndOp = {
+    "AndOp", &DSPEmitterIR::iremit_AndOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_OrOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    MOV(16, R(RDX), Imm16(insn.inputs[1].imm));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled XorOp variant");
+  }
+  OR(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
+    Update_SR_Register16_OverS32(RAX, RCX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::OrOp = {
+    "OrOp", &DSPEmitterIR::iremit_OrOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_NotOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
+  NOT(16, R(AX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
+    Update_SR_Register16_OverS32(RAX, RCX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::NotOp = {
+    "NotOp", &DSPEmitterIR::iremit_NotOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_Add16Op(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+    SHL(64, R(RDX), Imm8(16));
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    MOV(64, R(RDX), Imm32(insn.inputs[1].imm << 16));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled Add16Op variant");
+  }
+  ADD(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Add16Op = {
+    "Add16Op", &DSPEmitterIR::iremit_Add16Op, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_Add32Op(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    MOV(64, R(RDX), Imm32(insn.inputs[1].imm));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled Add32Op variant");
+  }
+  ADD(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Add32Op = {
+    "Add32Op", &DSPEmitterIR::iremit_Add32Op, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_Add40Op(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    MOV(64, R(RDX), Imm32(insn.inputs[1].imm));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled Add32Op variant");
+  }
+  ADD(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Add40Op = {
+    "Add40Op", &DSPEmitterIR::iremit_Add40Op, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000};
+
+void DSPEmitterIR::iremit_AddPOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);  // prod reg
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  X64Reg tmp2 = m_gpr.GetFreeXReg();
+  ASSERT_MSG(DSPLLE, in_reg1 == DSP_REG_PROD_64, "in_reg1 must be PROD for AddPOp");
+  get_long_prod(RDX, tmp2);
+  m_gpr.PutXReg(tmp2);
+  ADD(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AddPOp = {
+    "AddPOp", &DSPEmitterIR::iremit_AddPOp, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_AddUOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Zero);
+  ADD(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AddUOp = {
+    "AddUOp", &DSPEmitterIR::iremit_AddUOp, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_Sub16Op(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+    SHL(64, R(RDX), Imm8(16));
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    MOV(64, R(RDX), Imm32(insn.inputs[1].imm << 16));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled Sub16Op variant");
+  }
+  SUB(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    NEG(64, R(RDX));
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Sub16Op = {
+    "Sub16Op", &DSPEmitterIR::iremit_Sub16Op, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_Sub32Op(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    MOV(64, R(RDX), Imm32(insn.inputs[1].imm));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled Sub32Op variant");
+  }
+  SUB(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    NEG(64, R(RDX));
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Sub32Op = {
+    "Sub32Op", &DSPEmitterIR::iremit_Sub32Op, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_Sub40Op(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Sign);
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    MOV(64, R(RDX), Imm32(insn.inputs[1].imm));
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled Sub32Op variant");
+  }
+  SUB(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    NEG(64, R(RDX));
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Sub40Op = {
+    "Sub40Op", &DSPEmitterIR::iremit_Sub40Op, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000};
+
+void DSPEmitterIR::iremit_SubPOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);  // prod reg
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  X64Reg tmp2 = m_gpr.GetFreeXReg();
+  ASSERT_MSG(DSPLLE, in_reg1 == DSP_REG_PROD_64, "in_reg1 must be PROD for Sub40Op");
+  get_long_prod(RDX, tmp2);
+  m_gpr.PutXReg(tmp2);
+  SUB(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    NEG(64, R(RDX));
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SubPOp = {
+    "SubPOp", &DSPEmitterIR::iremit_SubPOp, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_SubUOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  m_gpr.ReadReg(in_reg0, tmp1, RegisterExtension::None);
+  MOV(64, R(RAX), R(tmp1));
+  m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Zero);
+  SUB(64, R(RAX), R(RDX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    NEG(64, R(RDX));
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+  }
+  m_gpr.PutXReg(tmp1);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SubUOp = {
+    "SubUOp", &DSPEmitterIR::iremit_SubUOp, 0x0000, SR_CMP_MASK | SR_OVERFLOW_STICKY, 0x0000,
+    0x0000,
+};
+
+void DSPEmitterIR::iremit_NegOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::None);
+  NEG(64, R(RAX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64(RAX, RDX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::NegOp = {
+    "NegOp", &DSPEmitterIR::iremit_NegOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_AbsOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::None);
+  TEST(64, R(RAX), R(RAX));
+  FixupBranch GreaterThanOrEqual = J_CC(CC_GE);
+  NEG(64, R(RAX));
+  m_gpr.WriteReg(out_reg, R(RAX));
+  SetJumpTarget(GreaterThanOrEqual);
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64(RAX, RDX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AbsOp = {
+    "AbsOp", &DSPEmitterIR::iremit_AbsOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_LslOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::None);
+
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+
+    m_gpr.ReadReg(in_reg1, RCX, RegisterExtension::None);
+    TEST(8, R(CL), Imm8(0x40));
+    FixupBranch shiftLeft = J_CC(CC_Z);
+    NEG(8, R(CL));
+    // need to fix registers since we still
+    // don't guarantee sanity here...
+    SHL(64, R(RAX), Imm8(24));
+    ADD(8, R(CL), Imm8(24));
+    SHR(64, R(RAX), R(CL));
+    FixupBranch exit = J();
+    SetJumpTarget(shiftLeft);
+    SHL(64, R(RAX), R(CL));
+    SetJumpTarget(exit);
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    if (insn.inputs[1].imm < 0)
+    {
+      // need to fix registers since we still
+      // don't guarantee sanity here...
+      SHL(64, R(RAX), Imm8(24));
+      SHR(64, R(RAX), Imm8(24 - insn.inputs[1].imm));
+    }
+    else
+    {
+      SHL(64, R(RAX), Imm8(insn.inputs[1].imm));
+    }
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled LslOp variant");
+  }
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64(RAX, RDX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LslOp = {
+    "LslOp", &DSPEmitterIR::iremit_LslOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
+void DSPEmitterIR::iremit_AslOp(IRInsn const& insn)
+{
+  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+
+  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
+
+  if (insn.inputs[1].type == IROp::REG)
+  {
+    int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
+
+    m_gpr.ReadReg(in_reg1, RCX, RegisterExtension::None);
+    TEST(8, R(CL), Imm8(0x40));
+    FixupBranch shiftLeft = J_CC(CC_Z);
+    NEG(8, R(CL));
+    // need to fix registers since we still
+    // don't guarantee sanity here...
+    SHL(64, R(RAX), Imm8(24));
+    ADD(8, R(CL), Imm8(24));
+    SAR(64, R(RAX), R(CL));
+    FixupBranch exit = J();
+    SetJumpTarget(shiftLeft);
+    SHL(64, R(RAX), R(CL));
+    SetJumpTarget(exit);
+  }
+  else if (insn.inputs[1].type == IROp::IMM)
+  {
+    if (insn.inputs[1].imm < 0)
+    {
+      // need to fix registers since we still
+      // don't guarantee sanity here...
+      SHL(64, R(RAX), Imm8(24));
+      SAR(64, R(RAX), Imm8(24 - insn.inputs[1].imm));
+    }
+    else
+    {
+      SHL(64, R(RAX), Imm8(insn.inputs[1].imm));
+    }
+  }
+  else
+  {
+    ASSERT_MSG(DSPLLE, 0, "unhandled AslOp variant");
+  }
+  m_gpr.WriteReg(out_reg, R(RAX));
+  if (FlagsNeeded())
+  {
+    Update_SR_Register64(RAX, RDX);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AslOp = {
+    "AslOp", &DSPEmitterIR::iremit_AslOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000};
+
 }  // namespace DSP::JITIR::x64
