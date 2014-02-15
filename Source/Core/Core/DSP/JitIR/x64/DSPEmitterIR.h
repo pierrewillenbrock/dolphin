@@ -64,6 +64,33 @@ public:
   void ir(UDSPInstruction opc);
   void nr(UDSPInstruction opc);
   void nop(const UDSPInstruction opc) {}
+
+  void ir_l(UDSPInstruction opc);
+  void ir_ln(UDSPInstruction opc);
+  void ir_ls(UDSPInstruction opc);
+  void ir_lsn(UDSPInstruction opc);
+  void ir_lsm(UDSPInstruction opc);
+  void ir_lsnm(UDSPInstruction opc);
+  void ir_sl(UDSPInstruction opc);
+  void ir_sln(UDSPInstruction opc);
+  void ir_slm(UDSPInstruction opc);
+  void ir_slnm(UDSPInstruction opc);
+  void ir_s(UDSPInstruction opc);
+  void ir_sn(UDSPInstruction opc);
+  void ir_ld(UDSPInstruction opc);
+  void ir_ldax(UDSPInstruction opc);
+  void ir_ldn(UDSPInstruction opc);
+  void ir_ldaxn(UDSPInstruction opc);
+  void ir_ldm(UDSPInstruction opc);
+  void ir_ldaxm(UDSPInstruction opc);
+  void ir_ldnm(UDSPInstruction opc);
+  void ir_ldaxnm(UDSPInstruction opc);
+  void ir_mv(UDSPInstruction opc);
+  void ir_dr(UDSPInstruction opc);
+  void ir_ir(UDSPInstruction opc);
+  void ir_nr(UDSPInstruction opc);
+  void ir_nop(const UDSPInstruction opc) {}
+
   // Commands
   void dar(UDSPInstruction opc);
   void iar(UDSPInstruction opc);
@@ -82,6 +109,18 @@ public:
   // an opcode extension but not do anything.
   void nx(UDSPInstruction opc) {}
 
+  void ir_dar(UDSPInstruction opc);
+  void ir_iar(UDSPInstruction opc);
+  void ir_subarn(UDSPInstruction opc);
+  void ir_addarn(UDSPInstruction opc);
+  void ir_sbclr(UDSPInstruction opc);
+  void ir_sbset(UDSPInstruction opc);
+  void ir_srbith(UDSPInstruction opc);
+  void ir_lri(UDSPInstruction opc);
+  void ir_lris(UDSPInstruction opc);
+  void ir_mrr(UDSPInstruction opc);
+  void ir_nx(UDSPInstruction opc) {}
+
   // Branch
   void jcc(UDSPInstruction opc);
   void jmprcc(UDSPInstruction opc);
@@ -95,6 +134,19 @@ public:
   void loopi(UDSPInstruction opc);
   void bloop(UDSPInstruction opc);
   void bloopi(UDSPInstruction opc);
+
+  void ir_jcc(UDSPInstruction opc);
+  void ir_jmprcc(UDSPInstruction opc);
+  void ir_call(UDSPInstruction opc);
+  void ir_callr(UDSPInstruction opc);
+  void ir_ifcc(UDSPInstruction opc);
+  void ir_ret(UDSPInstruction opc);
+  void ir_rti(UDSPInstruction opc);
+  void ir_halt(UDSPInstruction opc);
+  void ir_loop(UDSPInstruction opc);
+  void ir_loopi(UDSPInstruction opc);
+  void ir_bloop(UDSPInstruction opc);
+  void ir_bloopi(UDSPInstruction opc);
 
   // Load/Store
   void srs(UDSPInstruction opc);
@@ -114,6 +166,24 @@ public:
   void ilrrd(UDSPInstruction opc);
   void ilrri(UDSPInstruction opc);
   void ilrrn(UDSPInstruction opc);
+
+  void ir_srs(UDSPInstruction opc);
+  void ir_lrs(UDSPInstruction opc);
+  void ir_lr(UDSPInstruction opc);
+  void ir_sr(UDSPInstruction opc);
+  void ir_si(UDSPInstruction opc);
+  void ir_lrr(UDSPInstruction opc);
+  void ir_lrrd(UDSPInstruction opc);
+  void ir_lrri(UDSPInstruction opc);
+  void ir_lrrn(UDSPInstruction opc);
+  void ir_srr(UDSPInstruction opc);
+  void ir_srrd(UDSPInstruction opc);
+  void ir_srri(UDSPInstruction opc);
+  void ir_srrn(UDSPInstruction opc);
+  void ir_ilrr(UDSPInstruction opc);
+  void ir_ilrrd(UDSPInstruction opc);
+  void ir_ilrri(UDSPInstruction opc);
+  void ir_ilrrn(UDSPInstruction opc);
 
   // Arithmetic
   void clr(UDSPInstruction opc);
@@ -170,6 +240,60 @@ public:
   void lsrnr(UDSPInstruction opc);
   void asrnr(UDSPInstruction opc);
 
+  void ir_clr(UDSPInstruction opc);
+  void ir_clrl(UDSPInstruction opc);
+  void ir_andcf(UDSPInstruction opc);
+  void ir_andf(UDSPInstruction opc);
+  void ir_tst(UDSPInstruction opc);
+  void ir_tstaxh(UDSPInstruction opc);
+  void ir_cmp(UDSPInstruction opc);
+  void ir_cmpar(UDSPInstruction opc);
+  void ir_cmpi(UDSPInstruction opc);
+  void ir_cmpis(UDSPInstruction opc);
+  void ir_xorr(UDSPInstruction opc);
+  void ir_andr(UDSPInstruction opc);
+  void ir_orr(UDSPInstruction opc);
+  void ir_andc(UDSPInstruction opc);
+  void ir_orc(UDSPInstruction opc);
+  void ir_xorc(UDSPInstruction opc);
+  void ir_notc(UDSPInstruction opc);
+  void ir_xori(UDSPInstruction opc);
+  void ir_andi(UDSPInstruction opc);
+  void ir_ori(UDSPInstruction opc);
+  void ir_addr(UDSPInstruction opc);
+  void ir_addax(UDSPInstruction opc);
+  void ir_add(UDSPInstruction opc);
+  void ir_addp(UDSPInstruction opc);
+  void ir_addaxl(UDSPInstruction opc);
+  void ir_addi(UDSPInstruction opc);
+  void ir_addis(UDSPInstruction opc);
+  void ir_incm(UDSPInstruction opc);
+  void ir_inc(UDSPInstruction opc);
+  void ir_subr(UDSPInstruction opc);
+  void ir_subax(UDSPInstruction opc);
+  void ir_sub(UDSPInstruction opc);
+  void ir_subp(UDSPInstruction opc);
+  void ir_decm(UDSPInstruction opc);
+  void ir_dec(UDSPInstruction opc);
+  void ir_neg(UDSPInstruction opc);
+  void ir_abs(UDSPInstruction opc);
+  void ir_movr(UDSPInstruction opc);
+  void ir_movax(UDSPInstruction opc);
+  void ir_mov(UDSPInstruction opc);
+  void ir_lsl16(UDSPInstruction opc);
+  void ir_lsr16(UDSPInstruction opc);
+  void ir_asr16(UDSPInstruction opc);
+  void ir_lsl(UDSPInstruction opc);
+  void ir_lsr(UDSPInstruction opc);
+  void ir_asl(UDSPInstruction opc);
+  void ir_asr(UDSPInstruction opc);
+  void ir_lsrn(UDSPInstruction opc);
+  void ir_asrn(UDSPInstruction opc);
+  void ir_lsrnrx(UDSPInstruction opc);
+  void ir_asrnrx(UDSPInstruction opc);
+  void ir_lsrnr(UDSPInstruction opc);
+  void ir_asrnr(UDSPInstruction opc);
+
   // Multipliers
   void clrp(UDSPInstruction opc);
   void tstprod(UDSPInstruction opc);
@@ -196,6 +320,32 @@ public:
   void msubc(UDSPInstruction opc);
   void madd(UDSPInstruction opc);
   void msub(UDSPInstruction opc);
+
+  void ir_clrp(UDSPInstruction opc);
+  void ir_tstprod(UDSPInstruction opc);
+  void ir_movp(UDSPInstruction opc);
+  void ir_movnp(UDSPInstruction opc);
+  void ir_movpz(UDSPInstruction opc);
+  void ir_addpaxz(UDSPInstruction opc);
+  void ir_mulaxh(UDSPInstruction opc);
+  void ir_mul(UDSPInstruction opc);
+  void ir_mulac(UDSPInstruction opc);
+  void ir_mulmv(UDSPInstruction opc);
+  void ir_mulmvz(UDSPInstruction opc);
+  void ir_mulx(UDSPInstruction opc);
+  void ir_mulxac(UDSPInstruction opc);
+  void ir_mulxmv(UDSPInstruction opc);
+  void ir_mulxmvz(UDSPInstruction opc);
+  void ir_mulc(UDSPInstruction opc);
+  void ir_mulcac(UDSPInstruction opc);
+  void ir_mulcmv(UDSPInstruction opc);
+  void ir_mulcmvz(UDSPInstruction opc);
+  void ir_maddx(UDSPInstruction opc);
+  void ir_msubx(UDSPInstruction opc);
+  void ir_maddc(UDSPInstruction opc);
+  void ir_msubc(UDSPInstruction opc);
+  void ir_madd(UDSPInstruction opc);
+  void ir_msub(UDSPInstruction opc);
 
 private:
   class IRInsn;
@@ -623,6 +773,12 @@ private:
   void multiply_uu(Gen::X64Reg dst, Gen::X64Reg mul);
   void multiply_us(Gen::X64Reg dst, Gen::X64Reg mul);
 
+  // helper called by the ir_ emitters, all ops added for the same opc are
+  //(at first) executed in parallel
+  //(at first, because a later pass deparallelizes them, as good as
+  // possible. if deparallelizing is impossible, it may need to emit
+  // extra moves, and then deparallelize. we'll see)
+  void ir_add_op(IRInsn insn);
   static int ir_to_regcache_reg(int reg);
 
   void EmitInstruction(UDSPInstruction inst);
@@ -724,8 +880,7 @@ private:
 
   static IREmitInfo const InvalidOp;
   // Load store
-  static IREmitInfo const
-      Mov16Op;  // 16 => 16  //fits better here than in arith, no SR changes
+  static IREmitInfo const Mov16Op;  // 16 => 16  //fits better here than in arith, no SR changes
   static IREmitInfo const Load16Op;
   static IREmitInfo const ILoad16Op;
   static IREmitInfo const Store16Op;
@@ -736,8 +891,7 @@ private:
   static IREmitInfo const SubAOp;
   // acc arith
   static IREmitInfo const MovToAccOp;  // moves ax to acc, 32=>40, changes SR
-  static IREmitInfo const
-      MovROp;  // 16 => extended to 40. possibly already covered., changes SR
+  static IREmitInfo const MovROp;  // 16 => extended to 40. possibly already covered., changes SR
   static IREmitInfo const Mov40Op;
   static IREmitInfo const RoundOp;
   static IREmitInfo const AndCFOp;
@@ -769,7 +923,7 @@ private:
   static IREmitInfo const TstPOp;
   static IREmitInfo const MovPOp;
   static IREmitInfo const MovNPOp;
-  static IREmitInfo const MovPZOp;  // similar to MovROp in the storing part. also, RoundOp.
+  static IREmitInfo const MovPZOp;    // similar to MovROp in the storing part. also, RoundOp.
   static IREmitInfo const AddPAxZOp;  // another one of the xxxZ series, similar to MovROp
   static IREmitInfo const MulOp;      // signed*signed
   static IREmitInfo const MulUUOp;    // unsigned*unsigned

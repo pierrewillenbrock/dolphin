@@ -543,6 +543,314 @@ void DSPEmitterIR::ilrrn(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp1);
 }
 
+// MRR $D, $S
+// 0001 11dd ddds ssss
+// Move value from register $S to register $D.
+void DSPEmitterIR::ir_mrr(const UDSPInstruction opc)
+{
+  u8 sreg = opc & 0x1f;
+  u8 dreg = (opc >> 5) & 0x1f;
+  IRInsn p = {
+      &Mov16Op, {IROp::R(sreg)}, IROp::R(dreg),
+      {},       0x0000,          (dreg == DSP_REG_SR) ? (u16)0xffff : (u16)0x0000,
+      0x0000,   0x0000,
+  };
+  ir_add_op(p);
+}
+
+// LRI $D, #I
+// 0000 0000 100d dddd
+// iiii iiii iiii iiii
+// Load immediate value I to register $D.
+//
+// DSPSpy discovery: This, and possibly other instructions that load a
+// register, has a different behaviour in S40 mode if loaded to AC0.M: The
+// value gets sign extended to the whole accumulator! This does not happen in
+// S16 mode.
+void DSPEmitterIR::ir_lri(const UDSPInstruction opc)
+{
+  u8 reg = opc & 0x1F;
+  u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
+  IRInsn p = {
+      &Mov16Op,
+      {IROp::Imm(imm)},
+      IROp::R(reg),
+      {},
+      0x0000,
+      (reg == DSP_REG_SR) ? (u16)0xffff : (u16)0x0000,
+      (reg == DSP_REG_SR) ? (u16)0xffff : (u16)0x0000,
+      (reg == DSP_REG_SR) ? (u16)imm : (u16)0x0000,
+  };
+  ir_add_op(p);
+}
+
+// LRIS $(0x18+D), #I
+// 0000 1ddd iiii iiii
+// Load immediate value I (8-bit sign extended) to accumulator register.
+void DSPEmitterIR::ir_lris(const UDSPInstruction opc)
+{
+  u8 reg = ((opc >> 8) & 0x7) + DSP_REG_AXL0;
+  u16 imm = (s8)opc;
+  IRInsn p = {&Mov16Op, {IROp::Imm(imm)}, IROp::R(reg)};
+  ir_add_op(p);
+}
+
+// SRS @M, $(0x18+S)
+// 0010 1sss mmmm mmmm
+// Move value from register $(0x18+D) to data memory pointed by address
+// CR[0-7] | M. That is, the upper 8 bits of the address are the
+// bottom 8 bits from CR, and the lower 8 bits are from the 8-bit immediate.
+// Note: pc+=2 in duddie's doc seems wrong
+void DSPEmitterIR::ir_srs(const UDSPInstruction opc)
+{
+  u8 reg = ((opc >> 8) & 0x7) + 0x18;
+  u8 saddr = opc & 0xFF;
+  IRInsn p = {&Store16SOp, {IROp::Imm(saddr), IROp::R(DSP_REG_CR), IROp::R(reg)}, IROp::None()};
+  ir_add_op(p);
+}
+
+// LRS $(0x18+D), @M
+// 0010 0ddd mmmm mmmm
+// Move value from data memory pointed by address CR[0-7] | M to register
+// $(0x18+D).  That is, the upper 8 bits of the address are the bottom 8 bits
+// from CR, and the lower 8 bits are from the 8-bit immediate.
+void DSPEmitterIR::ir_lrs(const UDSPInstruction opc)
+{
+  u8 reg = ((opc >> 8) & 0x7) + 0x18;
+  u8 saddr = opc & 0xFF;
+  IRInsn p = {&Load16SOp, {IROp::Imm(saddr), IROp::R(DSP_REG_CR)}, IROp::R(reg)};
+  ir_add_op(p);
+}
+
+// LR $D, @M
+// 0000 0000 110d dddd
+// mmmm mmmm mmmm mmmm
+// Move value from data memory pointed by address M to register $D.
+void DSPEmitterIR::ir_lr(const UDSPInstruction opc)
+{
+  int reg = opc & 0x1F;
+  u16 address = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
+  IRInsn p = {
+      &Load16Op,    {IROp::Imm(address)},
+      IROp::R(reg), {},
+      0x0000,       (reg == DSP_REG_SR) ? (u16)0xffff : (u16)0x0000,
+      0x0000,       0x0000,
+  };
+  ir_add_op(p);
+}
+
+// SR @M, $S
+// 0000 0000 111s ssss
+// mmmm mmmm mmmm mmmm
+// Store value from register $S to a memory pointed by address M.
+void DSPEmitterIR::ir_sr(const UDSPInstruction opc)
+{
+  u8 reg = opc & 0x1F;
+  u16 address = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
+  IRInsn p = {&Store16Op, {IROp::Imm(address), IROp::R(reg)}, IROp::None()};
+  ir_add_op(p);
+}
+
+// SI @M, #I
+// 0001 0110 mmmm mmmm
+// iiii iiii iiii iiii
+// Store 16-bit immediate value I to a memory location pointed by address
+// M (M is 8-bit value sign extended).
+void DSPEmitterIR::ir_si(const UDSPInstruction opc)
+{
+  u16 address = (s8)opc;
+  u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
+  IRInsn p = {&Store16Op, {IROp::Imm(address), IROp::Imm(imm)}, IROp::None()};
+  ir_add_op(p);
+}
+
+// LRR $D, @$S
+// 0001 1000 0ssd dddd
+// Move value from data memory pointed by addressing register $S to register $D.
+void DSPEmitterIR::ir_lrr(const UDSPInstruction opc)
+{
+  u8 sreg = (opc >> 5) & 0x3;
+  u8 dreg = opc & 0x1f;
+  IRInsn p = {
+      &Load16Op, {IROp::R(sreg)}, IROp::R(dreg),
+      {},        0x0000,          (dreg == DSP_REG_SR) ? (u16)0xffff : (u16)0x0000,
+      0x0000,    0x0000,
+  };
+  ir_add_op(p);
+}
+
+// LRRD $D, @$S
+// 0001 1000 1ssd dddd
+// Move value from data memory pointed by addressing register $S toregister $D.
+// Decrement register $S.
+void DSPEmitterIR::ir_lrrd(const UDSPInstruction opc)
+{
+  u8 sreg = (opc >> 5) & 0x3;
+  u8 dreg = opc & 0x1f;
+  IRInsn p1 = {
+      &Load16Op, {IROp::R(sreg)}, IROp::R(dreg),
+      {},        0x0000,          (dreg == DSP_REG_SR) ? (u16)0xffff : (u16)0x0000,
+      0x0000,    0x0000,
+
+  };
+  ir_add_op(p1);
+  IRInsn p2 = {&SubAOp, {IROp::R(sreg), IROp::R(sreg + DSP_REG_WR0), IROp::Imm(1)}, IROp::R(sreg)};
+  ir_add_op(p2);
+}
+
+// LRRI $D, @$S
+// 0001 1001 0ssd dddd
+// Move value from data memory pointed by addressing register $S to register $D.
+// Increment register $S.
+void DSPEmitterIR::ir_lrri(const UDSPInstruction opc)
+{
+  u8 sreg = (opc >> 5) & 0x3;
+  u8 dreg = opc & 0x1f;
+  IRInsn p1 = {
+      &Load16Op, {IROp::R(sreg)}, IROp::R(dreg),
+      {},        0x0000,          (dreg == DSP_REG_SR) ? (u16)0xffff : (u16)0x0000,
+      0x0000,    0x0000,
+
+  };
+  ir_add_op(p1);
+  IRInsn p2 = {&AddAOp, {IROp::R(sreg), IROp::R(sreg + DSP_REG_WR0), IROp::Imm(1)}, IROp::R(sreg)};
+  ir_add_op(p2);
+}
+
+// LRRN $D, @$S
+// 0001 1001 1ssd dddd
+// Move value from data memory pointed by addressing register $S to register $D.
+// Add indexing register $(0x4+S) to register $S.
+void DSPEmitterIR::ir_lrrn(const UDSPInstruction opc)
+{
+  u8 sreg = (opc >> 5) & 0x3;
+  u8 dreg = opc & 0x1f;
+  IRInsn p1 = {
+      &Load16Op, {IROp::R(sreg)}, IROp::R(dreg),
+      {},        0x0000,          (dreg == DSP_REG_SR) ? (u16)0xffff : (u16)0x0000,
+      0x0000,    0x0000,
+
+  };
+  ir_add_op(p1);
+  IRInsn p2 = {&AddAOp,
+               {IROp::R(sreg), IROp::R(sreg + DSP_REG_WR0), IROp::R(sreg + DSP_REG_IX0)},
+               IROp::R(sreg)};
+  ir_add_op(p2);
+}
+
+// SRR @$D, $S
+// 0001 1010 0dds ssss
+// Store value from source register $S to a memory location pointed by
+// addressing register $D.
+void DSPEmitterIR::ir_srr(const UDSPInstruction opc)
+{
+  u8 dreg = (opc >> 5) & 0x3;
+  u8 sreg = opc & 0x1f;
+  IRInsn p = {&Store16Op, {IROp::R(dreg), IROp::R(sreg)}, IROp::None()};
+  ir_add_op(p);
+}
+
+// SRRD @$D, $S
+// 0001 1010 1dds ssss
+// Store value from source register $S to a memory location pointed by
+// addressing register $D. Decrement register $D.
+void DSPEmitterIR::ir_srrd(const UDSPInstruction opc)
+{
+  u8 dreg = (opc >> 5) & 0x3;
+  u8 sreg = opc & 0x1f;
+  IRInsn p1 = {&Store16Op, {IROp::R(dreg), IROp::R(sreg)}, IROp::None()};
+  ir_add_op(p1);
+  IRInsn p2 = {&SubAOp, {IROp::R(dreg), IROp::R(dreg + DSP_REG_WR0), IROp::Imm(1)}, IROp::R(dreg)};
+  ir_add_op(p2);
+}
+
+// SRRI @$D, $S
+// 0001 1011 0dds ssss
+// Store value from source register $S to a memory location pointed by
+// addressing register $D. Increment register $D.
+void DSPEmitterIR::ir_srri(const UDSPInstruction opc)
+{
+  u8 dreg = (opc >> 5) & 0x3;
+  u8 sreg = opc & 0x1f;
+  IRInsn p1 = {&Store16Op, {IROp::R(dreg), IROp::R(sreg)}, IROp::None()};
+  ir_add_op(p1);
+  IRInsn p2 = {&AddAOp, {IROp::R(dreg), IROp::R(dreg + DSP_REG_WR0), IROp::Imm(1)}, IROp::R(dreg)};
+  ir_add_op(p2);
+}
+
+// SRRN @$D, $S
+// 0001 1011 1dds ssss
+// Store value from source register $S to a memory location pointed by
+// addressing register $D. Add DSP_REG_IX0 register to register $D.
+void DSPEmitterIR::ir_srrn(const UDSPInstruction opc)
+{
+  u8 dreg = (opc >> 5) & 0x3;
+  u8 sreg = opc & 0x1f;
+  IRInsn p1 = {&Store16Op, {IROp::R(dreg), IROp::R(sreg)}, IROp::None()};
+  ir_add_op(p1);
+  IRInsn p2 = {&AddAOp,
+               {IROp::R(dreg), IROp::R(dreg + DSP_REG_WR0), IROp::R(dreg + DSP_REG_IX0)},
+               IROp::R(dreg)};
+  ir_add_op(p2);
+}
+
+// ILRR $acD.m, @$arS
+// 0000 001d 0001 00ss
+// Move value from instruction memory pointed by addressing register
+// $arS to mid accumulator register $acD.m.
+void DSPEmitterIR::ir_ilrr(const UDSPInstruction opc)
+{
+  u16 sreg = opc & 0x3;
+  u16 dreg = (opc >> 8) & 1;
+  IRInsn p = {&ILoad16Op, {IROp::R(sreg)}, IROp::R(dreg + DSP_REG_ACM0)};
+  ir_add_op(p);
+}
+
+// ILRRD $acD.m, @$arS
+// 0000 001d 0001 01ss
+// Move value from instruction memory pointed by addressing register
+// $arS to mid accumulator register $acD.m. Decrement addressing register $arS.
+void DSPEmitterIR::ir_ilrrd(const UDSPInstruction opc)
+{
+  u16 sreg = opc & 0x3;
+  u16 dreg = (opc >> 8) & 1;
+  IRInsn p1 = {&ILoad16Op, {IROp::R(sreg)}, IROp::R(dreg + DSP_REG_ACM0)};
+  ir_add_op(p1);
+  IRInsn p2 = {&SubAOp, {IROp::R(sreg), IROp::R(sreg + DSP_REG_WR0), IROp::Imm(1)}, IROp::R(sreg)};
+  ir_add_op(p2);
+}
+
+// ILRRI $acD.m, @$S
+// 0000 001d 0001 10ss
+// Move value from instruction memory pointed by addressing register
+// $arS to mid accumulator register $acD.m. Increment addressing register $arS.
+void DSPEmitterIR::ir_ilrri(const UDSPInstruction opc)
+{
+  u16 sreg = opc & 0x3;
+  u16 dreg = (opc >> 8) & 1;
+  IRInsn p1 = {&ILoad16Op, {IROp::R(sreg)}, IROp::R(dreg + DSP_REG_ACM0)};
+  ir_add_op(p1);
+  IRInsn p2 = {&AddAOp, {IROp::R(sreg), IROp::R(sreg + DSP_REG_WR0), IROp::Imm(1)}, IROp::R(sreg)};
+  ir_add_op(p2);
+}
+
+// ILRRN $acD.m, @$arS
+// 0000 001d 0001 11ss
+// Move value from instruction memory pointed by addressing register
+// $arS to mid accumulator register $acD.m. Add corresponding indexing
+// register $ixS to addressing register $arS.
+void DSPEmitterIR::ir_ilrrn(const UDSPInstruction opc)
+{
+  u16 sreg = opc & 0x3;
+  u16 dreg = (opc >> 8) & 1;
+  IRInsn p1 = {&ILoad16Op, {IROp::R(sreg)}, IROp::R(dreg + DSP_REG_ACM0)};
+  ir_add_op(p1);
+  IRInsn p2 = {&AddAOp,
+               {IROp::R(sreg), IROp::R(sreg + DSP_REG_WR0), IROp::R(sreg + DSP_REG_IX0)},
+               IROp::R(sreg)};
+  ir_add_op(p2);
+}
+
 void DSPEmitterIR::iremit_Mov16Op(IRInsn const& insn)
 {
   if (insn.inputs[0].type == IROp::REG && insn.output.type == IROp::REG)

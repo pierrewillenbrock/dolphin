@@ -482,6 +482,10 @@ Gen::OpArg DSPEmitterIR::M_SDSP_reg_stack_ptrs(size_t index)
                                      sizeof(SDSP::reg_stack_ptrs[0]) * index));
 }
 
+void DSPEmitterIR::ir_add_op(IRInsn insn)
+{
+}
+
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::InvalidOp = {"InvalidOp", NULL};
 
 }  // namespace DSP::JITIR::x64

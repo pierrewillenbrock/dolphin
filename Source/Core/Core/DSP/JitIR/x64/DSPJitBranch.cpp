@@ -527,6 +527,208 @@ void DSPEmitterIR::bloopi(const UDSPInstruction opc)
   }
 }
 
+// Generic jmp implementation
+// Jcc addressA
+// 0000 0010 1001 cccc
+// aaaa aaaa aaaa aaaa
+// Jump to addressA if condition cc has been met. Set program counter to
+// address represented by value that follows this "jmp" instruction.
+void DSPEmitterIR::ir_jcc(const UDSPInstruction opc)
+{
+  u8 cc = opc & 0xf;
+  u16 dest = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
+  IRInsn p = {
+      &JmpOp,
+      {IROp::Imm(cc),
+       IROp::Imm(dest),               // address if true
+       IROp::Imm(m_compile_pc + 2)},  // address if false
+  };
+  ir_add_op(p);
+}
+
+// Generic jmpr implementation
+// JMPcc $R
+// 0001 0111 rrr0 cccc
+// Jump to address; set program counter to a value from register $R.
+void DSPEmitterIR::ir_jmprcc(const UDSPInstruction opc)
+{
+  u8 cc = opc & 0xf;
+  u8 reg = (opc >> 5) & 0x7;
+  IRInsn p = {
+      &JmpOp,
+      {IROp::Imm(cc),
+       IROp::R(reg),                  // address if true
+       IROp::Imm(m_compile_pc + 2)},  // address if false
+  };
+  ir_add_op(p);
+}
+
+// Generic call implementation
+// CALLcc addressA
+// 0000 0010 1011 cccc
+// aaaa aaaa aaaa aaaa
+// Call function if condition cc has been met. Push program counter of
+// instruction following "call" to $st0. Set program counter to address
+// represented by value that follows this "call" instruction.
+void DSPEmitterIR::ir_call(const UDSPInstruction opc)
+{
+  u8 cc = opc & 0xf;
+  u16 dest = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
+  IRInsn p = {
+      &CallOp,
+      {IROp::Imm(cc),
+       IROp::Imm(dest),              // call if true
+       IROp::Imm(m_compile_pc + 2)}  // return addr, addr if false
+  };
+  ir_add_op(p);
+}
+
+// Generic callr implementation
+// CALLRcc $R
+// 0001 0111 rrr1 cccc
+// Call function if condition cc has been met. Push program counter of
+// instruction following "call" to call stack $st0. Set program counter to
+// register $R.
+void DSPEmitterIR::ir_callr(const UDSPInstruction opc)
+{
+  u8 cc = opc & 0xf;
+  u8 reg = (opc >> 5) & 0x7;
+  IRInsn p = {
+      &CallOp,
+      {IROp::Imm(cc),
+       IROp::R(reg),                 // call if true
+       IROp::Imm(m_compile_pc + 1)}  // return addr, addr if false
+  };
+  ir_add_op(p);
+}
+
+// Generic if implementation
+// IFcc
+// 0000 0010 0111 cccc
+// Execute following opcode if the condition has been met.
+void DSPEmitterIR::ir_ifcc(const UDSPInstruction opc)
+{
+  u8 cc = opc & 0xf;
+  if (cc == 0xf)
+    return;
+  u16 dest = m_compile_pc + 1;
+  IRInsn p = {
+      &JmpOp,
+      {IROp::Imm(cc),
+       IROp::Imm(dest),  // address if true
+       IROp::Imm(dest +  // address if false
+                 GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(dest))->size)},
+  };
+  ir_add_op(p);
+}
+
+// Generic ret implementation
+// RETcc
+// 0000 0010 1101 cccc
+// Return from subroutine if condition cc has been met. Pops stored PC
+// from call stack $st0 and sets $pc to this location.
+void DSPEmitterIR::ir_ret(const UDSPInstruction opc)
+{
+  u8 cc = opc & 0xf;
+  IRInsn p = {&RetOp, {IROp::Imm(cc), IROp::Imm(m_compile_pc + 1)}};
+  ir_add_op(p);
+}
+
+// RTI
+// 0000 0010 1111 1111
+// Return from exception. Pops stored status register $sr from data stack
+// $st1 and program counter PC from call stack $st0 and sets $pc to this
+// location.
+void DSPEmitterIR::ir_rti(const UDSPInstruction opc)
+{
+  IRInsn p = {
+      &RtiOp,
+  };
+  ir_add_op(p);
+}
+
+// HALT
+// 0000 0000 0020 0001
+// Stops execution of DSP code. Sets bit DSP_CR_HALT in register DREG_CR.
+void DSPEmitterIR::ir_halt(const UDSPInstruction opc)
+{
+  IRInsn p = {
+      &HaltOp,
+  };
+  ir_add_op(p);
+}
+
+// LOOP $R
+// 0000 0000 010r rrrr
+// Repeatedly execute following opcode until counter specified by value
+// from register $R reaches zero. Each execution decrement counter. Register
+// $R remains unchanged. If register $R is set to zero at the beginning of loop
+// then looped instruction will not get executed.
+// Actually, this instruction simply prepares the loop stacks for the above.
+// The looping hardware takes care of the rest.
+void DSPEmitterIR::ir_loop(const UDSPInstruction opc)
+{
+  u16 reg = opc & 0x1f;
+  u16 loop_pc = m_compile_pc + 1;
+  IRInsn p = {
+      &LoopOp, {IROp::R(reg), IROp::Imm(m_compile_pc + 1), IROp::Imm(loop_pc)}, IROp::None()};
+  ir_add_op(p);
+}
+
+// LOOPI #I
+// 0001 0000 iiii iiii
+// Repeatedly execute following opcode until counter specified by
+// immediate value I reaches zero. Each execution decrement counter. If
+// immediate value I is set to zero at the beginning of loop then looped
+// instruction will not get executed.
+// Actually, this instruction simply prepares the loop stacks for the above.
+// The looping hardware takes care of the rest.
+void DSPEmitterIR::ir_loopi(const UDSPInstruction opc)
+{
+  u16 cnt = opc & 0xff;
+  u16 loop_pc = m_compile_pc + 1;
+  IRInsn p = {
+      &LoopOp, {IROp::Imm(cnt), IROp::Imm(m_compile_pc + 1), IROp::Imm(loop_pc)}, IROp::None()};
+  ir_add_op(p);
+}
+
+// BLOOP $R, addrA
+// 0000 0000 011r rrrr
+// aaaa aaaa aaaa aaaa
+// Repeatedly execute block of code starting at following opcode until
+// counter specified by value from register $R reaches zero. Block ends at
+// specified address addrA inclusive, ie. opcode at addrA is the last opcode
+// included in loop. Counter is pushed on loop stack $st3, end of block address
+// is pushed on loop stack $st2 and repeat address is pushed on call stack $st0.
+// Up to 4 nested loops are allowed.
+void DSPEmitterIR::ir_bloop(const UDSPInstruction opc)
+{
+  u16 reg = opc & 0x1f;
+  u16 loop_pc = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
+  IRInsn p = {
+      &LoopOp, {IROp::R(reg), IROp::Imm(m_compile_pc + 2), IROp::Imm(loop_pc)}, IROp::None()};
+  ir_add_op(p);
+}
+
+// BLOOPI #I, addrA
+// 0001 0001 iiii iiii
+// aaaa aaaa aaaa aaaa
+// Repeatedly execute block of code starting at following opcode until
+// counter specified by immediate value I reaches zero. Block ends at specified
+// address addrA inclusive, ie. opcode at addrA is the last opcode included in
+// loop. Counter is pushed on loop stack $st3, end of block address is pushed
+// on loop stack $st2 and repeat address is pushed on call stack $st0. Up to 4
+// nested loops are allowed.
+void DSPEmitterIR::ir_bloopi(const UDSPInstruction opc)
+{
+  const auto &state = m_dsp_core.DSPState();
+  u16 cnt = opc & 0xff;
+  u16 loop_pc = state.ReadIMEM(m_compile_pc + 1);
+  IRInsn p = {
+      &LoopOp, {IROp::Imm(cnt), IROp::Imm(m_compile_pc + 2), IROp::Imm(loop_pc)}, IROp::None()};
+  ir_add_op(p);
+}
+
 void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
 {
   const auto& state = m_dsp_core.DSPState();
