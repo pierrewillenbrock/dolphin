@@ -31,12 +31,16 @@ static u16 branch_needs_SR[16] = {SR_SIGN | SR_OVERFLOW,
 
 void DSPEmitterIR::IRReJitConditional(
     u8 cond, DSPEmitterIR::IRInsn const& insn,
-    void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn), X64Reg tmp1,
-    X64Reg tmp2)
+    void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn), bool negate,
+    X64Reg tmp1, X64Reg tmp2)
 {
-  if (cond == 0xf)
+  if (cond == 0xf && !negate)
   {  // Always true.
     (this->*conditional_fn)(insn);
+    return;
+  }
+  if (cond == 0xf && negate)
+  {  // Never true
     return;
   }
 
@@ -88,8 +92,10 @@ void DSPEmitterIR::IRReJitConditional(
     break;
   }
   DSPJitIRRegCache c1(m_gpr);
-  FixupBranch skip_code =
-      cond == 0xe ? J_CC(CC_E, true) : J_CC((CCFlags)(CC_NE - (cond & 1)), true);
+  bool equal = (cond == 0xe) || (cond & 1);
+  if (negate)
+    equal = !equal;
+  FixupBranch skip_code = equal ? J_CC(CC_E, true) : J_CC(CC_NE, true);
   (this->*conditional_fn)(insn);  // actually, this is guaranteed to not return
   m_gpr.FlushRegs(c1);
   // actually, this is guaranteed to emit code that does not return
@@ -199,10 +205,10 @@ void DSPEmitterIR::ir_ifcc(const UDSPInstruction opc)
     return;
   u16 dest = m_compile_pc + 1;
   IRInsn p = {&JmpOp,
-              {IROp::Imm(cc),
-               IROp::Imm(dest),  // address if true
-               IROp::Imm(dest +  // address if false
-                         GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(dest))->size)},
+              {IROp::Imm(cc | 0x80),  // invert logic
+               IROp::Imm(dest +       // address if false
+                         GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(dest))->size),
+               IROp::Imm(dest)},  // address if true
               IROp::None(),
               {},
               branch_needs_SR[cc],
@@ -418,7 +424,7 @@ void DSPEmitterIR::iremit_RetOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   MOV(16, M_SDSP_pc(), Imm16(insn.inputs[1].imm));
-  IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_ret, tmp1, tmp2);
+  IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_ret, false, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RetOp = {
@@ -481,12 +487,8 @@ void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   MOV(16, M_SDSP_pc(), Imm16(insn.inputs[2].imm));
-  IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_jmp, tmp1, tmp2);
-  DSPJitIRRegCache c(m_gpr);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
-  WriteBranchExit(insn.cycle_count);  // for jcc, this is not needed, but for ifcc
-  m_gpr.FlushRegs(c, false);
+  IRReJitConditional(insn.inputs[0].imm & 0xf, insn, &DSPEmitterIR::irr_jmp,
+                     insn.inputs[0].imm & 0x80, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::JmpOp = {
@@ -530,7 +532,7 @@ void DSPEmitterIR::iremit_CallOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   MOV(16, M_SDSP_pc(), Imm16(insn.inputs[2].imm));
-  IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_call, tmp1, tmp2);
+  IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_call, false, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CallOp = {

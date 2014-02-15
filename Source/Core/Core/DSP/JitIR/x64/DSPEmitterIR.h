@@ -548,7 +548,7 @@ private:
 
   void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn,
                           void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn),
-                          Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+                          bool negate, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
 
   void irr_ret(IRInsn const& insn);
   void irr_jmp(IRInsn const& insn);
