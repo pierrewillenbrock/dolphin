@@ -576,10 +576,10 @@ private:
   void checkExceptions(u32 retval, u16 pc, Gen::OpArg const& sr_reg);
 
   // Memory helper functions
-  void increment_addr_reg(Gen::X64Reg ar, Gen::X64Reg wr, Gen::X64Reg tmp1, Gen::X64Reg tmp4);
-  void decrement_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64Reg ar_out, Gen::X64Reg tmp4);
-  void increase_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64Reg ix, Gen::X64Reg ar_out);
-  void decrease_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64Reg ix, Gen::X64Reg ar_out);
+  void increment_addr_reg(Gen::X64Reg ar, Gen::OpArg wr, Gen::X64Reg tmp1, Gen::X64Reg tmp4);
+  void decrement_addr_reg(Gen::X64Reg ar_in, Gen::OpArg wr, Gen::X64Reg ar_out, Gen::X64Reg tmp4);
+  void increase_addr_reg(Gen::X64Reg ar_in, Gen::OpArg wr, Gen::X64Reg ix, Gen::X64Reg ar_out);
+  void decrease_addr_reg(Gen::X64Reg ar_in, Gen::OpArg wr, Gen::X64Reg ix, Gen::X64Reg ar_out);
   void imem_read(Gen::X64Reg address, Gen::X64Reg host_dreg);
   void dmem_read(Gen::X64Reg address, Gen::X64Reg host_dreg);
   void dmem_read_imm(u16 addr, Gen::X64Reg host_dreg);

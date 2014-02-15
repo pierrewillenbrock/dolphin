@@ -148,7 +148,7 @@ void DSPEmitterIR::iremit_AddAOp(IRInsn const& insn)
 
   if (ix.IsImm() && ix.AsImm16().Imm16() == 1)
   {
-    increment_addr_reg(ar.GetSimpleReg(), wr.GetSimpleReg(), tmp1, tmp2);
+    increment_addr_reg(ar.GetSimpleReg(), wr, tmp1, tmp2);
   }
   else
   {
@@ -156,23 +156,17 @@ void DSPEmitterIR::iremit_AddAOp(IRInsn const& insn)
       MOV(32, R(tmp1), Imm32(ix.AsImm16().SImm16()));
     else
       MOVSX(32, 16, tmp1, ix);
-    increase_addr_reg(ar.GetSimpleReg(), wr.GetSimpleReg(), tmp1, tmp2);
-
+    increase_addr_reg(ar.GetSimpleReg(), wr, tmp1, tmp2);
     MOV(16, ar, R(tmp2));
   }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AddAOp = {
-    "AddAOp",
-    &DSPEmitterIR::iremit_AddAOp,
-    0x0000,
-    0x0000,
-    0x0000,
-    0x0000,
-    false,
-    {{OpAnyReg | SameAsOutput | ExtendZero16}, {OpAnyReg | Clobbered | ExtendZero16}, {OpAny64}},
-    {OpAnyReg},
-    {{OpAnyReg}, {OpAnyReg}}};
+    "AddAOp",   &DSPEmitterIR::iremit_AddAOp,
+    0x0000,     0x0000,
+    0x0000,     0x0000,
+    false,      {{OpAnyReg | SameAsOutput | ExtendZero16}, {OpAny | ExtendZero16}, {OpAny64}},
+    {OpAnyReg}, {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_SubAOp(IRInsn const& insn)
 {
@@ -184,28 +178,23 @@ void DSPEmitterIR::iremit_SubAOp(IRInsn const& insn)
 
   if (insn.inputs[2].oparg.IsImm() && insn.inputs[2].oparg.AsImm16().Imm16() == 1)
   {
-    decrement_addr_reg(insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[1].oparg.GetSimpleReg(),
+    decrement_addr_reg(insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[1].oparg,
                        insn.output.oparg.GetSimpleReg(), tmp1);
   }
   else
   {
     MOVSX(32, 16, tmp1, insn.inputs[2].oparg);
-    decrease_addr_reg(insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[1].oparg.GetSimpleReg(),
-                      tmp1, insn.output.oparg.GetSimpleReg());
+    decrease_addr_reg(insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[1].oparg, tmp1,
+                      insn.output.oparg.GetSimpleReg());
   }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SubAOp = {
-    "SubAOp",
-    &DSPEmitterIR::iremit_SubAOp,
-    0x0000,
-    0x0000,
-    0x0000,
-    0x0000,
-    false,
-    {{OpAnyReg | Clobbered | ExtendZero16}, {OpAnyReg | Clobbered | ExtendZero16}, {OpAny64}},
-    {OpAnyReg},
-    {{OpAnyReg}}};
+    "SubAOp",   &DSPEmitterIR::iremit_SubAOp,
+    0x0000,     0x0000,
+    0x0000,     0x0000,
+    false,      {{OpAnyReg | Clobbered | ExtendZero16}, {OpAny | ExtendZero16}, {OpAny64}},
+    {OpAnyReg}, {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_SBSetOp(IRInsn const& insn)
 {

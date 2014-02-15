@@ -309,54 +309,122 @@ void DSPEmitterIR::dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExten
 // Both are done while ignoring changes due to values/holes in IX
 // above the mask.
 
-void DSPEmitterIR::increment_addr_reg(Gen::X64Reg ar, Gen::X64Reg wr, Gen::X64Reg tmp1,
+void DSPEmitterIR::increment_addr_reg(Gen::X64Reg ar, Gen::OpArg wr, Gen::X64Reg tmp1,
                                       Gen::X64Reg tmp4)
 {
+  if (wr.IsImm() && (wr.AsImm16().Imm16() & (wr.AsImm16().Imm16() + 1)) == 0)
+  {
+    // this is just add+mask. still need to keep the
+    // upper bits somewhere
+    if (wr.AsImm16().Imm16() == 0xffff)
+      LEA(16, ar, MDisp(ar, 1));
+    else
+    {
+      LEA(16, tmp1, MDisp(ar, 1));
+      AND(16, R(ar), Imm16(~wr.AsImm16().Imm16()));
+      AND(16, R(tmp1), wr.AsImm16());
+      OR(16, R(ar), R(tmp1));
+    }
+    return;
+  }
   // u32 nar = ar + 1;
   MOV(32, R(tmp1), R(ar));
-  ADD(32, R(ar), Imm8(1));
+  LEA(32, ar, MDisp(ar, 1));
 
   // if ((nar ^ ar) > ((wr | 1) << 1))
   //		nar -= wr + 1;
   XOR(32, R(tmp1), R(ar));
-  LEA(32, tmp4, MRegSum(wr, wr));
-  OR(32, R(tmp4), Imm8(2));
-  CMP(32, R(tmp1), R(tmp4));
+  if (wr.IsImm())
+    CMP(32, R(tmp1), Imm32((wr.AsImm16().Imm16() | 1) << 1));
+  else
+  {
+    LEA(32, tmp4, MRegSum(wr.GetSimpleReg(), wr.GetSimpleReg()));
+    OR(32, R(tmp4), Imm8(2));
+    CMP(32, R(tmp1), R(tmp4));
+  }
+
   FixupBranch nowrap = J_CC(CC_BE);
-  SUB(16, R(ar), R(wr));
-  SUB(16, R(ar), Imm8(1));
+  if (wr.IsImm())
+    SUB(16, R(ar), Imm16(wr.AsImm16().Imm16() + 1));
+  else
+  {
+    SUB(16, R(ar), wr);
+    SUB(16, R(ar), Imm8(1));
+  }
   SetJumpTarget(nowrap);
   // g_dsp.r.ar[reg] = nar;
 }
 
-void DSPEmitterIR::decrement_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64Reg ar_out,
+void DSPEmitterIR::decrement_addr_reg(Gen::X64Reg ar_in, Gen::OpArg wr, Gen::X64Reg ar_out,
                                       Gen::X64Reg tmp4)
 {
   // u32 nar = ar + wr;
   // edi = nar
-  LEA(32, ar_out, MRegSum(ar_in, wr));
+  if (wr.IsImm())
+    LEA(32, ar_out, MDisp(ar_in, wr.AsImm16().Imm16()));
+  else
+    LEA(32, ar_out, MRegSum(ar_in, wr.GetSimpleReg()));
+
+  if (wr.IsImm() && (wr.AsImm16().Imm16() & (wr.AsImm16().Imm16() + 1)) == 0)
+  {
+    // this is just add+mask. still need to keep the
+    // high bits somewhere
+    if (wr.AsImm16().Imm16() != 0xffff)
+    {
+      AND(16, R(ar_in), Imm16(~wr.AsImm16().Imm16()));
+      AND(16, R(ar_out), wr.AsImm16());
+      OR(16, R(ar_out), R(ar_in));
+    }
+    return;
+  }
 
   // if (((nar ^ ar) & ((wr | 1) << 1)) > wr)
   //		nar -= wr + 1;
   XOR(32, R(ar_in), R(ar_out));
-  LEA(32, tmp4, MRegSum(wr, wr));
-  OR(32, R(tmp4), Imm8(2));
-  AND(32, R(ar_in), R(tmp4));
-  CMP(32, R(ar_in), R(wr));
+  if (wr.IsImm())
+  {
+    AND(32, R(ar_in), Imm32((wr.AsImm16().Imm16() | 1) << 1));
+    CMP(32, R(ar_in), Imm32(wr.AsImm16().Imm16()));
+  }
+  else
+  {
+    LEA(32, tmp4, MRegSum(wr.GetSimpleReg(), wr.GetSimpleReg()));
+    OR(32, R(tmp4), Imm8(2));
+    AND(32, R(ar_in), R(tmp4));
+    CMP(32, R(ar_in), wr);
+  }
   FixupBranch nowrap = J_CC(CC_BE);
-  SUB(16, R(ar_out), R(wr));
-  SUB(16, R(ar_out), Imm8(1));
+  if (wr.IsImm())
+    SUB(16, R(ar_out), Imm16(wr.AsImm16().Imm16() + 1));
+  else
+  {
+    SUB(16, R(ar_out), wr);
+    SUB(16, R(ar_out), Imm8(1));
+  }
   SetJumpTarget(nowrap);
   // g_dsp.r.ar[reg] = nar;
 }
 
 // Increase addr register according to the correspond ix register
-void DSPEmitterIR::increase_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64Reg ix,
+void DSPEmitterIR::increase_addr_reg(Gen::X64Reg ar_in, Gen::OpArg wr, Gen::X64Reg ix,
                                      Gen::X64Reg ar_out)
 {
   // u32 nar = ar + ix;
   // edi = nar
   LEA(32, ar_out, MRegSum(ar_in, ix));
+
+  if (wr.IsImm() && (wr.AsImm16().Imm16() & (wr.AsImm16().Imm16() + 1)) == 0)
+  {
+    // this is just add+mask. still need to keep the
+    // high bits somewhere
+    if (wr.AsImm16().Imm16() != 0xffff)
+    {
+      AND(16, R(ar_in), Imm16(~wr.AsImm16().Imm16()));
+      AND(16, R(ar_out), Imm16(wr.AsImm16().Imm16()));
+      OR(16, R(ar_out), R(ar_in));
+    }
+    return;
+  }
 
   // u32 dar = (nar ^ ar ^ ix) & ((wr | 1) << 1);
   // eax = dar
@@ -366,32 +434,61 @@ void DSPEmitterIR::increase_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64
   // if (ix >= 0)
   TEST(32, R(ix), R(ix));
   FixupBranch negative = J_CC(CC_S);
-  LEA(32, ix, MRegSum(wr, wr));
-  OR(32, R(ix), Imm8(2));
-  AND(32, R(ar_in), R(ix));
+  if (wr.IsImm())
+  {
+    AND(32, R(ar_in), Imm32((wr.AsImm16().Imm16() | 1) << 1));
+    // if (dar > wr)
+    CMP(32, R(ar_in), wr.AsImm32());
+  }
+  else
+  {
+    LEA(32, ix, MRegSum(wr.GetSimpleReg(), wr.GetSimpleReg()));
+    OR(32, R(ix), Imm8(2));
+    AND(32, R(ar_in), R(ix));
+    // if (dar > wr)
+    CMP(32, R(ar_in), wr);
+  }
 
-  // if (dar > wr)
-  CMP(32, R(ar_in), R(wr));
   FixupBranch done = J_CC(CC_BE);
   // nar -= wr + 1;
-  SUB(16, R(ar_out), R(wr));
-  SUB(16, R(ar_out), Imm8(1));
+  if (wr.IsImm())
+    SUB(16, R(ar_out), Imm16(wr.AsImm16().Imm16() + 1));
+  else
+  {
+    SUB(16, R(ar_out), wr);
+    SUB(16, R(ar_out), Imm8(1));
+  }
   FixupBranch done2 = J();
 
   // else
   SetJumpTarget(negative);
-  LEA(32, ix, MRegSum(wr, wr));
-  OR(32, R(ix), Imm8(2));
-  AND(32, R(ar_in), R(ix));
+  if (wr.IsImm())
+  {
+    AND(32, R(ar_in), Imm32((wr.AsImm16().Imm16() | 1) << 1));
+    // if ((((nar + wr + 1) ^ nar) & dar) <= wr)
+    LEA(32, ix, MDisp(ar_out, wr.AsImm16().Imm16() + 1));
+  }
+  else
+  {
+    LEA(32, ix, MRegSum(wr.GetSimpleReg(), wr.GetSimpleReg()));
+    OR(32, R(ix), Imm8(2));
+    AND(32, R(ar_in), R(ix));
+    // if ((((nar + wr + 1) ^ nar) & dar) <= wr)
+    LEA(32, ix, MComplex(ar_out, wr.GetSimpleReg(), SCALE_1, 1));
+  }
 
-  // if ((((nar + wr + 1) ^ nar) & dar) <= wr)
-  LEA(32, ix, MComplex(ar_out, wr, SCALE_1, 1));
   XOR(32, R(ix), R(ar_out));
   AND(32, R(ix), R(ar_in));
-  CMP(32, R(ix), R(wr));
+  if (wr.IsImm())
+    CMP(32, R(ix), wr.AsImm32());
+  else
+    CMP(32, R(ix), wr);
   FixupBranch done3 = J_CC(CC_A);
   // nar += wr + 1;
-  LEA(32, ar_out, MComplex(ar_out, wr, SCALE_1, 1));
+  if (wr.IsImm())
+    LEA(32, ar_out, MDisp(ar_out, wr.AsImm16().Imm16() + 1));
+  else
+    LEA(32, ar_out, MComplex(ar_out, wr.GetSimpleReg(), SCALE_1, 1));
 
   SetJumpTarget(done);
   SetJumpTarget(done2);
@@ -400,14 +497,26 @@ void DSPEmitterIR::increase_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64
 }
 
 // Decrease addr register according to the correspond ix register
-// ar_in must be zero extended
-void DSPEmitterIR::decrease_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64Reg ix,
+void DSPEmitterIR::decrease_addr_reg(Gen::X64Reg ar_in, Gen::OpArg wr, Gen::X64Reg ix,
                                      Gen::X64Reg ar_out)
 {
   NOT(32, R(ix));  // esi = ~ix
 
   // u32 nar = ar - ix; (ar + ~ix + 1)
   LEA(32, ar_out, MComplex(ar_in, ix, SCALE_1, 1));
+
+  if (wr.IsImm() && (wr.AsImm16().Imm16() & (wr.AsImm16().Imm16() + 1)) == 0)
+  {
+    // this is just add+mask. still need to keep the
+    // upper bits somewhere
+    if (wr.AsImm16().Imm16() != 0xffff)
+    {
+      AND(16, R(ar_in), Imm16(~wr.AsImm16().Imm16()));
+      AND(16, R(ar_out), wr.AsImm16());
+      OR(16, R(ar_out), R(ar_in));
+    }
+    return;
+  }
 
   // u32 dar = (nar ^ ar ^ ~ix) & ((wr | 1) << 1);
   // eax = dar
@@ -417,32 +526,61 @@ void DSPEmitterIR::decrease_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64
   // if ((u32)ix > 0xFFFF8000)  ==> (~ix < 0x00007FFF)
   CMP(32, R(ix), Imm32(0x00007FFF));
   FixupBranch positive = J_CC(CC_AE);
-  LEA(32, ix, MRegSum(wr, wr));
-  OR(32, R(ix), Imm8(2));
-  AND(32, R(ar_in), R(ix));
+  if (wr.IsImm())
+  {
+    AND(32, R(ar_in), Imm32((wr.AsImm16().Imm16() | 1) << 1));
+    // if (dar > wr)
+    CMP(32, R(ar_in), wr.AsImm32());
+  }
+  else
+  {
+    LEA(32, ix, MRegSum(wr.GetSimpleReg(), wr.GetSimpleReg()));
+    OR(32, R(ix), Imm8(2));
+    AND(32, R(ar_in), R(ix));
+    // if (dar > wr)
+    CMP(32, R(ar_in), wr);
+  }
 
-  // if (dar > wr)
-  CMP(32, R(ar_in), R(wr));
   FixupBranch done = J_CC(CC_BE);
   // nar -= wr + 1;
-  SUB(16, R(ar_out), R(wr));
-  SUB(16, R(ar_out), Imm8(1));
+  if (wr.IsImm())
+    SUB(16, R(ar_out), Imm16(wr.AsImm16().Imm16() + 1));
+  else
+  {
+    SUB(16, R(ar_out), wr);
+    SUB(16, R(ar_out), Imm8(1));
+  }
   FixupBranch done2 = J();
 
   // else
   SetJumpTarget(positive);
-  LEA(32, ix, MRegSum(wr, wr));
-  OR(32, R(ix), Imm8(2));
-  AND(32, R(ar_in), R(ix));
+  if (wr.IsImm())
+  {
+    AND(32, R(ar_in), Imm32((wr.AsImm16().Imm16() | 1) << 1));
+    // if ((((nar + wr + 1) ^ nar) & dar) <= wr)
+    LEA(32, ix, MDisp(ar_out, wr.AsImm16().Imm16() + 1));
+  }
+  else
+  {
+    LEA(32, ix, MRegSum(wr.GetSimpleReg(), wr.GetSimpleReg()));
+    OR(32, R(ix), Imm8(2));
+    AND(32, R(ar_in), R(ix));
+    // if ((((nar + wr + 1) ^ nar) & dar) <= wr)
+    LEA(32, ix, MComplex(ar_out, wr.GetSimpleReg(), SCALE_1, 1));
+  }
 
-  // if ((((nar + wr + 1) ^ nar) & dar) <= wr)
-  LEA(32, ix, MComplex(ar_out, wr, SCALE_1, 1));
   XOR(32, R(ix), R(ar_out));
   AND(32, R(ix), R(ar_in));
-  CMP(32, R(ix), R(wr));
+  if (wr.IsImm())
+    CMP(32, R(ix), wr.AsImm32());
+  else
+    CMP(32, R(ix), wr);
   FixupBranch done3 = J_CC(CC_A);
   // nar += wr + 1;
-  LEA(32, ar_out, MComplex(ar_out, wr, SCALE_1, 1));
+  if (wr.IsImm())
+    LEA(32, ar_out, MDisp(ar_out, wr.AsImm16().Imm16() + 1));
+  else
+    LEA(32, ar_out, MComplex(ar_out, wr.GetSimpleReg(), SCALE_1, 1));
 
   SetJumpTarget(done);
   SetJumpTarget(done2);
