@@ -542,7 +542,7 @@ private:
   void CompileStaticHelpers();
   void Compile(u16 start_addr);
 
-  bool FlagsNeeded() const;
+  bool FlagsNeeded(u16 address) const;
 
   void WriteBranchExit();
 

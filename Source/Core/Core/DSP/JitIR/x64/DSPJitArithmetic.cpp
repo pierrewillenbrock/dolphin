@@ -821,7 +821,7 @@ void DSPEmitterIR::iremit_MovToAccOp(IRInsn const& insn)
   int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
   m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
     Update_SR_Register64(RAX, RDX);
 }
 
@@ -836,7 +836,7 @@ void DSPEmitterIR::iremit_MovROp(IRInsn const& insn)
   m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
   SHL(64, R(RAX), Imm8(16));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64(RAX, RDX);
   }
@@ -862,7 +862,7 @@ void DSPEmitterIR::iremit_Mov40Op(IRInsn const& insn)
   {
     ASSERT_MSG(DSPLLE, 0, "unhandled Mov40Op variant");
   }
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(out_reg, RAX, RegisterExtension::None);
     Update_SR_Register64(RAX, RDX);
@@ -879,7 +879,7 @@ void DSPEmitterIR::iremit_RoundOp(IRInsn const& insn)
   m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
   round_long(RAX);
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
     Update_SR_Register64(RAX, RDX);
 }
 
@@ -888,7 +888,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RoundOp = {
 
 void DSPEmitterIR::iremit_AndCFOp(IRInsn const& insn)
 {
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     m_gpr.ReadReg(in_reg, RAX, RegisterExtension::None);
@@ -911,7 +911,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AndCFOp = {
 
 void DSPEmitterIR::iremit_AndFOp(IRInsn const& insn)
 {
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     m_gpr.ReadReg(in_reg, RAX, RegisterExtension::None);
@@ -933,7 +933,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AndFOp = {
 
 void DSPEmitterIR::iremit_Tst40Op(IRInsn const& insn)
 {
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
@@ -946,7 +946,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Tst40Op = {
 
 void DSPEmitterIR::iremit_Tst16Op(IRInsn const& insn)
 {
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
@@ -959,7 +959,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Tst16Op = {
 
 void DSPEmitterIR::iremit_Cmp40Op(IRInsn const& insn)
 {
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
@@ -981,7 +981,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Cmp40Op = {
 
 void DSPEmitterIR::iremit_Cmp16Op(IRInsn const& insn)
 {
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     X64Reg tmp1 = m_gpr.GetFreeXReg();
     int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
@@ -1033,7 +1033,7 @@ void DSPEmitterIR::iremit_XorOp(IRInsn const& insn)
   }
   XOR(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
     Update_SR_Register16_OverS32(RAX, RCX);
@@ -1063,7 +1063,7 @@ void DSPEmitterIR::iremit_AndOp(IRInsn const& insn)
   }
   AND(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
     Update_SR_Register16_OverS32(RAX, RCX);
@@ -1093,7 +1093,7 @@ void DSPEmitterIR::iremit_OrOp(IRInsn const& insn)
   }
   OR(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
     Update_SR_Register16_OverS32(RAX, RCX);
@@ -1110,7 +1110,7 @@ void DSPEmitterIR::iremit_NotOp(IRInsn const& insn)
   m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
   NOT(16, R(AX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
     Update_SR_Register16_OverS32(RAX, RCX);
@@ -1144,7 +1144,7 @@ void DSPEmitterIR::iremit_Add16Op(IRInsn const& insn)
   }
   ADD(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64_Carry(EAX, tmp1, RDX);
   }
@@ -1179,7 +1179,7 @@ void DSPEmitterIR::iremit_Add32Op(IRInsn const& insn)
   }
   ADD(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64_Carry(EAX, tmp1, RDX);
   }
@@ -1214,7 +1214,7 @@ void DSPEmitterIR::iremit_Add40Op(IRInsn const& insn)
   }
   ADD(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64_Carry(EAX, tmp1, RDX);
   }
@@ -1240,7 +1240,7 @@ void DSPEmitterIR::iremit_AddPOp(IRInsn const& insn)
   m_gpr.PutXReg(tmp2);
   ADD(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64_Carry(EAX, tmp1, RDX);
   }
@@ -1264,7 +1264,7 @@ void DSPEmitterIR::iremit_AddUOp(IRInsn const& insn)
   m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Zero);
   ADD(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64_Carry(EAX, tmp1, RDX);
   }
@@ -1300,7 +1300,7 @@ void DSPEmitterIR::iremit_Sub16Op(IRInsn const& insn)
   }
   SUB(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
     Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
@@ -1336,7 +1336,7 @@ void DSPEmitterIR::iremit_Sub32Op(IRInsn const& insn)
   }
   SUB(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
     Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
@@ -1372,7 +1372,7 @@ void DSPEmitterIR::iremit_Sub40Op(IRInsn const& insn)
   }
   SUB(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
     Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
@@ -1399,7 +1399,7 @@ void DSPEmitterIR::iremit_SubPOp(IRInsn const& insn)
   m_gpr.PutXReg(tmp2);
   SUB(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
     Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
@@ -1424,7 +1424,7 @@ void DSPEmitterIR::iremit_SubUOp(IRInsn const& insn)
   m_gpr.ReadReg(in_reg1, RDX, RegisterExtension::Zero);
   SUB(64, R(RAX), R(RDX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
     Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
@@ -1445,7 +1445,7 @@ void DSPEmitterIR::iremit_NegOp(IRInsn const& insn)
   m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::None);
   NEG(64, R(RAX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64(RAX, RDX);
   }
@@ -1465,7 +1465,7 @@ void DSPEmitterIR::iremit_AbsOp(IRInsn const& insn)
   NEG(64, R(RAX));
   m_gpr.WriteReg(out_reg, R(RAX));
   SetJumpTarget(GreaterThanOrEqual);
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64(RAX, RDX);
   }
@@ -1518,7 +1518,7 @@ void DSPEmitterIR::iremit_LslOp(IRInsn const& insn)
     ASSERT_MSG(DSPLLE, 0, "unhandled LslOp variant");
   }
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64(RAX, RDX);
   }
@@ -1571,7 +1571,7 @@ void DSPEmitterIR::iremit_AslOp(IRInsn const& insn)
     ASSERT_MSG(DSPLLE, 0, "unhandled AslOp variant");
   }
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64(RAX, RDX);
   }

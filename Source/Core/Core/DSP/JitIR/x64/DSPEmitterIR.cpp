@@ -91,11 +91,11 @@ void DSPEmitterIR::ClearIRAMandDSPJITCodespaceReset()
   m_dsp_core.DSPState().reset_dspjit_codespace = false;
 }
 
-bool DSPEmitterIR::FlagsNeeded() const
+bool DSPEmitterIR::FlagsNeeded(u16 address) const
 {
   const auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
 
-  return !analyzer.IsStartOfInstruction(m_compile_pc) || analyzer.IsUpdateSR(m_compile_pc);
+  return !analyzer.IsStartOfInstruction(address) || analyzer.IsUpdateSR(address);
 }
 
 int DSPEmitterIR::ir_to_regcache_reg(int reg)
@@ -540,7 +540,11 @@ void DSPEmitterIR::Compile(u16 start_addr)
     DecodeInstruction(inst);
     m_block_size[start_addr]++;
 
+    m_compile_pc += opcode->size;
+
     ir_commit_parallel_nodes();
+
+    // split should go here
 
     // add final end_bb
     IRBB* new_end_bb = new IRBB();
@@ -552,8 +556,11 @@ void DSPEmitterIR::Compile(u16 start_addr)
     m_end_bb->next.insert(new_end_bb);
     m_end_bb->nextNonBranched = new_end_bb;
     new_end_bb->prev.insert(m_end_bb);
-
     m_end_bb = new_end_bb;
+
+    // now, we can drop all UpdatePCOp again, and need to know if
+    // the last modifies_PC insn was an UpdatePCOp
+    fixup_pc = true;
     dumpIRNodes();
 
     for (auto bb : m_bb_storage)
@@ -563,10 +570,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
       EmitBB(bb);
 
     clearNodeStorage();
-
-    m_compile_pc += opcode->size;
-
-    fixup_pc = true;
 
     // Handle loop condition, only if current instruction was flagged as a loop destination
     // by the analyzer.

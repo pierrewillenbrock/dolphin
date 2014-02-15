@@ -633,7 +633,7 @@ void DSPEmitterIR::iremit_TstPOp(IRInsn const& insn)
   ASSERT_MSG(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for TstPOp");
   get_long_prod(RAX, tmp1);
   m_gpr.PutXReg(tmp1);
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64(RAX, RDX);
   }
@@ -652,7 +652,7 @@ void DSPEmitterIR::iremit_MovPOp(IRInsn const& insn)
   get_long_prod(RAX, tmp1);
   m_gpr.PutXReg(tmp1);
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64(RAX, RDX);
   }
@@ -672,7 +672,7 @@ void DSPEmitterIR::iremit_MovNPOp(IRInsn const& insn)
   m_gpr.PutXReg(tmp1);
   NEG(64, R(RAX));
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64(RAX, RDX);
   }
@@ -692,7 +692,7 @@ void DSPEmitterIR::iremit_MovPZOp(IRInsn const& insn)
   round_long(RAX);
   m_gpr.PutXReg(tmp1);
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     Update_SR_Register64(RAX, RDX);
   }
@@ -720,7 +720,7 @@ void DSPEmitterIR::iremit_AddPAxZOp(IRInsn const& insn)
   ADD(64, R(RAX), R(RDX));
 
   m_gpr.WriteReg(out_reg, R(RAX));
-  if (FlagsNeeded())
+  if (FlagsNeeded(insn.addr))
   {
     X64Reg tmp3 = m_gpr.GetFreeXReg();
     get_long_prod(RDX, tmp3);
