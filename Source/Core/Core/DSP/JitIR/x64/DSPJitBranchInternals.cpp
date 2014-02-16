@@ -172,7 +172,7 @@ void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsOp = {
     "CheckExceptionsOp",
     &DSPEmitterIR::iremit_CheckExceptionsOp,
-    0x0000,
+    SR_INT_ENABLE,
     0x0000,
     0x0000,
     0x0000,

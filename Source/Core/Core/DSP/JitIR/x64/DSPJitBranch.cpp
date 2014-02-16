@@ -12,6 +12,23 @@ using namespace Gen;
 
 namespace DSP::JITIR::x64
 {
+static u16 branch_needs_SR[16] = {SR_SIGN | SR_OVERFLOW,
+                                  SR_SIGN | SR_OVERFLOW,
+                                  SR_SIGN | SR_ARITH_ZERO | SR_OVERFLOW,
+                                  SR_SIGN | SR_ARITH_ZERO | SR_OVERFLOW,
+                                  SR_ARITH_ZERO,
+                                  SR_ARITH_ZERO,
+                                  SR_CARRY,
+                                  SR_CARRY,
+                                  SR_OVER_S32,
+                                  SR_OVER_S32,
+                                  SR_TOP2BITS | SR_OVER_S32 | SR_OVERFLOW,
+                                  SR_TOP2BITS | SR_OVER_S32 | SR_OVERFLOW,
+                                  SR_LOGIC_ZERO,
+                                  SR_LOGIC_ZERO,
+                                  SR_OVERFLOW,
+                                  0x0000};
+
 void DSPEmitterIR::IRReJitConditional(
     u8 cond, DSPEmitterIR::IRInsn const& insn,
     void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn), X64Reg tmp1,
@@ -29,16 +46,16 @@ void DSPEmitterIR::IRReJitConditional(
   {
   case 0x0:  // GE - Greater Equal
   case 0x1:  // L - Less
-    LEA(16, EDX, MScaled(EAX, SCALE_4, 0));
-    XOR(16, R(EAX), R(EDX));
+    LEA(16, tmp1, MScaled(EAX, SCALE_4, 0));
+    XOR(16, R(EAX), R(tmp1));
     TEST(16, R(EAX), Imm16(8));
     break;
   case 0x2:  // G - Greater
   case 0x3:  // LE - Less Equal
-    LEA(16, EDX, MScaled(EAX, SCALE_4, 0));
-    XOR(16, R(EAX), R(EDX));
+    LEA(16, tmp1, MScaled(EAX, SCALE_4, 0));
+    XOR(16, R(EAX), R(tmp1));
     ADD(16, R(EAX), R(EAX));
-    OR(16, R(EAX), R(EDX));
+    OR(16, R(EAX), R(tmp1));
     TEST(16, R(EAX), Imm16(0x10));
     break;
   case 0x4:  // NZ - Not Zero
@@ -55,11 +72,11 @@ void DSPEmitterIR::IRReJitConditional(
     break;
   case 0xa:  // ?
   case 0xb:  // ?
-    LEA(16, EDX, MRegSum(EAX, EAX));
-    OR(16, R(EAX), R(EDX));
-    SHL(16, R(EDX), Imm8(3));
+    LEA(16, tmp1, MRegSum(EAX, EAX));
+    OR(16, R(EAX), R(tmp1));
+    SHL(16, R(tmp1), Imm8(3));
     NOT(16, R(EAX));
-    OR(16, R(EAX), R(EDX));
+    OR(16, R(EAX), R(tmp1));
     TEST(16, R(EAX), Imm16(0x20));
     break;
   case 0xc:  // LNZ  - Logic Not Zero
@@ -90,12 +107,16 @@ void DSPEmitterIR::ir_jcc(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
   u16 dest = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
-  IRInsn p = {
-      &JmpOp,
-      {IROp::Imm(cc),
-       IROp::Imm(dest),               // address if true
-       IROp::Imm(m_compile_pc + 2)},  // address if false
-  };
+  IRInsn p = {&JmpOp,
+              {IROp::Imm(cc),
+               IROp::Imm(dest),               // address if true
+               IROp::Imm(m_compile_pc + 2)},  // address if false
+              IROp::None(),
+              {},
+              branch_needs_SR[cc],
+              0x0000,
+              0x0000,
+              0x0000};
   ir_add_op(p);
 }
 
@@ -107,12 +128,16 @@ void DSPEmitterIR::ir_jmprcc(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
   u8 reg = (opc >> 5) & 0x7;
-  IRInsn p = {
-      &JmpOp,
-      {IROp::Imm(cc),
-       IROp::R(reg),                  // address if true
-       IROp::Imm(m_compile_pc + 2)},  // address if false
-  };
+  IRInsn p = {&JmpOp,
+              {IROp::Imm(cc),
+               IROp::R(reg),                  // address if true
+               IROp::Imm(m_compile_pc + 2)},  // address if false
+              IROp::None(),
+              {},
+              branch_needs_SR[cc],
+              0x0000,
+              0x0000,
+              0x0000};
   ir_add_op(p);
 }
 
@@ -127,12 +152,16 @@ void DSPEmitterIR::ir_call(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
   u16 dest = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
-  IRInsn p = {
-      &CallOp,
-      {IROp::Imm(cc),
-       IROp::Imm(dest),              // call if true
-       IROp::Imm(m_compile_pc + 2)}  // return addr, addr if false
-  };
+  IRInsn p = {&CallOp,
+              {IROp::Imm(cc),
+               IROp::Imm(dest),               // call if true
+               IROp::Imm(m_compile_pc + 2)},  // return addr, addr if false
+              IROp::None(),
+              {},
+              branch_needs_SR[cc],
+              0x0000,
+              0x0000,
+              0x0000};
   ir_add_op(p);
 }
 
@@ -146,12 +175,16 @@ void DSPEmitterIR::ir_callr(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
   u8 reg = (opc >> 5) & 0x7;
-  IRInsn p = {
-      &CallOp,
-      {IROp::Imm(cc),
-       IROp::R(reg),                 // call if true
-       IROp::Imm(m_compile_pc + 1)}  // return addr, addr if false
-  };
+  IRInsn p = {&CallOp,
+              {IROp::Imm(cc),
+               IROp::R(reg),                  // call if true
+               IROp::Imm(m_compile_pc + 1)},  // return addr, addr if false
+              IROp::None(),
+              {},
+              branch_needs_SR[cc],
+              0x0000,
+              0x0000,
+              0x0000};
   ir_add_op(p);
 }
 
@@ -165,13 +198,17 @@ void DSPEmitterIR::ir_ifcc(const UDSPInstruction opc)
   if (cc == 0xf)
     return;
   u16 dest = m_compile_pc + 1;
-  IRInsn p = {
-      &JmpOp,
-      {IROp::Imm(cc),
-       IROp::Imm(dest),  // address if true
-       IROp::Imm(dest +  // address if false
-                 GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(dest))->size)},
-  };
+  IRInsn p = {&JmpOp,
+              {IROp::Imm(cc),
+               IROp::Imm(dest),  // address if true
+               IROp::Imm(dest +  // address if false
+                         GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(dest))->size)},
+              IROp::None(),
+              {},
+              branch_needs_SR[cc],
+              0x0000,
+              0x0000,
+              0x0000};
   ir_add_op(p);
 }
 
@@ -183,7 +220,14 @@ void DSPEmitterIR::ir_ifcc(const UDSPInstruction opc)
 void DSPEmitterIR::ir_ret(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
-  IRInsn p = {&RetOp, {IROp::Imm(cc), IROp::Imm(m_compile_pc + 1)}};
+  IRInsn p = {&RetOp,
+              {IROp::Imm(cc), IROp::Imm(m_compile_pc + 1)},
+              IROp::None(),
+              {},
+              branch_needs_SR[cc],
+              0x0000,
+              0x0000,
+              0x0000};
   ir_add_op(p);
 }
 
@@ -399,6 +443,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RtiOp = {
     true,    {},
     {},      {{OpAnyReg}, {OpAnyReg}}};
 
+// if ACM inputs[1]: needs SR bits: SR_40_MODE_BIT
 void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
@@ -448,6 +493,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::JmpOp = {
     "JmpOp", &DSPEmitterIR::iremit_JmpOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {},
     {},      {{OpAnyReg}, {OpAnyReg}}};
 
+// if ACM inputs[1]: needs SR bits: SR_40_MODE_BIT
 void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();

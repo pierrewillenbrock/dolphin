@@ -19,6 +19,7 @@ namespace DSP::JITIR::x64
 {
 // Returns s64 in (dst)
 // In: (mul) = s16 a, (dst) = s16 b
+// needs SR bits: SR_MUL_MODIFY
 void DSPEmitterIR::multiply(X64Reg dst, X64Reg mul)
 {
   //	prod = (s16)a * (s16)b; //signed
@@ -39,6 +40,7 @@ void DSPEmitterIR::multiply(X64Reg dst, X64Reg mul)
 // Only MULX family instructions have unsigned/mixed support.
 // Returns s64 in (dst)
 // In: (mul) = s16 a, (dst) = s16 b
+// needs SR bits: SR_MUL_MODIFY, SR_MUL_UNSIGNED
 void DSPEmitterIR::multiply_uu(X64Reg dst, X64Reg mul)
 {
   //	if ((sign == 1) && (g_dsp.r.sr & SR_MUL_UNSIGNED)) //unsigned
@@ -78,6 +80,7 @@ void DSPEmitterIR::multiply_uu(X64Reg dst, X64Reg mul)
 // Only MULX family instructions have unsigned/mixed support.
 // Returns s64 in (dst)
 // In: (mul) = s16 a, (dst) = s16 b
+// needs SR bits: SR_MUL_MODIFY, SR_MUL_UNSIGNED
 void DSPEmitterIR::multiply_us(X64Reg dst, X64Reg mul)
 {
   //	if ((sign == 1) && (g_dsp.r.sr & SR_MUL_UNSIGNED)) //unsigned
@@ -750,7 +753,7 @@ void DSPEmitterIR::iremit_MulOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulOp = {
-    "MulOp",     &DSPEmitterIR::iremit_MulOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
+    "MulOp",     &DSPEmitterIR::iremit_MulOp, SR_MUL_MODIFY, 0x0000, 0x0000, 0x0000, false, {}, {},
     {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_MulUUOp(IRInsn const& insn)
@@ -767,9 +770,16 @@ void DSPEmitterIR::iremit_MulUUOp(IRInsn const& insn)
   set_long_prod(RAX, tmp1);
 }
 
-struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulUUOp = {
-    "MulUUOp",   &DSPEmitterIR::iremit_MulUUOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulUUOp = {"MulUUOp",
+                                                               &DSPEmitterIR::iremit_MulUUOp,
+                                                               SR_MUL_MODIFY | SR_MUL_UNSIGNED,
+                                                               0x0000,
+                                                               0x0000,
+                                                               0x0000,
+                                                               false,
+                                                               {},
+                                                               {},
+                                                               {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_MulSUOp(IRInsn const& insn)
 {
@@ -785,9 +795,16 @@ void DSPEmitterIR::iremit_MulSUOp(IRInsn const& insn)
   set_long_prod(RAX, tmp1);
 }
 
-struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulSUOp = {
-    "MulSUOp",   &DSPEmitterIR::iremit_MulSUOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulSUOp = {"MulSUOp",
+                                                               &DSPEmitterIR::iremit_MulSUOp,
+                                                               SR_MUL_MODIFY | SR_MUL_UNSIGNED,
+                                                               0x0000,
+                                                               0x0000,
+                                                               0x0000,
+                                                               false,
+                                                               {},
+                                                               {},
+                                                               {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_MulUSOp(IRInsn const& insn)
 {
@@ -803,9 +820,16 @@ void DSPEmitterIR::iremit_MulUSOp(IRInsn const& insn)
   set_long_prod(RAX, tmp1);
 }
 
-struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulUSOp = {
-    "MulUSOp",   &DSPEmitterIR::iremit_MulUSOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulUSOp = {"MulUSOp",
+                                                               &DSPEmitterIR::iremit_MulUSOp,
+                                                               SR_MUL_MODIFY | SR_MUL_UNSIGNED,
+                                                               0x0000,
+                                                               0x0000,
+                                                               0x0000,
+                                                               false,
+                                                               {},
+                                                               {},
+                                                               {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_MAddOp(IRInsn const& insn)
 {
@@ -826,7 +850,7 @@ void DSPEmitterIR::iremit_MAddOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MAddOp = {
-    "MAddOp",    &DSPEmitterIR::iremit_MAddOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
+    "MAddOp",    &DSPEmitterIR::iremit_MAddOp, SR_MUL_MODIFY, 0x0000, 0x0000, 0x0000, false, {}, {},
     {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_MSubOp(IRInsn const& insn)
@@ -848,7 +872,7 @@ void DSPEmitterIR::iremit_MSubOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MSubOp = {
-    "MSubOp",    &DSPEmitterIR::iremit_MSubOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
+    "MSubOp",    &DSPEmitterIR::iremit_MSubOp, SR_MUL_MODIFY, 0x0000, 0x0000, 0x0000, false, {}, {},
     {{OpAnyReg}}};
 
 }  // namespace DSP::JITIR::x64

@@ -139,6 +139,7 @@ void DSPEmitterIR::dsp_op_write_reg_imm(int reg, u16 val, Gen::X64Reg tmp1, Gen:
   }
 }
 
+// if ACM reg: needs SR bits: SR_40_MODE_BIT
 void DSPEmitterIR::dsp_conditional_extend_accum(int reg, X64Reg tmp1)
 {
   switch (reg)
@@ -168,6 +169,7 @@ void DSPEmitterIR::dsp_conditional_extend_accum(int reg, X64Reg tmp1)
   }
 }
 
+// if ACM reg: needs SR bits: SR_40_MODE_BIT
 void DSPEmitterIR::dsp_conditional_extend_accum_imm(int reg, u16 val)
 {
   switch (reg)
@@ -224,6 +226,7 @@ void DSPEmitterIR::dsp_op_read_reg_dont_saturate(int reg, Gen::X64Reg host_dreg,
   }
 }
 
+// if ACM reg: needs SR bits: SR_40_MODE_BIT
 void DSPEmitterIR::dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
                                    Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3)
 {

@@ -51,6 +51,10 @@ void DSPEmitterIR::ir_mv(const UDSPInstruction opc)
   u8 sreg = (opc & 0x3) + DSP_REG_ACL0;
   u8 dreg = ((opc >> 2) & 0x3) + DSP_REG_AXL0;
   IRInsn p = {&Mov16Op, {IROp::R(sreg)}, IROp::R(dreg)};
+  if (sreg == DSP_REG_ACM0 || sreg == DSP_REG_ACM1)
+  {
+    p.needs_SR |= SR_40_MODE_BIT;
+  }
   ir_add_op(p);
 }
 
@@ -63,6 +67,10 @@ void DSPEmitterIR::ir_s(const UDSPInstruction opc)
   u8 dreg = opc & 0x3;
   u8 sreg = ((opc >> 3) & 0x3) + DSP_REG_ACL0;
   IRInsn p1 = {&Store16Op, {IROp::R(dreg), IROp::R(sreg)}, IROp::None()};
+  if (sreg == DSP_REG_ACM0 || sreg == DSP_REG_ACM1)
+  {
+    p1.needs_SR |= SR_40_MODE_BIT;
+  }
   ir_add_op(p1);
   IRInsn p2 = {&AddAOp, {IROp::R(dreg), IROp::R(dreg + DSP_REG_WR0), IROp::Imm(1)}, IROp::R(dreg)};
   ir_add_op(p2);
@@ -77,6 +85,10 @@ void DSPEmitterIR::ir_sn(const UDSPInstruction opc)
   u8 dreg = opc & 0x3;
   u8 sreg = ((opc >> 3) & 0x3) + DSP_REG_ACL0;
   IRInsn p1 = {&Store16Op, {IROp::R(dreg), IROp::R(sreg)}, IROp::None()};
+  if (sreg == DSP_REG_ACM0 || sreg == DSP_REG_ACM1)
+  {
+    p1.needs_SR |= SR_40_MODE_BIT;
+  }
   ir_add_op(p1);
   IRInsn p2 = {&AddAOp,
                {IROp::R(dreg), IROp::R(dreg + DSP_REG_WR0), IROp::R(dreg + DSP_REG_IX0)},
@@ -93,6 +105,10 @@ void DSPEmitterIR::ir_l(const UDSPInstruction opc)
   u8 sreg = opc & 0x3;
   u8 dreg = ((opc >> 3) & 0x7) + DSP_REG_AXL0;  // AX?.?, AC?.[LM]
   IRInsn p1 = {&Load16Op, {IROp::R(sreg)}, IROp::R(dreg)};
+  if (dreg == DSP_REG_ACM0 || dreg == DSP_REG_ACM1)
+  {
+    p1.needs_SR |= SR_40_MODE_BIT;
+  }
   ir_add_op(p1);
   IRInsn p2 = {&AddAOp, {IROp::R(sreg), IROp::R(sreg + DSP_REG_WR0), IROp::Imm(1)}, IROp::R(sreg)};
   ir_add_op(p2);
@@ -109,6 +125,10 @@ void DSPEmitterIR::ir_ln(const UDSPInstruction opc)
   IRInsn p1 = {
       &Load16Op, {IROp::R(sreg)}, IROp::R(dreg), {},
   };
+  if (dreg == DSP_REG_ACM0 || dreg == DSP_REG_ACM1)
+  {
+    p1.needs_SR |= SR_40_MODE_BIT;
+  }
   ir_add_op(p1);
   IRInsn p2 = {&AddAOp,
                {IROp::R(sreg), IROp::R(sreg + DSP_REG_WR0), IROp::R(sreg + DSP_REG_IX0)},
@@ -127,7 +147,10 @@ void DSPEmitterIR::ir_ls(const UDSPInstruction opc)
   u8 dreg = ((opc >> 4) & 0x3) + DSP_REG_AXL0;
   IRInsn p1 = {&Load16Op, {IROp::R(DSP_REG_AR0)}, IROp::R(dreg)};
   ir_add_op(p1);
-  IRInsn p2 = {&Store16Op, {IROp::R(DSP_REG_AR3), IROp::R(sreg)}, IROp::None()};
+  IRInsn p2 = {&Store16Op,     {IROp::R(DSP_REG_AR3), IROp::R(sreg)},
+               IROp::None(),   {},
+               SR_40_MODE_BIT, 0x0000,
+               0x0000,         0x0000};
   ir_add_op(p2);
   IRInsn p3 = {
       &AddAOp, {IROp::R(DSP_REG_AR0), IROp::R(DSP_REG_WR0), IROp::Imm(1)}, IROp::R(DSP_REG_AR0)};
@@ -149,7 +172,10 @@ void DSPEmitterIR::ir_lsn(const UDSPInstruction opc)
   u8 dreg = ((opc >> 4) & 0x3) + DSP_REG_AXL0;
   IRInsn p1 = {&Load16Op, {IROp::R(DSP_REG_AR0)}, IROp::R(dreg)};
   ir_add_op(p1);
-  IRInsn p2 = {&Store16Op, {IROp::R(DSP_REG_AR3), IROp::R(sreg)}, IROp::None()};
+  IRInsn p2 = {&Store16Op,     {IROp::R(DSP_REG_AR3), IROp::R(sreg)},
+               IROp::None(),   {},
+               SR_40_MODE_BIT, 0x0000,
+               0x0000,         0x0000};
   ir_add_op(p2);
   IRInsn p3 = {&AddAOp,
                {IROp::R(DSP_REG_AR0), IROp::R(DSP_REG_WR0), IROp::R(DSP_REG_IX0)},
@@ -172,7 +198,10 @@ void DSPEmitterIR::ir_lsm(const UDSPInstruction opc)
   u8 dreg = ((opc >> 4) & 0x3) + DSP_REG_AXL0;
   IRInsn p1 = {&Load16Op, {IROp::R(DSP_REG_AR0)}, IROp::R(dreg)};
   ir_add_op(p1);
-  IRInsn p2 = {&Store16Op, {IROp::R(DSP_REG_AR3), IROp::R(sreg)}, IROp::None()};
+  IRInsn p2 = {&Store16Op,     {IROp::R(DSP_REG_AR3), IROp::R(sreg)},
+               IROp::None(),   {},
+               SR_40_MODE_BIT, 0x0000,
+               0x0000,         0x0000};
   ir_add_op(p2);
   IRInsn p3 = {
       &AddAOp, {IROp::R(DSP_REG_AR0), IROp::R(DSP_REG_WR0), IROp::Imm(1)}, IROp::R(DSP_REG_AR0)};
@@ -196,7 +225,10 @@ void DSPEmitterIR::ir_lsnm(const UDSPInstruction opc)
   u8 dreg = ((opc >> 4) & 0x3) + DSP_REG_AXL0;
   IRInsn p1 = {&Load16Op, {IROp::R(DSP_REG_AR0)}, IROp::R(dreg)};
   ir_add_op(p1);
-  IRInsn p2 = {&Store16Op, {IROp::R(DSP_REG_AR3), IROp::R(sreg)}, IROp::None()};
+  IRInsn p2 = {&Store16Op,     {IROp::R(DSP_REG_AR3), IROp::R(sreg)},
+               IROp::None(),   {},
+               SR_40_MODE_BIT, 0x0000,
+               0x0000,         0x0000};
   ir_add_op(p2);
   IRInsn p3 = {&AddAOp,
                {IROp::R(DSP_REG_AR0), IROp::R(DSP_REG_WR0), IROp::R(DSP_REG_IX0)},
@@ -217,7 +249,10 @@ void DSPEmitterIR::ir_sl(const UDSPInstruction opc)
 {
   u8 sreg = (opc & 0x1) + DSP_REG_ACM0;
   u8 dreg = ((opc >> 4) & 0x3) + DSP_REG_AXL0;
-  IRInsn p1 = {&Store16Op, {IROp::R(DSP_REG_AR0), IROp::R(sreg)}, IROp::None()};
+  IRInsn p1 = {&Store16Op,     {IROp::R(DSP_REG_AR0), IROp::R(sreg)},
+               IROp::None(),   {},
+               SR_40_MODE_BIT, 0x0000,
+               0x0000,         0x0000};
   ir_add_op(p1);
   IRInsn p2 = {&Load16Op, {IROp::R(DSP_REG_AR3)}, IROp::R(dreg)};
   ir_add_op(p2);
@@ -239,7 +274,10 @@ void DSPEmitterIR::ir_sln(const UDSPInstruction opc)
 {
   u8 sreg = (opc & 0x1) + DSP_REG_ACM0;
   u8 dreg = ((opc >> 4) & 0x3) + DSP_REG_AXL0;
-  IRInsn p1 = {&Store16Op, {IROp::R(DSP_REG_AR0), IROp::R(sreg)}, IROp::None()};
+  IRInsn p1 = {&Store16Op,     {IROp::R(DSP_REG_AR0), IROp::R(sreg)},
+               IROp::None(),   {},
+               SR_40_MODE_BIT, 0x0000,
+               0x0000,         0x0000};
   ir_add_op(p1);
   IRInsn p2 = {&Load16Op, {IROp::R(DSP_REG_AR3)}, IROp::R(dreg)};
   ir_add_op(p2);
@@ -262,7 +300,10 @@ void DSPEmitterIR::ir_slm(const UDSPInstruction opc)
 {
   u8 sreg = (opc & 0x1) + DSP_REG_ACM0;
   u8 dreg = ((opc >> 4) & 0x3) + DSP_REG_AXL0;
-  IRInsn p1 = {&Store16Op, {IROp::R(DSP_REG_AR0), IROp::R(sreg)}, IROp::None()};
+  IRInsn p1 = {&Store16Op,     {IROp::R(DSP_REG_AR0), IROp::R(sreg)},
+               IROp::None(),   {},
+               SR_40_MODE_BIT, 0x0000,
+               0x0000,         0x0000};
   ir_add_op(p1);
   IRInsn p2 = {&Load16Op, {IROp::R(DSP_REG_AR3)}, IROp::R(dreg)};
   ir_add_op(p2);
@@ -285,7 +326,10 @@ void DSPEmitterIR::ir_slnm(const UDSPInstruction opc)
 {
   u8 sreg = (opc & 0x1) + DSP_REG_ACM0;
   u8 dreg = ((opc >> 4) & 0x3) + DSP_REG_AXL0;
-  IRInsn p1 = {&Store16Op, {IROp::R(DSP_REG_AR0), IROp::R(sreg)}, IROp::None()};
+  IRInsn p1 = {&Store16Op,     {IROp::R(DSP_REG_AR0), IROp::R(sreg)},
+               IROp::None(),   {},
+               SR_40_MODE_BIT, 0x0000,
+               0x0000,         0x0000};
   ir_add_op(p1);
   IRInsn p2 = {&Load16Op, {IROp::R(DSP_REG_AR3)}, IROp::R(dreg)};
   ir_add_op(p2);
