@@ -342,15 +342,9 @@ private:
 
     u16 later_needs_SR;  // SR bits needed here or later
     // bits derived from earlier code
-    u16 const_SR;            // known constant value
-    u16 modified_SR;         // unpredictably modified
-    u16 value_SR;            // value for fixed SR bits
-    bool const_regs[32];     // known constant value
-    bool modified_regs[32];  // unpredictably modified
-    u16 value_regs[32];      // value for fixed regs
-    std::unordered_set<int> const_vregs;
-    std::unordered_set<int> modified_vregs;
-    std::unordered_map<int, u64> value_vregs;
+    u16 const_SR;     // known constant value
+    u16 modified_SR;  // unpredictably modified
+    u16 value_SR;     // value for fixed SR bits
 
     mutable Gen::FixupBranch branchTaken;
   };
@@ -408,7 +402,7 @@ private:
   class IRNode
   {
   public:
-    IRNode() : code(nullptr), later_needs_SR(0) {}
+    IRNode();
     virtual ~IRNode() {}
 
     void addNext(IRNode* node);
@@ -423,8 +417,16 @@ private:
     std::unordered_set<IRNode*> prev;
     std::unordered_set<IRNode*> next;
     const u8* code;
-    u16 later_needs_SR;  // SR bits needed here or later
-
+    u16 later_needs_SR;      // SR bits needed here or later
+    u16 const_SR;            // known constant value
+    u16 modified_SR;         // unpredictably modified
+    u16 value_SR;            // value for fixed SR bits
+    bool const_regs[32];     // known constant value
+    bool modified_regs[32];  // unpredictably modified
+    u16 value_regs[32];      // value for fixed regs
+    std::unordered_set<int> const_vregs;
+    std::unordered_set<int> modified_vregs;
+    std::unordered_map<int, u64> value_vregs;
     std::unordered_set<int> live_vregs;
   };
   class IRInsnNode : public IRNode
@@ -636,6 +638,16 @@ private:
   void dropNoOps();
   void analyseSRNeed();
   void analyseSRNeed(IRBB* bb);
+  void analyseKnownSR();
+  void analyseKnownSR(IRBB* bb);
+  void analyseKnownSR(IRNode* node, u16& const_SR, u16& modified_SR, u16& value_SR);
+  void demoteGuestACMLoadStore();
+  void analyseKnownRegs(IRNode* node, bool (&const_regs)[32], bool (&modified_regs)[32],
+                        u16 (&value_regs)[32], std::unordered_set<int>& const_vregs,
+                        std::unordered_set<int>& modified_vregs,
+                        std::unordered_map<int, u64>& value_vregs);
+  void analyseKnownRegs(IRBB* bb);
+  void analyseKnownRegs();
   void checkImmVRegs();
   void analyseVRegLifetime(IRBB* bb);
   void analyseVRegLifetime();

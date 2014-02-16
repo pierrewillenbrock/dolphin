@@ -437,6 +437,32 @@ void DSPEmitterIR::deparallelize(IRBB* bb)
   deparallelize(bb->start_node);
 }
 
+void DSPEmitterIR::demoteGuestACMLoadStore()
+{
+  for (auto n : m_node_storage)
+  {
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (in)
+    {
+      if (in->insn.emitter == &DSPEmitterIR::StoreGuestACMOp &&
+          (in->insn.const_SR & SR_40_MODE_BIT) != 0 && (in->insn.value_SR & SR_40_MODE_BIT) == 0)
+      {
+        in->insn.emitter = &DSPEmitterIR::StoreGuestOp;
+        in->insn.output.guest_reg =
+            in->insn.output.guest_reg - IROp::DSP_REG_ACC0_ALL + DSP_REG_ACM0;
+      }
+      if (in->insn.emitter == &DSPEmitterIR::LoadGuestACMOp &&
+          (in->insn.const_SR & SR_40_MODE_BIT) != 0 && (in->insn.value_SR & SR_40_MODE_BIT) == 0)
+      {
+        in->insn.emitter = &DSPEmitterIR::LoadGuestFastOp;
+        in->insn.inputs[0].guest_reg =
+            in->insn.inputs[0].guest_reg - IROp::DSP_REG_ACC0_ALL + DSP_REG_ACM0;
+        in->insn.temps[0] = IROp::None();
+      }
+    }
+  }
+}
+
 void DSPEmitterIR::dropNoOps()
 {
   for (auto bb : m_bb_storage)
@@ -927,6 +953,22 @@ void DSPEmitterIR::Compile(u16 start_addr)
   // fills in needs_SR
   analyseSRNeed();
 
+  bool known_regs[32] = {false};
+  u16 known_val_regs[32] = {0};
+
+  m_start_bb->start_node->value_SR = 0;
+  m_start_bb->start_node->const_SR = 0;
+  memcpy(m_start_bb->start_node->value_regs, known_val_regs,
+         sizeof(m_start_bb->start_node->value_regs));
+  memcpy(m_start_bb->start_node->const_regs, known_regs,
+         sizeof(m_start_bb->start_node->const_regs));
+  analyseKnownSR();
+
+  // uses known SR to change some Load/Store back to the Fast variety
+  demoteGuestACMLoadStore();
+
+  analyseKnownRegs();
+
   checkImmVRegs();
 
   // fills insns.*.live_vregs
@@ -1081,9 +1123,6 @@ void DSPEmitterIR::ir_finish_insn(IRInsn& insn)
   insn.modified_SR = 0;
   insn.const_SR = 0;
   insn.value_SR = 0;
-  memset(insn.value_regs, 0, sizeof(insn.value_regs));
-  memset(insn.const_regs, 0, sizeof(insn.const_regs));
-  memset(insn.modified_regs, 0, sizeof(insn.modified_regs));
   assignVRegs(insn);
 }
 

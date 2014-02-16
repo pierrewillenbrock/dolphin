@@ -10,6 +10,14 @@ namespace JITIR
 {
 namespace x64
 {
+DSPEmitterIR::IRNode::IRNode()
+    : code(NULL), later_needs_SR(0), const_SR(0), modified_SR(0), value_SR(0)
+{
+  memset(const_regs, 0, sizeof(const_regs));
+  memset(modified_regs, 0, sizeof(modified_regs));
+  memset(value_regs, 0, sizeof(value_regs));
+}
+
 void DSPEmitterIR::IRNode::addNext(IRNode* node)
 {
   next.insert(node);
@@ -165,9 +173,9 @@ std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
   buf << "later_needs_SR=0x" << std::hex << std::setw(4) << std::setfill('0') << insn.later_needs_SR
       << " const_SR=0x" << std::setw(4) << std::setfill('0') << insn.const_SR << "\\nvalue_SR=0x"
       << std::setw(4) << std::setfill('0') << insn.value_SR << std::dec
-      << " known_WR:" << (insn.const_regs[DSP_REG_WR0] ? 1 : 0)
-      << (insn.const_regs[DSP_REG_WR1] ? 1 : 0) << (insn.const_regs[DSP_REG_WR2] ? 1 : 0)
-      << (insn.const_regs[DSP_REG_WR3] ? 1 : 0) << "\\n live vregs:";
+      << " known_WR:" << (in->const_regs[DSP_REG_WR0] ? 1 : 0)
+      << (in->const_regs[DSP_REG_WR1] ? 1 : 0) << (in->const_regs[DSP_REG_WR2] ? 1 : 0)
+      << (in->const_regs[DSP_REG_WR3] ? 1 : 0) << "\\n live vregs:";
 
   for (auto vr : in->live_vregs)
   {
