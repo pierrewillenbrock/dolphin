@@ -28,7 +28,7 @@ namespace JITIR
 namespace x64
 {
 
-void DSPEmitterIR::WriteBranchExit()
+void DSPEmitterIR::WriteBranchExit(u16 execd_cycles)
 {
   DSPJitIRRegCache c(m_gpr);
   m_gpr.SaveRegs();
@@ -38,7 +38,7 @@ void DSPEmitterIR::WriteBranchExit()
   }
   else
   {
-    MOV(16, R(EAX), Imm16(m_block_size[m_start_address]));
+    MOV(16, R(EAX), Imm16(execd_cycles));
   }
   JMP(m_return_dispatcher, true);
   m_gpr.LoadRegs(false);
@@ -90,7 +90,7 @@ void DSPEmitterIR::checkExceptions(u32 retval, u16 pc)
 // then PC is modified with value from call stack $st0. Otherwise values from
 // call stack $st0 and both loop stacks $st2 and $st3 are popped and execution
 // continues at next opcode.
-void DSPEmitterIR::HandleLoop(u16 pc)
+void DSPEmitterIR::HandleLoop(u16 pc, u16 execd_cycles)
 {
   MOV(16, M_SDSP_pc(), Imm16(pc));
 
@@ -133,7 +133,7 @@ void DSPEmitterIR::HandleLoop(u16 pc)
   SetJumpTarget(rLoopAddrG);
   SetJumpTarget(rLoopCntG);
 
-  WriteBranchExit();
+  WriteBranchExit(execd_cycles);
 
   SetJumpTarget(rLoopAddressExit);
   SetJumpTarget(rLoopCounterExit);
@@ -141,7 +141,7 @@ void DSPEmitterIR::HandleLoop(u16 pc)
 
 void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
 {
-  HandleLoop(insn.inputs[0].imm);
+  HandleLoop(insn.inputs[0].imm, insn.cycle_count);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopOp = {
@@ -157,7 +157,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::UpdatePCOp = {
 
 void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
 {
-  checkExceptions(insn.inputs[0].imm, insn.inputs[1].imm);
+  checkExceptions(insn.cycle_count, insn.inputs[0].imm);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsOp = {

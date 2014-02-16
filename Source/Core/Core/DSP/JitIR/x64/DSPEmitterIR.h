@@ -544,7 +544,7 @@ private:
 
   bool FlagsNeeded(u16 address) const;
 
-  void WriteBranchExit();
+  void WriteBranchExit(u16 execd_cycles);
 
   void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn,
                           void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn,
@@ -562,7 +562,7 @@ private:
   void round_long(Gen::X64Reg long_acc);
 
   // Branch helpers
-  void HandleLoop(u16 pc);
+  void HandleLoop(u16 pc, u16 execd_cycles);
 
   // CC helpers
   void Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg tmp1);

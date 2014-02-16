@@ -531,8 +531,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     if (analyzer.IsCheckExceptions(m_compile_pc))
     {
-      IRInsn p = {&CheckExceptionsOp,
-                  {IROp::Imm(m_block_size[start_addr]), IROp::Imm(m_compile_pc)}};
+      IRInsn p = {&CheckExceptionsOp, {IROp::Imm(m_compile_pc)}};
 
       ir_add_op(p);
       ir_commit_parallel_nodes();
@@ -732,6 +731,7 @@ void DSPEmitterIR::ir_add_op(IRInsn insn)
 {
   insn.addr = m_compile_pc;
   insn.original = dsp_imem_read(m_compile_pc);
+  insn.cycle_count = m_block_size[m_start_address];
   insn.later_needs_SR = 0;
   insn.modified_SR = 0;
   insn.const_SR = 0;

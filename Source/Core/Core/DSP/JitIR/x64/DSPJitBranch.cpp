@@ -312,7 +312,7 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
 
     SetJumpTarget(cnt);
     MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
-    WriteBranchExit();
+    WriteBranchExit(insn.cycle_count);
     m_gpr.FlushRegs(c, false);
     SetJumpTarget(exit);
   }
@@ -334,7 +334,7 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     else
     {
       MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
-      WriteBranchExit();
+      WriteBranchExit(insn.cycle_count);
     }
   }
   else
@@ -363,7 +363,7 @@ void DSPEmitterIR::irr_ret(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
-  WriteBranchExit();
+  WriteBranchExit(insn.cycle_count);
   m_gpr.FlushRegs(c, false);
 }
 
@@ -423,7 +423,7 @@ void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
-  WriteBranchExit();
+  WriteBranchExit(insn.cycle_count);
   m_gpr.FlushRegs(c, false);
 }
 
@@ -435,7 +435,7 @@ void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
   IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_jmp, tmp1, tmp2);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
-  WriteBranchExit();  // for jcc, this is not needed, but for ifcc
+  WriteBranchExit(insn.cycle_count);  // for jcc, this is not needed, but for ifcc
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::JmpOp = {
@@ -465,7 +465,7 @@ void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Re
   DSPJitIRRegCache c(m_gpr);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
-  WriteBranchExit();
+  WriteBranchExit(insn.cycle_count);
   m_gpr.FlushRegs(c, false);
 }
 
