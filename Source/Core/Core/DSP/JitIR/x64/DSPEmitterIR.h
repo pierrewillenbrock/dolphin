@@ -408,7 +408,7 @@ private:
   class IRNode
   {
   public:
-    IRNode() : code(nullptr) {}
+    IRNode() : code(nullptr), later_needs_SR(0) {}
     virtual ~IRNode() {}
 
     void addNext(IRNode* node);
@@ -423,6 +423,7 @@ private:
     std::unordered_set<IRNode*> prev;
     std::unordered_set<IRNode*> next;
     const u8* code;
+    u16 later_needs_SR;  // SR bits needed here or later
 
     std::unordered_set<int> live_vregs;
   };
@@ -632,6 +633,8 @@ private:
   void addGuestLoadStore(IRBB* bb);
   void deparallelize(IRNode* node);
   void deparallelize(IRBB* bb);
+  void analyseSRNeed();
+  void analyseSRNeed(IRBB* bb);
   void checkImmVRegs();
   void analyseVRegLifetime(IRBB* bb);
   void analyseVRegLifetime();

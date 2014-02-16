@@ -888,6 +888,9 @@ void DSPEmitterIR::Compile(u16 start_addr)
   for (auto bb : m_bb_storage)
     deparallelize(bb);
 
+  // fills in needs_SR
+  analyseSRNeed();
+
   checkImmVRegs();
 
   // fills insns.*.live_vregs
