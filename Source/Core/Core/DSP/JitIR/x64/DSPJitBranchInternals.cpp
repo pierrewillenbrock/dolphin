@@ -35,6 +35,16 @@ static void CheckExceptionsThunk(DSPCore& dsp)
 // Must go out of block if exception is detected
 void DSPEmitterIR::checkExceptions(u32 retval)
 {
+  // no need to check for SR_INT_EXT_ENABLE here. the check in DSPCore
+  // should be enough. SR_INT_EXT_ENABLE is only relevant in conjunction
+  // with EXP_INT, which can only be generated while DSP is not running
+  //(in single core mode. if on thread, the latency still should
+  // not hurt)
+  const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
+
+  TEST(16, sr_reg, Imm16(SR_INT_ENABLE));
+  FixupBranch int_disabled = J_CC(CC_Z, true);
+
   // Check for interrupts and exceptions
   TEST(8, M_SDSP_exceptions(), Imm8(0xff));
   FixupBranch skipCheck = J_CC(CC_Z, true);
@@ -42,6 +52,7 @@ void DSPEmitterIR::checkExceptions(u32 retval)
   MOV(16, M_SDSP_pc(), Imm16(m_compile_pc));
 
   DSPJitIRRegCache c(m_gpr);
+  m_gpr.PutReg(DSP_REG_SR);
   m_gpr.SaveRegs();
   ABI_CallFunctionP(CheckExceptionsThunk, &m_dsp_core);
   MOV(32, R(EAX), Imm32(retval));
@@ -50,6 +61,9 @@ void DSPEmitterIR::checkExceptions(u32 retval)
   m_gpr.FlushRegs(c, false);
 
   SetJumpTarget(skipCheck);
+
+  SetJumpTarget(int_disabled);
+  m_gpr.PutReg(DSP_REG_SR);
 }
 
 // LOOP handling: Loop stack is used to control execution of repeated blocks of
