@@ -112,9 +112,9 @@ void DSPEmitterIR::ClearIRAMandDSPJITCodespaceReset()
 
 bool DSPEmitterIR::FlagsNeeded(IRInsn const& insn) const
 {
-  const auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
-
-  return !analyzer.IsStartOfInstruction(insn.addr) || analyzer.IsUpdateSR(insn.addr);
+  // this actually catches a bit more than the analyzer,
+  // probably calls, but i'm too lazy to look it up
+  return (insn.later_needs_SR & insn.modifies_SR) != 0;
 }
 
 int DSPEmitterIR::ir_to_regcache_reg(int reg)

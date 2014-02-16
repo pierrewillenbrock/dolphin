@@ -192,9 +192,18 @@ void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
   // with EXP_INT, which can only be generated while DSP is not running
   //(in single core mode. if on thread, the latency still should
   // not hurt)
+  if ((insn.const_SR & SR_INT_ENABLE) != 0 && (insn.value_SR & SR_INT_ENABLE) == 0)
+  {
+    // interrupts disabled.
+    return;
+  }
 
-  TEST(16, insn.SR, Imm16(SR_INT_ENABLE));
-  FixupBranch int_disabled = J_CC(CC_Z, true);
+  FixupBranch int_disabled;
+  if ((insn.const_SR & SR_INT_ENABLE) == 0)
+  {
+    TEST(16, insn.SR, Imm16(SR_INT_ENABLE));
+    int_disabled = J_CC(CC_Z, false);
+  }
 
   // Must go out of block if exception is detected
   // Check for interrupts and exceptions
@@ -211,7 +220,8 @@ void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
 
   SetJumpTarget(skipCheck);
 
-  SetJumpTarget(int_disabled);
+  if ((insn.const_SR & SR_INT_ENABLE) == 0)
+    SetJumpTarget(int_disabled);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsOp = {
