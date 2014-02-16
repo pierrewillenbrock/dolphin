@@ -11,20 +11,16 @@ using namespace Gen;
 
 namespace DSP::JITIR::x64
 {
-void DSPEmitterIR::setCompileSR(u16 bit)
+void DSPEmitterIR::setCompileSR(u16 bit, OpArg const& sr_reg)
 {
   //	g_dsp.r[DSP_REG_SR] |= bit
-  const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   OR(16, sr_reg, Imm16(bit));
-  m_gpr.PutReg(DSP_REG_SR);
 }
 
-void DSPEmitterIR::clrCompileSR(u16 bit)
+void DSPEmitterIR::clrCompileSR(u16 bit, OpArg const& sr_reg)
 {
   //	g_dsp.r[DSP_REG_SR] &= bit
-  const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   AND(16, sr_reg, Imm16(~bit));
-  m_gpr.PutReg(DSP_REG_SR);
 }
 
 //----
@@ -229,7 +225,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SubAOp = {
 
 void DSPEmitterIR::iremit_SBSetOp(IRInsn const& insn)
 {
-  setCompileSR(1 << insn.inputs[0].imm);
+  setCompileSR(1 << insn.inputs[0].imm, insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SBSetOp = {
@@ -239,7 +235,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SBSetOp = {
 
 void DSPEmitterIR::iremit_SBClrOp(IRInsn const& insn)
 {
-  clrCompileSR(1 << insn.inputs[0].imm);
+  clrCompileSR(1 << insn.inputs[0].imm, insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SBClrOp = {

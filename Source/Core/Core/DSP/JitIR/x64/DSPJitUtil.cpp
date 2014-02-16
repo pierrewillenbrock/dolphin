@@ -140,14 +140,13 @@ void DSPEmitterIR::dsp_op_write_reg_imm(int reg, u16 val, Gen::X64Reg tmp1, Gen:
 }
 
 // if ACM reg: needs SR bits: SR_40_MODE_BIT
-void DSPEmitterIR::dsp_conditional_extend_accum(int reg, X64Reg tmp1)
+void DSPEmitterIR::dsp_conditional_extend_accum(int reg, OpArg const& sr_reg, X64Reg tmp1)
 {
   switch (reg)
   {
   case DSP_REG_ACM0:
   case DSP_REG_ACM1:
   {
-    const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
     DSPJitIRRegCache c(m_gpr);
     TEST(16, sr_reg, Imm16(SR_40_MODE_BIT));
     FixupBranch not_40bit = J_CC(CC_Z, true);
@@ -164,20 +163,18 @@ void DSPEmitterIR::dsp_conditional_extend_accum(int reg, X64Reg tmp1)
     //}
     m_gpr.FlushRegs(c);
     SetJumpTarget(not_40bit);
-    m_gpr.PutReg(DSP_REG_SR, false);
   }
   }
 }
 
 // if ACM reg: needs SR bits: SR_40_MODE_BIT
-void DSPEmitterIR::dsp_conditional_extend_accum_imm(int reg, u16 val)
+void DSPEmitterIR::dsp_conditional_extend_accum_imm(int reg, u16 val, OpArg const& sr_reg)
 {
   switch (reg)
   {
   case DSP_REG_ACM0:
   case DSP_REG_ACM1:
   {
-    const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
     DSPJitIRRegCache c(m_gpr);
     TEST(16, sr_reg, Imm16(SR_40_MODE_BIT));
     FixupBranch not_40bit = J_CC(CC_Z, true);
@@ -191,7 +188,6 @@ void DSPEmitterIR::dsp_conditional_extend_accum_imm(int reg, u16 val)
     //}
     m_gpr.FlushRegs(c);
     SetJumpTarget(not_40bit);
-    m_gpr.PutReg(DSP_REG_SR, false);
   }
   }
 }
@@ -228,7 +224,8 @@ void DSPEmitterIR::dsp_op_read_reg_dont_saturate(int reg, Gen::X64Reg host_dreg,
 
 // if ACM reg: needs SR bits: SR_40_MODE_BIT
 void DSPEmitterIR::dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
-                                   Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3)
+                                   OpArg const& sr_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
+                                   Gen::X64Reg tmp3)
 {
   switch (reg & 0x1f)
   {
@@ -250,13 +247,18 @@ void DSPEmitterIR::dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExten
       break;
     }
     return;
+  case DSP_REG_SR:
+  {
+    // for the moment, this is hardcoded here... the register fetcher
+    // to be implemented will fix this again.
+    MOV(16, R(host_dreg), sr_reg);
+    return;
+  }
   case DSP_REG_ACM0:
   case DSP_REG_ACM1:
   {
     // we already know this is ACCM0 or ACCM1
     const OpArg acc_reg = m_gpr.GetReg(reg - DSP_REG_ACM0 + DSP_REG_ACC0_64);
-    const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
-
     DSPJitIRRegCache c(m_gpr);
     TEST(16, sr_reg, Imm16(SR_40_MODE_BIT));
     FixupBranch not_40bit = J_CC(CC_Z, true);
@@ -290,8 +292,6 @@ void DSPEmitterIR::dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExten
     SetJumpTarget(done_negative);
     m_gpr.FlushRegs(c);
     m_gpr.PutReg(reg - DSP_REG_ACM0 + DSP_REG_ACC0_64, false);
-
-    m_gpr.PutReg(DSP_REG_SR, false);
   }
     return;
   default:

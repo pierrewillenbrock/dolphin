@@ -548,29 +548,31 @@ private:
 
   void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn,
                           void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn),
-                          bool negate, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+                          Gen::OpArg const& sr_reg, bool negate, Gen::X64Reg tmp1,
+                          Gen::X64Reg tmp2);
 
   void irr_ret(IRInsn const& insn);
   void irr_jmp(IRInsn const& insn);
   void irr_call(IRInsn const& insn);
 
-  void Update_SR_Register(Gen::X64Reg val, Gen::X64Reg tmp1);
+  void Update_SR_Register(Gen::X64Reg val, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
 
   void get_long_prod(Gen::X64Reg long_prod, Gen::X64Reg tmp1);
   void set_long_prod(Gen::X64Reg host_sreg, Gen::X64Reg tmp1);
   void round_long(Gen::X64Reg long_acc);
 
   // CC helpers
-  void Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg tmp1);
+  void Update_SR_Register64(Gen::X64Reg val, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
   void Update_SR_Register64_Carry(Gen::X64Reg new_val, Gen::X64Reg old_val,
-                                  Gen::X64Reg add_nsub_val, bool subtraction = false);
-  void Update_SR_Register16(Gen::X64Reg val);
-  void Update_SR_Register16_OverS32(Gen::X64Reg val, Gen::X64Reg acc);
+                                  Gen::X64Reg add_nsub_val, Gen::OpArg const& sr_reg,
+                                  bool subtraction = false);
+  void Update_SR_Register16(Gen::X64Reg val, Gen::OpArg const& sr_reg);
+  void Update_SR_Register16_OverS32(Gen::X64Reg val, Gen::X64Reg acc, Gen::OpArg const& sr_reg);
 
   // Register helpers
-  void setCompileSR(u16 bit);
-  void clrCompileSR(u16 bit);
-  void checkExceptions(u32 retval, u16 pc);
+  void setCompileSR(u16 bit, Gen::OpArg const& sr_reg);
+  void clrCompileSR(u16 bit, Gen::OpArg const& sr_reg);
+  void checkExceptions(u32 retval, u16 pc, Gen::OpArg const& sr_reg);
 
   // Memory helper functions
   void increment_addr_reg(Gen::X64Reg ar, Gen::X64Reg wr, Gen::X64Reg tmp1, Gen::X64Reg tmp4);
@@ -597,13 +599,14 @@ private:
   void dsp_op_write_reg(int reg, Gen::X64Reg host_sreg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
                         Gen::X64Reg tmp3);
   void dsp_op_write_reg_imm(int reg, u16 val, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3);
-  void dsp_conditional_extend_accum(int reg, Gen::X64Reg tmp1);
-  void dsp_conditional_extend_accum_imm(int reg, u16 val);
+  void dsp_conditional_extend_accum(int reg, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
+  void dsp_conditional_extend_accum_imm(int reg, u16 val, Gen::OpArg const& sr_reg);
   void dsp_op_read_reg_dont_saturate(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
                                      Gen::X64Reg tmp1, Gen::X64Reg tmp2,
                                      Gen::X64Reg tmp3);  // only used in the loop emitter
-  void dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend, Gen::X64Reg tmp1,
-                       Gen::X64Reg tmp2, Gen::X64Reg tmp3);
+  void dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
+                       Gen::OpArg const& sr_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
+                       Gen::X64Reg tmp3);
 
   // SDSP memory offset helpers
   Gen::OpArg M_SDSP_pc();
@@ -611,12 +614,13 @@ private:
   Gen::OpArg M_SDSP_cr();
   Gen::OpArg M_SDSP_external_interrupt_waiting();
   Gen::OpArg M_SDSP_r_st(size_t index);
+  Gen::OpArg M_SDSP_r_sr();
   Gen::OpArg M_SDSP_reg_stack_ptrs(size_t index);
 
   // Multiplier helpers
-  void multiply(Gen::X64Reg dst, Gen::X64Reg mul);
-  void multiply_uu(Gen::X64Reg dst, Gen::X64Reg mul);
-  void multiply_us(Gen::X64Reg dst, Gen::X64Reg mul);
+  void multiply(Gen::X64Reg dst, Gen::X64Reg mul, Gen::OpArg const& sr_reg);
+  void multiply_uu(Gen::X64Reg dst, Gen::X64Reg mul, Gen::OpArg const& sr_reg);
+  void multiply_us(Gen::X64Reg dst, Gen::X64Reg mul, Gen::OpArg const& sr_reg);
 
   // helper called by the ir_ emitters, all ops added for the same opc are
   //(at first) executed in parallel

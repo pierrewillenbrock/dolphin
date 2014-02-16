@@ -20,20 +20,18 @@ namespace DSP::JITIR::x64
 // Returns s64 in (dst)
 // In: (mul) = s16 a, (dst) = s16 b
 // needs SR bits: SR_MUL_MODIFY
-void DSPEmitterIR::multiply(X64Reg dst, X64Reg mul)
+void DSPEmitterIR::multiply(X64Reg dst, X64Reg mul, OpArg const& sr_reg)
 {
   //	prod = (s16)a * (s16)b; //signed
   IMUL(64, dst, R(mul));
 
   //	Conditionally multiply by 2.
   //	if ((g_dsp.r.sr & SR_MUL_MODIFY) == 0)
-  const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   TEST(16, sr_reg, Imm16(SR_MUL_MODIFY));
   FixupBranch noMult2 = J_CC(CC_NZ);
   //		prod <<= 1;
   ADD(64, R(dst), R(dst));
   SetJumpTarget(noMult2);
-  m_gpr.PutReg(DSP_REG_SR, false);
   //	return prod;
 }
 
@@ -41,10 +39,9 @@ void DSPEmitterIR::multiply(X64Reg dst, X64Reg mul)
 // Returns s64 in (dst)
 // In: (mul) = s16 a, (dst) = s16 b
 // needs SR bits: SR_MUL_MODIFY, SR_MUL_UNSIGNED
-void DSPEmitterIR::multiply_uu(X64Reg dst, X64Reg mul)
+void DSPEmitterIR::multiply_uu(X64Reg dst, X64Reg mul, OpArg const& sr_reg)
 {
   //	if ((sign == 1) && (g_dsp.r.sr & SR_MUL_UNSIGNED)) //unsigned
-  OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   TEST(16, sr_reg, Imm16(SR_MUL_UNSIGNED));
   FixupBranch unsignedMul = J_CC(CC_NZ);
   //		prod = (s16)a * (s16)b; //signed
@@ -55,7 +52,6 @@ void DSPEmitterIR::multiply_uu(X64Reg dst, X64Reg mul)
 
   SetJumpTarget(unsignedMul);
   DSPJitIRRegCache c(m_gpr);
-  m_gpr.PutReg(DSP_REG_SR, false);
   // unsigned support ON if both ax?.l regs are used
   //	prod = (u32)(a * b);
   MOVZX(64, 16, mul, R(mul));
@@ -73,7 +69,6 @@ void DSPEmitterIR::multiply_uu(X64Reg dst, X64Reg mul)
   //		prod <<= 1;
   ADD(64, R(dst), R(dst));
   SetJumpTarget(noMult2);
-  m_gpr.PutReg(DSP_REG_SR, false);
   //	return prod;
 }
 
@@ -81,10 +76,9 @@ void DSPEmitterIR::multiply_uu(X64Reg dst, X64Reg mul)
 // Returns s64 in (dst)
 // In: (mul) = s16 a, (dst) = s16 b
 // needs SR bits: SR_MUL_MODIFY, SR_MUL_UNSIGNED
-void DSPEmitterIR::multiply_us(X64Reg dst, X64Reg mul)
+void DSPEmitterIR::multiply_us(X64Reg dst, X64Reg mul, OpArg const& sr_reg)
 {
   //	if ((sign == 1) && (g_dsp.r.sr & SR_MUL_UNSIGNED)) //unsigned
-  const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   TEST(16, sr_reg, Imm16(SR_MUL_UNSIGNED));
   FixupBranch unsignedMul = J_CC(CC_NZ);
   //		prod = (s16)a * (s16)b; //signed
@@ -94,7 +88,6 @@ void DSPEmitterIR::multiply_us(X64Reg dst, X64Reg mul)
 
   SetJumpTarget(unsignedMul);
   DSPJitIRRegCache c(m_gpr);
-  m_gpr.PutReg(DSP_REG_SR, false);
   // mixed support ON (u16)axl.1  * (s16)axh.0
   //	prod = (s16)a * b;
   MOVZX(64, 16, dst, R(dst));
@@ -110,7 +103,6 @@ void DSPEmitterIR::multiply_us(X64Reg dst, X64Reg mul)
   //		prod <<= 1;
   ADD(64, R(dst), R(dst));
   SetJumpTarget(noMult2);
-  m_gpr.PutReg(DSP_REG_SR, false);
   //	return prod;
 }
 
@@ -638,7 +630,7 @@ void DSPEmitterIR::iremit_TstPOp(IRInsn const& insn)
   get_long_prod(RAX, tmp1);
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -658,7 +650,7 @@ void DSPEmitterIR::iremit_MovPOp(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -678,7 +670,7 @@ void DSPEmitterIR::iremit_MovNPOp(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -699,7 +691,7 @@ void DSPEmitterIR::iremit_MovPZOp(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -727,7 +719,7 @@ void DSPEmitterIR::iremit_AddPAxZOp(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     get_long_prod(RDX, tmp2);
-    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR);
   }
 }
 
@@ -747,7 +739,7 @@ void DSPEmitterIR::iremit_MulOp(IRInsn const& insn)
 
   m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
   m_gpr.ReadReg(in_reg1, RCX, RegisterExtension::Sign);
-  multiply(RAX, RCX);
+  multiply(RAX, RCX, insn.SR);
   _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MulOp");
   set_long_prod(RAX, tmp1);
 }
@@ -765,7 +757,7 @@ void DSPEmitterIR::iremit_MulUUOp(IRInsn const& insn)
 
   m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::None);
   m_gpr.ReadReg(in_reg1, RCX, RegisterExtension::None);
-  multiply_uu(RAX, RCX);
+  multiply_uu(RAX, RCX, insn.SR);
   _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MulUUOp");
   set_long_prod(RAX, tmp1);
 }
@@ -790,7 +782,7 @@ void DSPEmitterIR::iremit_MulSUOp(IRInsn const& insn)
 
   m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::None);
   m_gpr.ReadReg(in_reg1, RCX, RegisterExtension::Sign);
-  multiply_us(RAX, RCX);
+  multiply_us(RAX, RCX, insn.SR);
   _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MulSUOp");
   set_long_prod(RAX, tmp1);
 }
@@ -815,7 +807,7 @@ void DSPEmitterIR::iremit_MulUSOp(IRInsn const& insn)
 
   m_gpr.ReadReg(in_reg1, RAX, RegisterExtension::None);
   m_gpr.ReadReg(in_reg0, RCX, RegisterExtension::Sign);
-  multiply_us(RAX, RCX);
+  multiply_us(RAX, RCX, insn.SR);
   _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MulUSOp");
   set_long_prod(RAX, tmp1);
 }
@@ -841,7 +833,7 @@ void DSPEmitterIR::iremit_MAddOp(IRInsn const& insn)
 
   m_gpr.ReadReg(in_reg1, RAX, RegisterExtension::Sign);
   m_gpr.ReadReg(in_reg2, RCX, RegisterExtension::Sign);
-  multiply(RAX, RCX);
+  multiply(RAX, RCX, insn.SR);
   _assert_msg_(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for MAddOp");
   get_long_prod(RCX, tmp1);
   ADD(64, R(RAX), R(RCX));
@@ -863,7 +855,7 @@ void DSPEmitterIR::iremit_MSubOp(IRInsn const& insn)
 
   m_gpr.ReadReg(in_reg1, RAX, RegisterExtension::Sign);
   m_gpr.ReadReg(in_reg2, RCX, RegisterExtension::Sign);
-  multiply(RAX, RCX);
+  multiply(RAX, RCX, insn.SR);
   _assert_msg_(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for MSubOp");
   get_long_prod(RCX, tmp1);
   SUB(64, R(RAX), R(RCX));

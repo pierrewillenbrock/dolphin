@@ -25,6 +25,14 @@ void DSPEmitterIR::ir_mrr(const UDSPInstruction opc)
   {
     p.needs_SR |= SR_40_MODE_BIT;
   }
+  if (sreg == DSP_REG_SR)
+  {
+    p.needs_SR = 0xffff;
+  }
+  if (dreg == DSP_REG_SR)
+  {
+    p.modifies_SR = 0xffff;
+  }
   ir_add_op(p);
 }
 
@@ -55,6 +63,10 @@ void DSPEmitterIR::ir_lri(const UDSPInstruction opc)
   {
     p.needs_SR |= SR_40_MODE_BIT;
   }
+  if (reg == DSP_REG_SR)
+  {
+    p.modifies_SR = 0xffff;
+  }
   ir_add_op(p);
 }
 
@@ -69,6 +81,10 @@ void DSPEmitterIR::ir_lris(const UDSPInstruction opc)
   if (reg == DSP_REG_ACM0 || reg == DSP_REG_ACM1)
   {
     p.needs_SR |= SR_40_MODE_BIT;
+  }
+  if (reg == DSP_REG_SR)
+  {
+    p.modifies_SR = 0xffff;
   }
   ir_add_op(p);
 }
@@ -370,14 +386,35 @@ void DSPEmitterIR::iremit_Mov16Op(IRInsn const& insn)
   if (insn.inputs[0].type == IROp::REG)
   {
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
-    dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, RDX, RAX, tmp2);
-    dsp_op_write_reg(out_reg, tmp1, RDX, RAX, tmp2);
-    dsp_conditional_extend_accum(out_reg, RAX);
+    if (in_reg == DSP_REG_SR)
+    {
+      MOV(16, R(tmp1), insn.SR);
+    }
+    else
+    {
+      dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, insn.SR, RDX, RAX, tmp2);
+    }
+    if (out_reg == DSP_REG_SR)
+    {
+      MOV(16, insn.SR, R(tmp1));
+    }
+    else
+    {
+      dsp_op_write_reg(out_reg, tmp1, RDX, RAX, tmp2);
+      dsp_conditional_extend_accum(out_reg, insn.SR, RAX);
+    }
   }
   else if (insn.inputs[0].type == IROp::IMM)
   {
-    dsp_op_write_reg_imm(out_reg, insn.inputs[0].imm, tmp1, RAX, tmp2);
-    dsp_conditional_extend_accum_imm(out_reg, insn.inputs[0].imm);
+    if (out_reg == DSP_REG_SR)
+    {
+      MOV(16, insn.SR, Imm16(insn.inputs[0].imm));
+    }
+    else
+    {
+      dsp_op_write_reg_imm(out_reg, insn.inputs[0].imm, tmp1, RAX, tmp2);
+      dsp_conditional_extend_accum_imm(out_reg, insn.inputs[0].imm, insn.SR);
+    }
   }
   else
   {
@@ -401,7 +438,7 @@ void DSPEmitterIR::iremit_Load16Op(IRInsn const& insn)
   {
     dmem_read_imm(insn.inputs[0].imm, RAX);
     dsp_op_write_reg(out_reg, RAX, tmp1, tmp2, RAX);  // RAX+RAX is broken for ST accesses
-    dsp_conditional_extend_accum(out_reg, RAX);
+    dsp_conditional_extend_accum(out_reg, insn.SR, RAX);
   }
   else if (insn.inputs[0].type == IROp::REG)
   {
@@ -409,7 +446,7 @@ void DSPEmitterIR::iremit_Load16Op(IRInsn const& insn)
     m_gpr.ReadReg(in_reg, RDX, RegisterExtension::Zero);
     dmem_read(RDX, RAX);
     dsp_op_write_reg(out_reg, RAX, tmp1, tmp2, RAX);  // RAX+RAX is broken for ST accesses
-    dsp_conditional_extend_accum(out_reg, RAX);
+    dsp_conditional_extend_accum(out_reg, insn.SR, RAX);
   }
   else
   {
@@ -434,7 +471,7 @@ void DSPEmitterIR::iremit_ILoad16Op(IRInsn const& insn)
   m_gpr.ReadReg(in_reg, tmp1, RegisterExtension::Zero);
   imem_read(tmp1, RAX);
   dsp_op_write_reg(out_reg, RAX, tmp1, tmp2, RAX);  // RAX+RAX is broken for ST accesses
-  dsp_conditional_extend_accum(out_reg, RAX);
+  dsp_conditional_extend_accum(out_reg, insn.SR, RAX);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::ILoad16Op = {
@@ -450,7 +487,7 @@ void DSPEmitterIR::iremit_Store16Op(IRInsn const& insn)
   if (insn.inputs[0].type == IROp::IMM && insn.inputs[1].type == IROp::REG)
   {
     int in_reg = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-    dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, tmp2, tmp3, RAX);
+    dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, insn.SR, tmp2, tmp3, RAX);
     dmem_write_imm(insn.inputs[0].imm, tmp1, tmp2);
   }
   else if (insn.inputs[0].type == IROp::IMM && insn.inputs[1].type == IROp::IMM)
@@ -462,7 +499,7 @@ void DSPEmitterIR::iremit_Store16Op(IRInsn const& insn)
   {
     int out_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     int in_reg = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-    dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, tmp2, tmp3, RAX);
+    dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, insn.SR, tmp2, tmp3, RAX);
     m_gpr.ReadReg(out_reg, RAX, RegisterExtension::Zero);
     dmem_write(tmp1, RAX, RCX);
   }
@@ -492,7 +529,7 @@ void DSPEmitterIR::iremit_Load16SOp(IRInsn const& insn)
   dmem_read(tmp1, RAX);
 
   dsp_op_write_reg(out_reg, RAX, tmp1, tmp2, RAX);  // RAX+RAX is broken for ST accesses
-  dsp_conditional_extend_accum(out_reg, RAX);
+  dsp_conditional_extend_accum(out_reg, insn.SR, RAX);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Load16SOp = {
@@ -507,7 +544,7 @@ void DSPEmitterIR::iremit_Store16SOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
   X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
 
-  dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, tmp2, tmp3, RAX);
+  dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, insn.SR, tmp2, tmp3, RAX);
 
   m_gpr.ReadReg(DSP_REG_CR, RAX, RegisterExtension::Zero);
   MOV(8, R(AH), R(AL));

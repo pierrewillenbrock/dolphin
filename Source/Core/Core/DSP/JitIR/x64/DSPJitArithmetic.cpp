@@ -822,7 +822,7 @@ void DSPEmitterIR::iremit_MovToAccOp(IRInsn const& insn)
   m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MovToAccOp = {
@@ -838,7 +838,7 @@ void DSPEmitterIR::iremit_MovROp(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -865,7 +865,7 @@ void DSPEmitterIR::iremit_Mov40Op(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(out_reg, RAX, RegisterExtension::None);
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -880,7 +880,7 @@ void DSPEmitterIR::iremit_RoundOp(IRInsn const& insn)
   round_long(RAX);
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RoundOp = {
@@ -893,7 +893,7 @@ void DSPEmitterIR::iremit_AndCFOp(IRInsn const& insn)
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     m_gpr.ReadReg(in_reg, RAX, RegisterExtension::None);
     u16 imm = insn.inputs[1].imm;
-    const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
+    OpArg const& sr_reg = insn.SR;
     AND(16, R(RAX), Imm16(imm));
     CMP(16, R(RAX), Imm16(imm));
     FixupBranch notLogicZero = J_CC(CC_NE);
@@ -902,7 +902,6 @@ void DSPEmitterIR::iremit_AndCFOp(IRInsn const& insn)
     SetJumpTarget(notLogicZero);
     AND(16, sr_reg, Imm16(~SR_LOGIC_ZERO));
     SetJumpTarget(exit);
-    m_gpr.PutReg(DSP_REG_SR);
   }
 }
 
@@ -916,7 +915,7 @@ void DSPEmitterIR::iremit_AndFOp(IRInsn const& insn)
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     m_gpr.ReadReg(in_reg, RAX, RegisterExtension::None);
     u16 imm = insn.inputs[1].imm;
-    const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
+    OpArg const& sr_reg = insn.SR;
     TEST(16, R(RAX), Imm16(imm));
     FixupBranch notLogicZero = J_CC(CC_NE);
     OR(16, sr_reg, Imm16(SR_LOGIC_ZERO));
@@ -924,7 +923,6 @@ void DSPEmitterIR::iremit_AndFOp(IRInsn const& insn)
     SetJumpTarget(notLogicZero);
     AND(16, sr_reg, Imm16(~SR_LOGIC_ZERO));
     SetJumpTarget(exit);
-    m_gpr.PutReg(DSP_REG_SR);
   }
 }
 
@@ -937,7 +935,7 @@ void DSPEmitterIR::iremit_Tst40Op(IRInsn const& insn)
   {
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -950,7 +948,7 @@ void DSPEmitterIR::iremit_Tst16Op(IRInsn const& insn)
   {
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     m_gpr.ReadReg(in_reg, RAX, RegisterExtension::Sign);
-    Update_SR_Register16(RAX);
+    Update_SR_Register16(RAX, insn.SR);
   }
 }
 
@@ -970,7 +968,7 @@ void DSPEmitterIR::iremit_Cmp40Op(IRInsn const& insn)
     MOV(64, R(RAX), R(tmp1));
     SUB(64, R(RAX), R(RDX));
     NEG(64, R(RDX));
-    Update_SR_Register64_Carry(RAX, tmp1, RDX, true);
+    Update_SR_Register64_Carry(RAX, tmp1, RDX, insn.SR, true);
   }
 }
 
@@ -1006,7 +1004,7 @@ void DSPEmitterIR::iremit_Cmp16Op(IRInsn const& insn)
     SHL(64, R(RDX), Imm8(16));
     SUB(64, R(RAX), R(RDX));
     NEG(64, R(RDX));
-    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR, true);
   }
 }
 
@@ -1040,7 +1038,7 @@ void DSPEmitterIR::iremit_XorOp(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
-    Update_SR_Register16_OverS32(RAX, RCX);
+    Update_SR_Register16_OverS32(RAX, RCX, insn.SR);
   }
 }
 
@@ -1070,7 +1068,7 @@ void DSPEmitterIR::iremit_AndOp(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
-    Update_SR_Register16_OverS32(RAX, RCX);
+    Update_SR_Register16_OverS32(RAX, RCX, insn.SR);
   }
 }
 
@@ -1100,7 +1098,7 @@ void DSPEmitterIR::iremit_OrOp(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
-    Update_SR_Register16_OverS32(RAX, RCX);
+    Update_SR_Register16_OverS32(RAX, RCX, insn.SR);
   }
 }
 
@@ -1117,7 +1115,7 @@ void DSPEmitterIR::iremit_NotOp(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     m_gpr.ReadReg(in_reg0 - DSP_REG_ACM0 + DSP_REG_ACC0_64, RCX, RegisterExtension::Sign);
-    Update_SR_Register16_OverS32(RAX, RCX);
+    Update_SR_Register16_OverS32(RAX, RCX, insn.SR);
   }
 }
 
@@ -1150,7 +1148,7 @@ void DSPEmitterIR::iremit_Add16Op(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR);
   }
 }
 
@@ -1186,7 +1184,7 @@ void DSPEmitterIR::iremit_Add32Op(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR);
   }
 }
 
@@ -1222,7 +1220,7 @@ void DSPEmitterIR::iremit_Add40Op(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR);
   }
 }
 
@@ -1249,7 +1247,7 @@ void DSPEmitterIR::iremit_AddPOp(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR);
   }
 }
 
@@ -1274,7 +1272,7 @@ void DSPEmitterIR::iremit_AddUOp(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64_Carry(EAX, tmp1, RDX);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR);
   }
 }
 
@@ -1312,7 +1310,7 @@ void DSPEmitterIR::iremit_Sub16Op(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
-    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR, true);
   }
 }
 
@@ -1349,7 +1347,7 @@ void DSPEmitterIR::iremit_Sub32Op(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
-    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR, true);
   }
 }
 
@@ -1386,7 +1384,7 @@ void DSPEmitterIR::iremit_Sub40Op(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
-    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR, true);
   }
 }
 
@@ -1414,7 +1412,7 @@ void DSPEmitterIR::iremit_SubPOp(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
-    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR, true);
   }
 }
 
@@ -1440,7 +1438,7 @@ void DSPEmitterIR::iremit_SubUOp(IRInsn const& insn)
   if (FlagsNeeded(insn.addr))
   {
     NEG(64, R(RDX));
-    Update_SR_Register64_Carry(EAX, tmp1, RDX, true);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR, true);
   }
 }
 
@@ -1461,7 +1459,7 @@ void DSPEmitterIR::iremit_NegOp(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -1481,7 +1479,7 @@ void DSPEmitterIR::iremit_AbsOp(IRInsn const& insn)
   SetJumpTarget(GreaterThanOrEqual);
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -1534,7 +1532,7 @@ void DSPEmitterIR::iremit_LslOp(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 
@@ -1587,7 +1585,7 @@ void DSPEmitterIR::iremit_AslOp(IRInsn const& insn)
   m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, RDX);
+    Update_SR_Register64(RAX, insn.SR, RDX);
   }
 }
 

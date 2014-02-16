@@ -52,14 +52,13 @@ static void CheckExceptionsThunk(DSPCore& dsp)
 }
 
 // Must go out of block if exception is detected
-void DSPEmitterIR::checkExceptions(u32 retval, u16 pc)
+void DSPEmitterIR::checkExceptions(u32 retval, u16 pc, OpArg const& sr_reg)
 {
   // no need to check for SR_INT_EXT_ENABLE here. the check in DSPCore
   // should be enough. SR_INT_EXT_ENABLE is only relevant in conjunction
   // with EXP_INT, which can only be generated while DSP is not running
   //(in single core mode. if on thread, the latency still should
   // not hurt)
-  const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
 
   TEST(16, sr_reg, Imm16(SR_INT_ENABLE));
   FixupBranch int_disabled = J_CC(CC_Z, true);
@@ -82,7 +81,6 @@ void DSPEmitterIR::checkExceptions(u32 retval, u16 pc)
   SetJumpTarget(skipCheck);
 
   SetJumpTarget(int_disabled);
-  m_gpr.PutReg(DSP_REG_SR);
 }
 
 // LOOP handling: Loop stack is used to control execution of repeated blocks of
@@ -137,6 +135,7 @@ void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
   DSPJitIRRegCache c2(m_gpr);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
+  m_gpr.PutReg(DSP_REG_SR);
   WriteBranchExit(insn.cycle_count);
   m_gpr.FlushRegs(c2, false);
 
@@ -166,7 +165,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::UpdatePCOp = {
 
 void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
 {
-  checkExceptions(insn.cycle_count, insn.inputs[0].imm);
+  checkExceptions(insn.cycle_count, insn.inputs[0].imm, insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsOp = {
