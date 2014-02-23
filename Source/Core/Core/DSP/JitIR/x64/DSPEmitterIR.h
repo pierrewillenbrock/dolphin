@@ -623,6 +623,7 @@ private:
   static int ir_to_regcache_reg(int reg);
 
   void DecodeInstruction(UDSPInstruction inst);
+  void handleOverlappingOps(IRBB* bb);
   void addGuestLoadStore(IRNode* node, std::vector<IRNode*>& new_nodes);
   void addGuestLoadStore(IRNode* node, IRBB* bb = NULL);
   void addGuestLoadStore(IRBB* bb);
@@ -674,6 +675,7 @@ private:
   void
   iremit_Mov16Op(IRInsn const& insn);  // 16 => 16  //fits better here than in arith, no SR changes
   void iremit_Load16Op(IRInsn const& insn);
+  void iremit_Load16ConcurrentOp(IRInsn const& insn);
   void iremit_ILoad16Op(IRInsn const& insn);
   void iremit_Store16Op(IRInsn const& insn);
   void iremit_Load16SOp(IRInsn const& insn);
@@ -750,6 +752,18 @@ private:
   void iremit_StoreGuestStackOp(IRInsn const& insn);
   void iremit_StoreGuestSROp(IRInsn const& insn);
   void iremit_StoreGuestOp(IRInsn const& insn);
+  // helpers to combine concurrent outputs
+  void iremit_GRegOrACCACCOp(IRInsn const& insn);
+  void iremit_GRegOrACCACLOp(IRInsn const& insn);
+  void iremit_GRegOrACCACHOp(IRInsn const& insn);
+  void iremit_GRegOrACMACMOp(IRInsn const& insn);
+  void iremit_GRegOrACMACCOp(IRInsn const& insn);
+  void iremit_GRegOrACMACLOp(IRInsn const& insn);
+  void iremit_GRegOrACMACHOp(IRInsn const& insn);
+  void iremit_GRegOrAXAXOp(IRInsn const& insn);
+  void iremit_GRegOrAXAXLOp(IRInsn const& insn);
+  void iremit_GRegOrAXAXHOp(IRInsn const& insn);
+  void iremit_GRegOr1616Op(IRInsn const& insn);
 
   // ******* Information Structs for Emitters *******
 
@@ -757,6 +771,7 @@ private:
   // Load store
   static IREmitInfo const Mov16Op;  // 16 => 16  //fits better here than in arith, no SR changes
   static IREmitInfo const Load16Op;
+  static IREmitInfo const Load16ConcurrentOp;
   static IREmitInfo const ILoad16Op;
   static IREmitInfo const Store16Op;
   static IREmitInfo const Load16SOp;
@@ -831,6 +846,18 @@ private:
   static IREmitInfo const StoreGuestStackOp;
   static IREmitInfo const StoreGuestSROp;
   static IREmitInfo const StoreGuestOp;
+  // helpers to combine concurrent outputs
+  static IREmitInfo const GRegOrACCACCOp;
+  static IREmitInfo const GRegOrACCACLOp;
+  static IREmitInfo const GRegOrACCACHOp;
+  static IREmitInfo const GRegOrACMACMOp;
+  static IREmitInfo const GRegOrACMACCOp;
+  static IREmitInfo const GRegOrACMACHOp;
+  static IREmitInfo const GRegOrACMACLOp;
+  static IREmitInfo const GRegOrAXAXOp;
+  static IREmitInfo const GRegOrAXAXHOp;
+  static IREmitInfo const GRegOrAXAXLOp;
+  static IREmitInfo const GRegOr1616Op;
 
   DSPJitIRRegCache m_gpr{*this};
 

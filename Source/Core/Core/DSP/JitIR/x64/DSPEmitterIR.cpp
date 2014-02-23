@@ -165,16 +165,6 @@ void DSPEmitterIR::DecodeInstruction(UDSPInstruction inst)
   }
 
   (this->*jit_decode_function)(inst);
-
-  // todo: need to convert concurrent memory reads on the same data bus
-  //(determined by high 6 bits) to one "normal" and one special Load16
-  // that takes the other address as second input and checks it for
-  // use of same data bus, and if so, reverts to using the data from the
-  // first.
-  // todo: need to OR outputs together if they are going to the same
-  // register
-  // for now, just rely on firmware not relying on this...
-  // needs virtual regs
 }
 
 void DSPEmitterIR::assignVRegs(IRInsn& insn)
@@ -468,54 +458,6 @@ void DSPEmitterIR::deparallelize(IRNode* node)
 
   ASSERT_MSG(DSPLLE, 0, "not-yet-implemented section");
   exit(1);
-#if 0
-
-	IRInsnNode *in = dynamic_cast<IRInsnNode *>(node);
-	IRBranchNode *bn = dynamic_cast<IRBranchNode *>(node);
-
-
-	//the simple method failed. try pulling the guest loads out,
-	//and then retry deparallelize
-	//in reality, this just does not happen, so consider this untested.
-	std::list<ILList> olist = irlist.lists;;
-	std::list<IRInsn> nilist;
-	for(auto itl = olist.begin(); itl != olist.end(); itl++)
-	{
-		for(auto iti = itl->insns.begin(); iti != itl->insns.end();)
-		{
-			bool has_input_greg = false;
-			for(unsigned int i = 0; i < NUM_INPUTS; i++)
-			{
-				if (iti->inputs[i].type == IROp::REG)
-					has_input_greg = true;
-			}
-			if (has_input_greg)
-			{
-				nilist.push_back(*iti);
-				iti = itl->insns.erase(iti);
-			}
-			else
-				iti++;
-		}
-	}
-
-	if(nilist.empty())
-	{
-		PanicAlertT("Could not deparallelize! insn emit will fail!");
-		dumpIRList(irlist);
-		return;
-	}
-
-	ILList ni;
-	ni.insns = nilist;
-	ILList nl;
-	nl.lists = olist;
-	irlist.lists.clear();
-	irlist.lists.push_back(ni);
-	irlist.lists.push_back(nl);
-	irlist.type = ILList::Sequential;
-	deparallelize(irlist);
-#endif
 }
 
 void DSPEmitterIR::deparallelize(IRBB* bb)
@@ -957,6 +899,14 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   m_end_bb->setNextNonBranched(new_end_bb);
   m_end_bb = new_end_bb;
+
+  // parsing done.
+  dumpIRNodes();
+
+  // if this is needed, it usually is some kind of coding error in the
+  // ucode, but it may still rely on the effect
+  for (auto bb : m_bb_storage)
+    handleOverlappingOps(bb);
 
   dumpIRNodes();
 

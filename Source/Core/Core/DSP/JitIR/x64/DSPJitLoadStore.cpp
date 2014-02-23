@@ -387,7 +387,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Mov16Op = {
 
 void DSPEmitterIR::iremit_Load16Op(IRInsn const& insn)
 {
-  _assert_msg_(DSPLLE, insn.output.oparg.IsSimpleReg(), "unhandled Load16Op variant");
+  ASSERT_MSG(DSPLLE, insn.output.oparg.IsSimpleReg(), "unhandled Load16Op variant");
   // input: address.
   if (insn.inputs[0].oparg.IsImm())
   {
@@ -399,7 +399,7 @@ void DSPEmitterIR::iremit_Load16Op(IRInsn const& insn)
   }
   else
   {
-    _assert_msg_(DSPLLE, 0, "unhandled Load16Op variant");
+    ASSERT_MSG(DSPLLE, 0, "unhandled Load16Op variant");
   }
 }
 
@@ -411,10 +411,59 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Load16Op = {
     {OpRAX},  // OpAnyReg would work, but dmem_read prefers RAX
     {}};
 
+void DSPEmitterIR::iremit_Load16ConcurrentOp(IRInsn const& insn)
+{
+  ASSERT_MSG(DSPLLE, insn.output.oparg.IsSimpleReg(), "unhandled Load16Op variant");
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  // input: address, other Load16Op address
+  if (insn.inputs[0].oparg.IsImm() && insn.inputs[1].oparg.IsImm())
+  {
+    if ((insn.inputs[0].oparg.AsImm16().Imm16() ^ insn.inputs[1].oparg.AsImm16().Imm16()) & 0xfc00)
+      dmem_read_imm(insn.inputs[0].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg());
+    else
+      dmem_read_imm(insn.inputs[1].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg());
+  }
+  else
+  {
+    MOV(16, R(tmp1), insn.inputs[0].oparg);
+    XOR(16, R(tmp1), insn.inputs[1].oparg);
+    TEST(16, R(tmp1), Imm16(0xfc00));
+    FixupBranch not_equal = J_CC(CC_NE, true);
+    if (insn.inputs[1].oparg.IsImm())
+      dmem_read_imm(insn.inputs[1].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg());
+    else if (insn.inputs[1].oparg.IsSimpleReg())
+      dmem_read(insn.inputs[1].oparg.GetSimpleReg(), insn.output.oparg.GetSimpleReg());
+    else
+      ASSERT_MSG(DSPLLE, 0, "unhandled Load16ConcurrentOp variant");
+    FixupBranch after = J(true);
+    SetJumpTarget(not_equal);
+    if (insn.inputs[0].oparg.IsImm())
+      dmem_read_imm(insn.inputs[0].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg());
+    else if (insn.inputs[0].oparg.IsSimpleReg())
+      dmem_read(insn.inputs[0].oparg.GetSimpleReg(), insn.output.oparg.GetSimpleReg());
+    else
+      ASSERT_MSG(DSPLLE, 0, "unhandled Load16ConcurrentOp variant");
+    SetJumpTarget(after);
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Load16ConcurrentOp = {
+    "Load16ConcurrentOp",
+    &DSPEmitterIR::iremit_Load16ConcurrentOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAnyReg | OpImmAny | ExtendZero16 | Clobbered},
+     {OpAnyReg | OpImmAny | ExtendZero16 | Clobbered}},
+    {OpRAX},
+    {{OpAnyReg}}};
+
 void DSPEmitterIR::iremit_ILoad16Op(IRInsn const& insn)
 {
-  _assert_msg_(DSPLLE, insn.inputs[0].oparg.IsSimpleReg() && insn.output.oparg.IsSimpleReg(),
-               "unhandled ILoad16Op variant");
+  ASSERT_MSG(DSPLLE, insn.inputs[0].oparg.IsSimpleReg() && insn.output.oparg.IsSimpleReg(),
+             "unhandled ILoad16Op variant");
   // input: address.
 
   imem_read(insn.inputs[0].oparg.GetSimpleReg(), insn.output.oparg.GetSimpleReg());
@@ -439,7 +488,7 @@ void DSPEmitterIR::iremit_Store16Op(IRInsn const& insn)
   }
   else
   {
-    _assert_msg_(DSPLLE, 0, "unhandled Store16Op variant");
+    ASSERT_MSG(DSPLLE, 0, "unhandled Store16Op variant");
   }
 }
 

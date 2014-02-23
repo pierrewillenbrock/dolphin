@@ -502,6 +502,7 @@ if(_M_X86)
     DSP/JitIR/x64/DSPJitBranch.cpp
     DSP/JitIR/x64/DSPJitBranchInternals.cpp
     DSP/JitIR/x64/DSPJitGuestReg.cpp
+    DSP/JitIR/x64/DSPJitHWOr.cpp
     DSP/JitIR/x64/DSPJitCCUtil.cpp
     DSP/JitIR/x64/DSPJitArithmetic.cpp
     DSP/JitIR/x64/DSPJitIRNodes.cpp
