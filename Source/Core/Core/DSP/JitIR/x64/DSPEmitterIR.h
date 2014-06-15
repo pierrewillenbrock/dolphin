@@ -538,7 +538,7 @@ private:
 
   bool FlagsNeeded(IRInsn const& insn) const;
 
-  void WriteBranchExit(u16 execd_cycles, bool keepGpr = true);
+  void WriteBranchExit(bool keepGpr = true);
   void dropAllRegs(IRInsn const& insn);
 
   void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn, Gen::OpArg const& sr_reg,
@@ -640,6 +640,9 @@ private:
   void analyseKnownSR();
   void analyseKnownSR(IRBB* bb);
   void analyseKnownSR(IRNode* node, u16& const_SR, u16& modified_SR, u16& value_SR);
+  void collectCycleCountUpdates(IRBB* bb, IRNode* node, IRNode* last_node, unsigned& cycle_count);
+  void collectCycleCountUpdates(std::unordered_set<IRBB*>& visited, IRBB* bb, IRBB* last_bb = NULL,
+                                unsigned cycle_count = 0);
   void demoteGuestACMLoadStore();
   void analyseKnownRegs(IRNode* node, bool (&const_regs)[32], bool (&modified_regs)[32],
                         u16 (&value_regs)[32], std::unordered_set<int>& const_vregs,
@@ -755,6 +758,7 @@ private:
   void iremit_HandleLoopUnknownBeginOp(IRInsn const& insn);
   void iremit_CheckExceptionsUncondOp(IRInsn const& insn);
   void iremit_WriteBranchExitOp(IRInsn const& insn);
+  void iremit_CycleCountExitOp(IRInsn const& insn);
 
   // Branches
   void iremit_LoopOp(IRInsn const& insn);
@@ -765,6 +769,9 @@ private:
   void iremit_HandleLoopJumpBeginOp(IRInsn const& insn);
   void iremit_HandleLoopOp(IRInsn const& insn);
   void iremit_CheckExceptionsOp(IRInsn const& insn);
+
+  void iremit_CycleCountUpdateCheckOp(IRInsn const& insn);
+  void iremit_CycleCountUpdateOp(IRInsn const& insn);
 
   // helpers for moving things between vregs and gregs
   void iremit_LoadImmOp(IRInsn const& insn);
@@ -865,6 +872,7 @@ private:
   static IREmitInfo const HandleLoopUnknownBeginOp;
   static IREmitInfo const CheckExceptionsUncondOp;
   static IREmitInfo const WriteBranchExitOp;
+  static IREmitInfo const CycleCountExitOp;
 
   // Branches
   static IREmitInfo const LoopOp;
@@ -875,6 +883,9 @@ private:
   static IREmitInfo const HandleLoopJumpBeginOp;
   static IREmitInfo const HandleLoopOp;
   static IREmitInfo const CheckExceptionsOp;
+
+  static struct IREmitInfo const CycleCountUpdateCheckOp;
+  static struct IREmitInfo const CycleCountUpdateOp;
 
   // helpers for moving things between vregs and gregs
   static IREmitInfo const LoadImmOp;

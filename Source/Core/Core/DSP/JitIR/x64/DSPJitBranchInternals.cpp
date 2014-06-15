@@ -16,7 +16,6 @@
 // http://code.google.com/p/dolphin-emu/
 
 #include <set>
-#include "Core/DSP/DSPAnalyzer.h"
 #include "Core/DSP/DSPCore.h"
 #include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
 
@@ -29,25 +28,14 @@ namespace JITIR
 namespace x64
 {
 
-static constexpr size_t DSP_IDLE_SKIP_CYCLES = 0x1000;
-
-void DSPEmitterIR::WriteBranchExit(u16 execd_cycles, bool keepGpr)
+void DSPEmitterIR::WriteBranchExit(bool keepGpr)
 {
   leaveJitCode();
-  // Decrement m_cycles_left
-  MOV(64, R(RCX), ImmPtr(&m_cycles_left));
-  if (m_dsp_core.DSPState().GetAnalyzer().IsIdleSkip(m_start_address))
-  {
-    SUB(16, MatR(RCX), Imm16(DSP_IDLE_SKIP_CYCLES));
-  }
-  else
-  {
-    // Decrement m_cycles_left
-    SUB(16, MatR(RCX), Imm16(execd_cycles));
-  }
 
   // Check the result of the sub
-  J_CC(CC_A, m_reenter_dispatcher);
+  MOV(64, R(RCX), ImmPtr(&m_cycles_left));
+  CMP(16, MatR(RCX), Imm16(0));
+  J_CC(CC_G, m_reenter_dispatcher);  // was CC_A
 
   JMP(m_return_dispatcher, true);
 }
@@ -139,7 +127,7 @@ void DSPEmitterIR::iremit_HandleLoopUnknownBeginOp(IRInsn const& insn)
   MOV(16, M_SDSP_pc(), R(tmp1));
 
   dropAllRegs(insn);
-  WriteBranchExit(insn.cycle_count);
+  WriteBranchExit();
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopUnknownBeginOp = {
@@ -240,7 +228,7 @@ void DSPEmitterIR::iremit_CheckExceptionsUncondOp(IRInsn const& insn)
   ABI_CallFunctionP(CheckExceptionsThunk, &m_dsp_core);
   postABICall(insn);
 
-  WriteBranchExit(insn.cycle_count, true);
+  WriteBranchExit();
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsUncondOp = {
@@ -311,8 +299,7 @@ void DSPEmitterIR::iremit_WriteBranchExitOp(IRInsn const& insn)
   {
     MOV(16, M_SDSP_pc(), insn.inputs[0].oparg);
   }
-  dropAllRegs(insn);  // actually, this is a noop. we don't modify SR.
-  WriteBranchExit(insn.cycle_count);
+  WriteBranchExit();
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::WriteBranchExitOp = {
@@ -324,6 +311,70 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::WriteBranchExitOp = {
     0x0000,
     true,
     {{OpImmAny | OpAnyReg}}};
+
+void DSPEmitterIR::iremit_CycleCountExitOp(IRInsn const& insn)
+{
+  if (insn.inputs[0].oparg.IsImm())
+  {
+    MOV(16, M_SDSP_pc(), insn.inputs[0].oparg.AsImm16());  // dest
+  }
+  else
+  {
+    MOV(16, M_SDSP_pc(), insn.inputs[0].oparg);
+  }
+  dropAllRegs(insn);  // actually, this is a noop. we don't modify SR.
+  WriteBranchExit();
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CycleCountExitOp = {
+    "CycleCountExitOp",
+    &DSPEmitterIR::iremit_CycleCountExitOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {{OpImmAny | OpAnyReg}}};
+
+void DSPEmitterIR::iremit_CycleCountUpdateOp(IRInsn const& insn)
+{
+  // Decrement m_cycles_left
+  SUB(16, M(&m_cycles_left), insn.inputs[0].oparg.AsImm16());  // cyclecount
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CycleCountUpdateOp = {
+    "CycleCountUpdateOp",
+    &DSPEmitterIR::iremit_CycleCountUpdateOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {{OpImmAny}}  // number of cycles done up to now
+};
+
+void DSPEmitterIR::iremit_CycleCountUpdateCheckOp(IRInsn const& insn)
+{
+  // Decrement m_cycles_left
+  MOV(64, R(RCX), ImmPtr(&m_cycles_left));
+  SUB(16, MatR(RCX), insn.inputs[0].oparg.AsImm16());  // cyclecount
+
+  FixupBranch branchTaken = J_CC(CC_BE, true);
+
+  SetJumpTarget(branchTaken, m_int3_loop);
+  insn.branchTaken = branchTaken;
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CycleCountUpdateCheckOp = {
+    "CycleCountUpdateCheckOp",
+    &DSPEmitterIR::iremit_CycleCountUpdateCheckOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {{OpImmAny}}  // number of cycles done up to now
+};
 
 }  // namespace x64
 }  // namespace JITIR

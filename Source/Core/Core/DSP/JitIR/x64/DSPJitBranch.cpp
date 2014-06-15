@@ -366,18 +366,10 @@ void DSPEmitterIR::ir_rti(const UDSPInstruction opc)
 // Stops execution of DSP code. Sets bit DSP_CR_HALT in register DREG_CR.
 void DSPEmitterIR::ir_halt(const UDSPInstruction opc)
 {
-  IRInsn p = {
-      &HaltOp,
-  };
+  IRInsn p = {&HaltOp, {IROp::Imm(m_compile_pc + 1)}};
   IRInsnNode* in = makeIRInsnNode(p);
 
-  IRInsn p2 = {&WriteBranchExitOp, {IROp::Imm(m_compile_pc)}};
-  IRInsnNode* in2 = new IRInsnNode();
-  m_node_storage.push_back(in2);
-  in2->insn = p2;
-  in->addNext(in2);
-
-  ir_add_irnodes(in, in2);
+  ir_add_irnodes(in, in);
 }
 
 // LOOP $R
@@ -549,10 +541,13 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoopOp = {
 void DSPEmitterIR::iremit_HaltOp(IRInsn const& insn)
 {
   OR(16, M_SDSP_cr(), Imm16(CR_HALT));
+  MOV(16, M_SDSP_pc(), insn.inputs[0].oparg.AsImm16());
+  WriteBranchExit();
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HaltOp = {
-    "HaltOp", &DSPEmitterIR::iremit_HaltOp, 0x0000, 0x0000, 0x0000, 0x0000, true};
+    "HaltOp", &DSPEmitterIR::iremit_HaltOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {{OpImmAny}},
+};
 
 void DSPEmitterIR::iremit_RetUncondOp(IRInsn const& insn)
 {
@@ -564,7 +559,7 @@ void DSPEmitterIR::iremit_RetUncondOp(IRInsn const& insn)
   dsp_reg_load_stack(StackRegister::Call, tmp4, tmp1, tmp2, tmp3);
   MOV(16, M_SDSP_pc(), R(tmp4));
   dropAllRegs(insn);
-  WriteBranchExit(insn.cycle_count);
+  WriteBranchExit();
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RetUncondOp = {
@@ -605,7 +600,7 @@ void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
   dsp_reg_load_stack(StackRegister::Call, tmp4, tmp1, tmp2, tmp3);
   MOV(16, M_SDSP_pc(), R(tmp4));
   dropAllRegs(insn);
-  WriteBranchExit(insn.cycle_count);
+  WriteBranchExit();
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RtiOp = {

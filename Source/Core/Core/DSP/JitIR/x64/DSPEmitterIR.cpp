@@ -127,6 +127,11 @@ void DSPEmitterIR::DecodeInstruction(UDSPInstruction inst)
   const auto jit_decode_function = GetOp(inst);
   const DSPOPCTemplate* tinst = GetOpTemplate(inst);
 
+  IRInsn p5 = {&CycleCountUpdateOp, {IROp::Imm(1)}};
+  ir_add_op(p5);
+
+  ir_commit_parallel_nodes();
+
   // Call extended
   if (tinst->extended)
   {
@@ -184,6 +189,174 @@ void DSPEmitterIR::assignVRegs(IRInsn& insn)
     insn.output.vreg = m_vregs.size();
     VReg vr = {insn.emitter->output.reqs, 0, false, M((void*)0)};
     m_vregs.push_back(vr);
+  }
+}
+
+void DSPEmitterIR::collectCycleCountUpdates(IRBB* bb, IRNode* node, IRNode* last_node,
+                                            unsigned& cycle_count)
+{
+  IRNode* n = node;
+  IRNode* ln = last_node;
+  while (1)
+  {
+    ASSERT_MSG(DSPLLE, n->next.size() <= 1, "found parallel section");
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+
+    if ((in &&
+         (in->insn.emitter == &WriteBranchExitOp || in->insn.emitter == &CheckExceptionsUncondOp ||
+          in->insn.emitter == &HandleLoopUnknownBeginOp || in->insn.emitter == &RetUncondOp ||
+          in->insn.emitter == &RtiOp || in->insn.emitter == &HaltOp)) &&
+        cycle_count > 0)
+    {
+      // end of execution. if we accumulated any number
+      // of cycles (other than 0), we need to put a
+      // update after the last node.
+
+      // no need to split the bb for the update
+
+      IRInsn p = {&CycleCountUpdateOp, {IROp::Imm(cycle_count)}};
+      assignVRegs(p);
+      IRInsnNode* in2 = makeIRInsnNode(p);
+
+      bb->nodes.insert(in2);
+      if (ln)
+        ln->insertAfter(in2);
+      else
+      {
+        in2->addNext(bb->start_node);
+        bb->start_node = in2;
+      }
+
+      addGuestLoadStore(in2, bb);
+
+      cycle_count = 0;
+    }
+
+    if (!in)
+    {
+      if (n->next.empty())
+        return;
+      ln = n;
+      n = *n->next.begin();
+      continue;
+    }
+
+    // collect and remove UpdateOps
+    if (in->insn.emitter == &CycleCountUpdateOp)
+    {
+      // count and remove
+      cycle_count += in->insn.inputs[0].imm;
+      bb->nodes.erase(n);
+      if (!n->next.empty())
+      {
+        IRNode* nn = *n->next.begin();
+
+        ln->addNext(nn);
+
+        n->removeNext(nn);
+        n->removePrev(ln);
+        n = nn;
+        continue;
+      }
+      else
+      {
+        n->removePrev(ln);
+        return;
+      }
+    }
+
+    if (n->next.empty())
+      return;
+    ln = n;
+    n = *n->next.begin();
+  }
+}
+
+void DSPEmitterIR::collectCycleCountUpdates(std::unordered_set<IRBB*>& visited, IRBB* bb,
+                                            IRBB* last_bb, unsigned cycle_count)
+{
+  IRBB* lbb = last_bb;
+  while (1)
+  {
+    // insert the cycle count updates if needed
+    if (bb->prev.size() > 1 && cycle_count > 0)
+    {
+      // branch/loop entry point. if we accumulated any number
+      // of cycles (other than 0), we need to put a
+      // update and check after the previous bb.
+
+      // means: add another bb with the updateAndCheck,
+      // then another bb with the exit branch
+
+      IRBB* check_bb = new IRBB();
+      m_bb_storage.push_back(check_bb);
+
+      IRInsn p = {&CycleCountUpdateCheckOp, {IROp::Imm(cycle_count)}};
+      assignVRegs(p);
+      IRBranchNode* check_bn = makeIRBranchNode(p);
+      check_bb->nodes.insert(check_bn);
+      check_bb->start_node = check_bb->end_node = check_bn;
+
+      addGuestLoadStore(check_bn, check_bb);
+
+      ASSERT_MSG(DSPLLE, m_node_addr_map.find(bb->start_node) != m_node_addr_map.end(),
+                 "no address for node %p", bb->start_node);
+      u16 tgt_pc = m_node_addr_map[bb->start_node];
+
+      // fill in the finishing insn
+      IRBB* exit_bb = new IRBB();
+      m_bb_storage.push_back(exit_bb);
+
+      IRInsn p3 = {&CycleCountExitOp, {IROp::Imm(tgt_pc)}};
+      assignVRegs(p3);
+      IRInsnNode* exit_in = makeIRInsnNode(p3);
+
+      exit_bb->nodes.insert(exit_in);
+      exit_bb->start_node = exit_bb->end_node = exit_in;
+
+      addGuestLoadStore(exit_in, exit_bb);
+
+      // insert the bbs
+      // hook non-branched exit from check_bb to bb
+      check_bb->setNextNonBranched(bb);
+      // hook lbb to check_bb, reusing whatever branch slot
+      // was used for bb
+      if (lbb->nextBranched == bb)
+        lbb->replaceNextBranched(check_bb);
+      if (lbb->nextNonBranched == bb)
+        lbb->replaceNextNonBranched(check_bb);
+
+      // the only exit from exit_bb goes to m_end_bb
+      exit_bb->setNextNonBranched(m_end_bb);
+
+      // check_bb branches to exit_bb
+      check_bb->setNextBranched(exit_bb);
+
+      cycle_count = 0;
+    }
+
+    // did we visit this merging bb already?
+    if (bb->prev.size() > 1)
+    {
+      if (visited.find(bb) != visited.end())
+        return;
+      visited.insert(bb);
+    }
+
+    collectCycleCountUpdates(bb, bb->start_node, NULL, cycle_count);
+
+    if (bb->nextBranched)
+    {
+      // execution branches. follow the branch with the
+      // current cycle count.
+
+      collectCycleCountUpdates(visited, bb->nextBranched, bb, cycle_count);
+    }
+
+    if (!bb->nextNonBranched)
+      return;
+    lbb = bb;
+    bb = bb->nextNonBranched;
   }
 }
 
@@ -287,16 +460,20 @@ void DSPEmitterIR::deparallelize(IRNode* node)
   // execution paths end in the same node, and don't contain
   // parallel sections of their own.
 
-  IRInsnNode* in1 = dynamic_cast<IRInsnNode*>(parallel_begin);
-  _assert_msg_(DSPLLE, !in1, "found insn in begin node of parallel section");
+  {
+    IRInsnNode* in1 = dynamic_cast<IRInsnNode*>(parallel_begin);
+    if (in1)
+      dumpIRNodes();
+    ASSERT_MSG(DSPLLE, !in1, "found insn in begin node of parallel section(%p)", in1);
+  }
   // so, find the end node of this section by traversing one branch.
   IRNode* n1 = *parallel_begin->next.begin();
   while (n1->prev.size() <= 1)
   {
-    _assert_msg_(DSPLLE, n1->prev.size() == 1, "found invalid node connection");
-    _assert_msg_(DSPLLE, n1->next.size() == 1, "found parallel section inside another");
+    ASSERT_MSG(DSPLLE, n1->prev.size() == 1, "found invalid node connection");
+    ASSERT_MSG(DSPLLE, n1->next.size() == 1, "found parallel section inside another");
     IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n1);
-    _assert_msg_(DSPLLE, !bn, "found branch node in parallel section");
+    ASSERT_MSG(DSPLLE, !bn, "found branch node in parallel section");
     n1 = *n1->next.begin();
   }
 
@@ -310,17 +487,22 @@ void DSPEmitterIR::deparallelize(IRNode* node)
   {
     while (n2->prev.size() <= 1)
     {
-      _assert_msg_(DSPLLE, n2->prev.size() == 1, "found invalid node connection");
-      _assert_msg_(DSPLLE, n2->next.size() == 1, "found parallel section inside another");
+      ASSERT_MSG(DSPLLE, n2->prev.size() == 1, "found invalid node connection");
+      ASSERT_MSG(DSPLLE, n2->next.size() == 1, "found parallel section inside another");
       IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n2);
-      _assert_msg_(DSPLLE, !bn, "found branch node in parallel section");
+      ASSERT_MSG(DSPLLE, !bn, "found branch node in parallel section");
       n2 = *n2->next.begin();
     }
-    _assert_msg_(DSPLLE, n2 == parallel_end, "found multiple end points in parallel section");
+    ASSERT_MSG(DSPLLE, n2 == parallel_end, "found multiple end points in parallel section");
   }
 
-  _assert_msg_(DSPLLE, parallel_begin->next.size() == parallel_end->prev.size(),
-               "parallel section begin and end don't match in out/in edge count");
+  // this is not exact match because there could be
+  // branches joining our parallel_end
+  if (parallel_begin->next.size() > parallel_end->prev.size())
+    dumpIRNodes();
+  ASSERT_MSG(DSPLLE, parallel_begin->next.size() <= parallel_end->prev.size(),
+             "parallel section begin and end don't match in out/in edge count (%p -> %p)",
+             parallel_begin, parallel_end);
 
   // try to figure out a sequence of IRInsns so no insn reads
   // the results of a previous one.
@@ -1053,6 +1235,9 @@ void DSPEmitterIR::Compile(u16 start_addr)
          sizeof(m_start_bb->start_node->const_regs));
   analyseKnownSR();
 
+  std::unordered_set<IRBB*> visited;
+  collectCycleCountUpdates(visited, m_start_bb);
+
   // uses known SR to change some Load/Store back to the Fast variety
   demoteGuestACMLoadStore();
 
@@ -1063,8 +1248,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
   // fills insns.*.live_vregs
   analyseVRegLifetime();
 
-  dumpIRNodes();
-
   // if we keep the live_, *_refed_vregs correct, we can do load/store
   // removal here, and know all the time if we can afford to use another
   // host reg
@@ -1074,6 +1257,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
   allocHostRegs();
   updateInsnOpArgs();
 
+  // emit code
   dumpIRNodes();
 
   const u8* entryPoint = AlignCode16();
