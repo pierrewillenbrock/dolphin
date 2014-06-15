@@ -692,12 +692,9 @@ void DSPEmitterIR::allocHostRegs()
 
       m_gpr.GetXReg(hreg);
       m_vregs[i1].oparg = R(hreg);
-
-      m_gpr.PutXReg(hreg);
     }
 
-    for (auto hreg : inuse)
-      m_gpr.PutXReg(hreg);
+    m_gpr.ResetXRegs();
   }
 
   // allocate the rest
@@ -721,11 +718,9 @@ void DSPEmitterIR::allocHostRegs()
     {
       X64Reg hreg = m_gpr.GetFreeXReg();
       m_vregs[i1].oparg = R(hreg);
-      m_gpr.PutXReg(hreg);
     }
 
-    for (auto hreg : inuse)
-      m_gpr.PutXReg(hreg);
+    m_gpr.ResetXRegs();
   }
 }
 
@@ -780,13 +775,8 @@ void DSPEmitterIR::EmitInsn(IRInsnNode* in)
     }
 
     sr_reg = m_gpr.GetFreeXReg();
-    m_gpr.PutXReg(sr_reg);
 
-    for (auto i : in->live_vregs)
-    {
-      if (m_vregs[i].oparg.IsSimpleReg())
-        m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
-    }
+    m_gpr.ResetXRegs();
 
     insn.SR = R(sr_reg);
   }
