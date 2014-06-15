@@ -568,7 +568,6 @@ private:
   // Register helpers
   void setCompileSR(u16 bit, Gen::OpArg const& sr_reg);
   void clrCompileSR(u16 bit, Gen::OpArg const& sr_reg);
-  void checkExceptions(u32 retval, u16 pc, Gen::OpArg const& sr_reg);
 
   // Memory helper functions
   void increment_addr_reg(Gen::X64Reg ar, Gen::OpArg wr, Gen::X64Reg tmp1, Gen::X64Reg tmp4);
@@ -576,10 +575,10 @@ private:
   void increase_addr_reg(Gen::X64Reg ar_in, Gen::OpArg wr, Gen::X64Reg ix, Gen::X64Reg ar_out);
   void decrease_addr_reg(Gen::X64Reg ar_in, Gen::OpArg wr, Gen::X64Reg ix, Gen::X64Reg ar_out);
   void imem_read(Gen::X64Reg address, Gen::X64Reg host_dreg);
-  void dmem_read(Gen::X64Reg address, Gen::X64Reg host_dreg);
-  void dmem_read_imm(u16 addr, Gen::X64Reg host_dreg);
-  void dmem_write(Gen::X64Reg value, Gen::X64Reg destaddr, Gen::X64Reg tmp1);
-  void dmem_write_imm(u16 addr, Gen::X64Reg value, Gen::X64Reg tmp1);
+  void dmem_read(Gen::X64Reg address, Gen::X64Reg host_dreg, IRInsn const& insn);
+  void dmem_read_imm(u16 addr, Gen::X64Reg host_dreg, IRInsn const& insn);
+  void dmem_write(Gen::X64Reg value, Gen::X64Reg destaddr, Gen::X64Reg tmp1, IRInsn const& insn);
+  void dmem_write_imm(u16 addr, Gen::X64Reg value, Gen::X64Reg tmp1, IRInsn const& insn);
 
   // Command helpers
   void dsp_reg_stack_push(StackRegister stack_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
@@ -604,6 +603,13 @@ private:
   void multiply(Gen::X64Reg dst, Gen::X64Reg mul, Gen::OpArg const& sr_reg);
   void multiply_uu(Gen::X64Reg dst, Gen::X64Reg mul, Gen::OpArg const& sr_reg);
   void multiply_us(Gen::X64Reg dst, Gen::X64Reg mul, Gen::OpArg const& sr_reg);
+
+  // ABI_Call helpers
+  void preABICall(IRInsn const& insn, Gen::X64Reg returnreg = Gen::INVALID_REG);
+  void postABICall(IRInsn const& insn, Gen::X64Reg returnreg = Gen::INVALID_REG);
+  // RBP handling
+  void enterJitCode();
+  void leaveJitCode();
 
   // helper called by the ir_ emitters, all ops added for the same opc are
   //(at first) executed in parallel

@@ -391,11 +391,11 @@ void DSPEmitterIR::iremit_Load16Op(IRInsn const& insn)
   // input: address.
   if (insn.inputs[0].oparg.IsImm())
   {
-    dmem_read_imm(insn.inputs[0].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg());
+    dmem_read_imm(insn.inputs[0].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg(), insn);
   }
   else if (insn.inputs[0].oparg.IsSimpleReg())
   {
-    dmem_read(insn.inputs[0].oparg.GetSimpleReg(), insn.output.oparg.GetSimpleReg());
+    dmem_read(insn.inputs[0].oparg.GetSimpleReg(), insn.output.oparg.GetSimpleReg(), insn);
   }
   else
   {
@@ -419,9 +419,9 @@ void DSPEmitterIR::iremit_Load16ConcurrentOp(IRInsn const& insn)
   if (insn.inputs[0].oparg.IsImm() && insn.inputs[1].oparg.IsImm())
   {
     if ((insn.inputs[0].oparg.AsImm16().Imm16() ^ insn.inputs[1].oparg.AsImm16().Imm16()) & 0xfc00)
-      dmem_read_imm(insn.inputs[0].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg());
+      dmem_read_imm(insn.inputs[0].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg(), insn);
     else
-      dmem_read_imm(insn.inputs[1].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg());
+      dmem_read_imm(insn.inputs[1].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg(), insn);
   }
   else
   {
@@ -430,17 +430,17 @@ void DSPEmitterIR::iremit_Load16ConcurrentOp(IRInsn const& insn)
     TEST(16, R(tmp1), Imm16(0xfc00));
     FixupBranch not_equal = J_CC(CC_NE, true);
     if (insn.inputs[1].oparg.IsImm())
-      dmem_read_imm(insn.inputs[1].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg());
+      dmem_read_imm(insn.inputs[1].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg(), insn);
     else if (insn.inputs[1].oparg.IsSimpleReg())
-      dmem_read(insn.inputs[1].oparg.GetSimpleReg(), insn.output.oparg.GetSimpleReg());
+      dmem_read(insn.inputs[1].oparg.GetSimpleReg(), insn.output.oparg.GetSimpleReg(), insn);
     else
       ASSERT_MSG(DSPLLE, 0, "unhandled Load16ConcurrentOp variant");
     FixupBranch after = J(true);
     SetJumpTarget(not_equal);
     if (insn.inputs[0].oparg.IsImm())
-      dmem_read_imm(insn.inputs[0].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg());
+      dmem_read_imm(insn.inputs[0].oparg.AsImm16().Imm16(), insn.output.oparg.GetSimpleReg(), insn);
     else if (insn.inputs[0].oparg.IsSimpleReg())
-      dmem_read(insn.inputs[0].oparg.GetSimpleReg(), insn.output.oparg.GetSimpleReg());
+      dmem_read(insn.inputs[0].oparg.GetSimpleReg(), insn.output.oparg.GetSimpleReg(), insn);
     else
       ASSERT_MSG(DSPLLE, 0, "unhandled Load16ConcurrentOp variant");
     SetJumpTarget(after);
@@ -480,11 +480,12 @@ void DSPEmitterIR::iremit_Store16Op(IRInsn const& insn)
   if (insn.inputs[0].oparg.IsImm())
   {
     dmem_write_imm(insn.inputs[0].oparg.AsImm16().Imm16(), insn.inputs[1].oparg.GetSimpleReg(),
-                   tmp1);
+                   tmp1, insn);
   }
   else if (insn.inputs[0].oparg.IsSimpleReg())
   {
-    dmem_write(insn.inputs[1].oparg.GetSimpleReg(), insn.inputs[0].oparg.GetSimpleReg(), tmp1);
+    dmem_write(insn.inputs[1].oparg.GetSimpleReg(), insn.inputs[0].oparg.GetSimpleReg(), tmp1,
+               insn);
   }
   else
   {
@@ -508,14 +509,14 @@ void DSPEmitterIR::iremit_Load16SOp(IRInsn const& insn)
   {
     u16 addr = ((insn.inputs[1].oparg.AsImm16().Imm16() & 0xff) << 8) |
                insn.inputs[0].oparg.AsImm16().Imm16();
-    dmem_read_imm(addr, insn.output.oparg.GetSimpleReg());
+    dmem_read_imm(addr, insn.output.oparg.GetSimpleReg(), insn);
   }
   else
   {
     MOV(64, R(RCX), insn.inputs[1].oparg);
     MOV(8, R(CH), R(CL));
     MOV(8, R(CL), insn.inputs[0].oparg.AsImm8());
-    dmem_read(RCX, insn.output.oparg.GetSimpleReg());
+    dmem_read(RCX, insn.output.oparg.GetSimpleReg(), insn);
   }
 }
 
@@ -537,14 +538,14 @@ void DSPEmitterIR::iremit_Store16SOp(IRInsn const& insn)
     u16 addr = ((insn.inputs[1].oparg.AsImm16().Imm16() & 0xff) << 8) |
                insn.inputs[0].oparg.AsImm16().Imm16();
     MOV(64, R(RCX), insn.inputs[1].oparg.AsImm32());
-    dmem_write_imm(addr, insn.inputs[2].oparg.GetSimpleReg(), tmp1);
+    dmem_write_imm(addr, insn.inputs[2].oparg.GetSimpleReg(), tmp1, insn);
   }
   else
   {
     MOV(64, R(RCX), insn.inputs[1].oparg);
     MOV(8, R(CH), R(CL));
     MOV(8, R(CL), insn.inputs[0].oparg.AsImm8());
-    dmem_write(insn.inputs[2].oparg.GetSimpleReg(), RCX, tmp1);
+    dmem_write(insn.inputs[2].oparg.GetSimpleReg(), RCX, tmp1, insn);
   }
 }
 

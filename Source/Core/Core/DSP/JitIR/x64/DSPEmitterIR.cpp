@@ -947,7 +947,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   const u8* entryPoint = AlignCode16();
 
-  m_gpr.LoadRegs();
+  enterJitCode();
 
   for (IRBB* bb = m_start_bb; bb != m_end_bb; bb = bb->nextNonBranched)
     EmitBB(bb);
@@ -963,12 +963,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
     ERROR_LOG_FMT(DSPLLE, "Block at {:#06x} has zero size", start_addr);
     m_block_size[start_addr] = 1;
   }
-
-  // we do it like this everwhere: load g_dsp.pc, then WriteBranchExit.
-  MOV(16, M_SDSP_pc(), Imm16(m_compile_pc));
-  m_gpr.SaveRegs();
-
-  WriteBranchExit(m_block_size[start_addr], false);
 }
 
 void DSPEmitterIR::CompileCurrentIR(DSPEmitterIR& emitter)

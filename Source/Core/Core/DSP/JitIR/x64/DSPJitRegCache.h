@@ -97,17 +97,6 @@ public:
      conditional branch
    */
 
-  void LoadRegs(bool emit = true);  // Load statically allocated regs from memory
-  void SaveRegs();                  // Save statically allocated regs to memory
-
-  // Save registers before ABI call
-  // does not save returnreg
-  void PushRegs(Gen::X64Reg returnreg = Gen::INVALID_REG);
-  // Restore registers after ABI call
-  // does not restore content of returnreg,
-  // and puts contents of RAX there
-  void PopRegs(Gen::X64Reg returnreg = Gen::INVALID_REG);
-
   // Find a free host reg, spill if used, reserve
   Gen::X64Reg GetFreeXReg();
   // Spill a specific host reg if used, reserve

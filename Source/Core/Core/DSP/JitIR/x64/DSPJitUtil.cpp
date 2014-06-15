@@ -370,7 +370,8 @@ void DSPEmitterIR::decrease_addr_reg(Gen::X64Reg ar_in, Gen::OpArg wr, Gen::X64R
   // return nar
 }
 
-void DSPEmitterIR::dmem_write(X64Reg value, Gen::X64Reg destaddr, Gen::X64Reg tmp1)
+void DSPEmitterIR::dmem_write(Gen::X64Reg value, Gen::X64Reg destaddr, Gen::X64Reg tmp1,
+                              IRInsn const& insn)
 {
   //	if (saddr == 0)
   CMP(16, R(destaddr), Imm16(0x0fff));
@@ -384,16 +385,14 @@ void DSPEmitterIR::dmem_write(X64Reg value, Gen::X64Reg destaddr, Gen::X64Reg tm
   FixupBranch end = J(true);
   //	else if (saddr == 0xf)
   SetJumpTarget(ifx);
-  DSPJitIRRegCache c(m_gpr);
   MOVZX(32, 16, value, R(value));
-  m_gpr.PushRegs();
+  preABICall(insn);
   ABI_CallFunctionPRR(WriteIFXRegisterHelper, this, destaddr, value);
-  m_gpr.PopRegs();
-  m_gpr.FlushRegs(c);
+  postABICall(insn);
   SetJumpTarget(end);
 }
 
-void DSPEmitterIR::dmem_write_imm(u16 address, X64Reg value, X64Reg tmp1)
+void DSPEmitterIR::dmem_write_imm(u16 address, X64Reg value, X64Reg tmp1, IRInsn const& insn)
 {
   switch (address >> 12)
   {
@@ -404,10 +403,10 @@ void DSPEmitterIR::dmem_write_imm(u16 address, X64Reg value, X64Reg tmp1)
 
   case 0xf:  // Fxxx HW regs
   {
-    m_gpr.PushRegs();
+    preABICall(insn);
     MOV(16, R(EAX), Imm16(address));
     ABI_CallFunctionPRR(WriteIFXRegisterHelper, this, EAX, value);
-    m_gpr.PopRegs();
+    postABICall(insn);
     break;
   }
   default:  // Unmapped/non-existing memory
@@ -443,7 +442,7 @@ void DSPEmitterIR::imem_read(X64Reg address, X64Reg host_dreg)
 // In:  (address) - the address to read
 // Out: (host_dreg) - the result of the read (used by caller)
 // address must be abi safe
-void DSPEmitterIR::dmem_read(X64Reg address, X64Reg host_dreg)
+void DSPEmitterIR::dmem_read(X64Reg address, X64Reg host_dreg, IRInsn const& insn)
 {
   //	if (saddr == 0)
   CMP(16, R(address), Imm16(0x0fff));
@@ -467,16 +466,14 @@ void DSPEmitterIR::dmem_read(X64Reg address, X64Reg host_dreg)
   SetJumpTarget(ifx);
   //	else if (saddr == 0xf)
   //		return gdsp_ifx_read(addr);
-  DSPJitIRRegCache c(m_gpr);
-  m_gpr.PushRegs(host_dreg);
+  preABICall(insn, host_dreg);
   ABI_CallFunctionPR(ReadIFXRegisterHelper, this, address);
-  m_gpr.PopRegs(host_dreg);
-  m_gpr.FlushRegs(c);
+  postABICall(insn, host_dreg);
   SetJumpTarget(end);
   SetJumpTarget(end2);
 }
 
-void DSPEmitterIR::dmem_read_imm(u16 address, X64Reg host_dreg)
+void DSPEmitterIR::dmem_read_imm(u16 address, X64Reg host_dreg, IRInsn const& insn)
 {
   switch (address >> 12)
   {
@@ -492,9 +489,9 @@ void DSPEmitterIR::dmem_read_imm(u16 address, X64Reg host_dreg)
 
   case 0xf:  // Fxxx HW regs
   {
-    m_gpr.PushRegs(host_dreg);
+    preABICall(insn, host_dreg);
     ABI_CallFunctionPC(ReadIFXRegisterHelper, this, address);
-    m_gpr.PopRegs(host_dreg);
+    postABICall(insn, host_dreg);
     break;
   }
   default:  // Unmapped/non-existing memory

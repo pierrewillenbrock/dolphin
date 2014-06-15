@@ -188,64 +188,6 @@ void DSPJitIRRegCache::FlushRegs(DSPJitIRRegCache& cache, bool emit)
   }
 }
 
-void DSPJitIRRegCache::LoadRegs(bool emit)
-{
-}
-
-void DSPJitIRRegCache::SaveRegs()
-{
-}
-
-void DSPJitIRRegCache::PushRegs(X64Reg returnreg)
-{
-  int push_count = 0;
-  for (size_t i = 0; i < m_xregs.size(); i++)
-  {
-    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC &&
-        static_cast<X64Reg>(i) != returnreg)
-      push_count++;
-  }
-
-  // hardcoding alignment to 16 bytes
-  if (push_count & 1)
-  {
-    m_emitter.SUB(64, R(RSP), Imm32(8));
-  }
-
-  for (size_t i = 0; i < m_xregs.size(); i++)
-  {
-    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC &&
-        static_cast<X64Reg>(i) != returnreg)
-    {
-      m_emitter.PUSH(static_cast<X64Reg>(i));
-    }
-  }
-}
-
-void DSPJitIRRegCache::PopRegs(X64Reg returnreg)
-{
-  if (returnreg != INVALID_REG && returnreg != RAX)
-    m_emitter.MOV(64, R(returnreg), R(RAX));
-
-  int push_count = 0;
-  for (int i = static_cast<int>(m_xregs.size() - 1); i >= 0; i--)
-  {
-    if (m_xregs[i].guest_reg != DSP_REG_NONE && m_xregs[i].guest_reg != DSP_REG_STATIC &&
-        static_cast<X64Reg>(i) != returnreg)
-    {
-      push_count++;
-
-      m_emitter.POP(static_cast<X64Reg>(i));
-    }
-  }
-
-  // hardcoding alignment to 16 bytes
-  if (push_count & 1)
-  {
-    m_emitter.ADD(64, R(RSP), Imm32(8));
-  }
-}
-
 X64Reg DSPJitIRRegCache::SpillXReg()
 {
   return INVALID_REG;
