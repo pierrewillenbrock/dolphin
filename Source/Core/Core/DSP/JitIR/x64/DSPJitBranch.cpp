@@ -350,10 +350,8 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     else
     {
       MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
-      DSPJitIRRegCache c(m_gpr);
       dropAllRegs(insn);
       WriteBranchExit(insn.cycle_count);
-      m_gpr.FlushRegs(c, false);
     }
   }
   else
@@ -367,10 +365,8 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
 
     SetJumpTarget(cnt);
     MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(dsp_imem_read(loop_end))->size));
-    DSPJitIRRegCache c1(m_gpr);
     dropAllRegs(insn);
     WriteBranchExit(insn.cycle_count);
-    m_gpr.FlushRegs(c1, false);
     SetJumpTarget(exit);
   }
 }
@@ -386,10 +382,8 @@ void DSPEmitterIR::iremit_HaltOp(IRInsn const& insn)
 {
   OR(16, M_SDSP_cr(), Imm16(CR_HALT));
   SUB(16, M_SDSP_pc(), Imm16(1));
-  DSPJitIRRegCache c(m_gpr);
   dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
-  m_gpr.FlushRegs(c, false);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HaltOp = {
@@ -403,10 +397,8 @@ void DSPEmitterIR::irr_ret(DSPEmitterIR::IRInsn const& insn)
   X64Reg tmp4 = insn.temps[3].oparg.GetSimpleReg();
   dsp_reg_load_stack(StackRegister::Call, tmp4, tmp1, tmp2, tmp3);
   MOV(16, M_SDSP_pc(), R(tmp4));
-  DSPJitIRRegCache c(m_gpr);
   dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
-  m_gpr.FlushRegs(c, false);
 }
 
 void DSPEmitterIR::iremit_RetOp(IRInsn const& insn)
@@ -436,10 +428,8 @@ void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
   MOV(16, insn.SR, R(tmp4));
   dsp_reg_load_stack(StackRegister::Call, tmp4, tmp1, tmp2, tmp3);
   MOV(16, M_SDSP_pc(), R(tmp4));
-  DSPJitIRRegCache c(m_gpr);
   dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
-  m_gpr.FlushRegs(c, false);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RtiOp = {
@@ -459,10 +449,8 @@ void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn)
   {
     MOV(16, M_SDSP_pc(), insn.inputs[1].oparg);
   }
-  DSPJitIRRegCache c(m_gpr);
   dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
-  m_gpr.FlushRegs(c, false);
 }
 
 void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
@@ -496,10 +484,8 @@ void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn)
   {
     MOV(16, M_SDSP_pc(), insn.inputs[1].oparg);
   }
-  DSPJitIRRegCache c(m_gpr);
   dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
-  m_gpr.FlushRegs(c, false);
 }
 
 void DSPEmitterIR::iremit_CallOp(IRInsn const& insn)

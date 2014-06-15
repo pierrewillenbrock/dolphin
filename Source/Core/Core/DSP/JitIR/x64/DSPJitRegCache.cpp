@@ -98,8 +98,7 @@ static Gen::OpArg GetRegisterPointer(size_t reg)
   }
 }
 
-DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter)
-    : m_emitter(emitter), m_is_temporary(false), m_is_merged(false)
+DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter) : m_emitter(emitter)
 {
   for (X64CachedReg& xreg : m_xregs)
   {
@@ -134,57 +133,6 @@ DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter)
   for (unsigned int i = 0; i < 2; i++)
   {
     m_regs[i + DSP_REG_AX0_32].size = 4;
-  }
-}
-
-DSPJitIRRegCache::DSPJitIRRegCache(const DSPJitIRRegCache& cache)
-    : m_regs(cache.m_regs), m_xregs(cache.m_xregs), m_emitter(cache.m_emitter),
-      m_is_temporary(true), m_is_merged(false)
-{
-}
-
-DSPJitIRRegCache& DSPJitIRRegCache::operator=(const DSPJitIRRegCache& cache)
-{
-  ASSERT_MSG(DSPLLE, &m_emitter == &cache.m_emitter, "emitter does not match");
-  ASSERT_MSG(DSPLLE, m_is_temporary, "register cache not temporary??");
-  m_is_merged = false;
-
-  m_xregs = cache.m_xregs;
-  m_regs = cache.m_regs;
-
-  return *this;
-}
-
-DSPJitIRRegCache::~DSPJitIRRegCache()
-{
-  ASSERT_MSG(DSPLLE, !m_is_temporary || m_is_merged, "temporary cache not merged");
-}
-
-void DSPJitIRRegCache::FlushRegs(DSPJitIRRegCache& cache, bool emit)
-{
-  cache.m_is_merged = true;
-
-  // sync the freely used xregs
-  if (!emit)
-  {
-    for (size_t i = 0; i < m_xregs.size(); i++)
-    {
-      if (cache.m_xregs[i].guest_reg == DSP_REG_USED && m_xregs[i].guest_reg == DSP_REG_NONE)
-      {
-        m_xregs[i].guest_reg = DSP_REG_USED;
-      }
-      if (cache.m_xregs[i].guest_reg == DSP_REG_NONE && m_xregs[i].guest_reg == DSP_REG_USED)
-      {
-        m_xregs[i].guest_reg = DSP_REG_NONE;
-      }
-    }
-  }
-
-  // consistency checks
-  for (size_t i = 0; i < m_xregs.size(); i++)
-  {
-    ASSERT_MSG(DSPLLE, m_xregs[i].guest_reg == cache.m_xregs[i].guest_reg,
-               "cache and current xreg guest_reg mismatch for %zu", i);
   }
 }
 

@@ -161,10 +161,8 @@ void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
   SetJumpTarget(rLoopAddrG);
   SetJumpTarget(rLoopCntG);
 
-  DSPJitIRRegCache c2(m_gpr);
   dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
-  m_gpr.FlushRegs(c2, false);
 
   SetJumpTarget(rLoopAddressExit);
   SetJumpTarget(rLoopCounterExit);

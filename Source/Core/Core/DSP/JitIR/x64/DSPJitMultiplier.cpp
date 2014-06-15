@@ -51,7 +51,6 @@ void DSPEmitterIR::multiply_uu(X64Reg dst, X64Reg mul, OpArg const& sr_reg)
   FixupBranch signedMul = J(true);
 
   SetJumpTarget(unsignedMul);
-  DSPJitIRRegCache c(m_gpr);
   // unsigned support ON if both ax?.l regs are used
   //	prod = (u32)(a * b);
   MOVZX(64, 16, mul, R(mul));
@@ -59,7 +58,6 @@ void DSPEmitterIR::multiply_uu(X64Reg dst, X64Reg mul, OpArg const& sr_reg)
   // the result is the same as for MUL, but we get to avoid clobbering RDX
   IMUL(64, dst, R(mul));
 
-  m_gpr.FlushRegs(c);
   SetJumpTarget(signedMul);
 
   //	Conditionally multiply by 2.
@@ -87,13 +85,11 @@ void DSPEmitterIR::multiply_us(X64Reg dst, X64Reg mul, OpArg const& sr_reg)
   FixupBranch signedMul = J(true);
 
   SetJumpTarget(unsignedMul);
-  DSPJitIRRegCache c(m_gpr);
   // mixed support ON (u16)axl.1  * (s16)axh.0
   //	prod = (s16)a * b;
   MOVZX(64, 16, dst, R(dst));
   IMUL(64, dst, R(mul));
 
-  m_gpr.FlushRegs(c);
   SetJumpTarget(signedMul);
 
   //	Conditionally multiply by 2.
