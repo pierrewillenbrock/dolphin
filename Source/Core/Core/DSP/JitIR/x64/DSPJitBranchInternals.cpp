@@ -258,7 +258,7 @@ void DSPEmitterIR::iremit_WriteBranchExitOp(IRInsn const& insn)
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::WriteBranchExitOp = {
     "WriteBranchExitOp",
     &DSPEmitterIR::iremit_WriteBranchExitOp,
-    0x0000,
+    0xffff,
     0x0000,
     0x0000,
     0x0000,
