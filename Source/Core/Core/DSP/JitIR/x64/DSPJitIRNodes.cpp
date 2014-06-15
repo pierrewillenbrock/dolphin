@@ -254,8 +254,6 @@ std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
   case DSPEmitterIR::IROp::VREG:
     buf << "v" << insn.output.vreg;
     buf << "(" << opargToString(m_vregs[insn.output.vreg].oparg) << ")";
-    buf << " c" << insn.output.creg;
-    buf << "(" << opargToString(m_cregs[insn.output.creg].oparg) << ")";
     buf << " o(" << opargToString(insn.output.oparg) << ")";
     break;
   default:
@@ -279,15 +277,11 @@ std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
           << std::dec;
       buf << "(v" << insn.inputs[i].vreg;
       buf << "(" << opargToString(m_vregs[insn.inputs[i].vreg].oparg) << ")";
-      buf << " c" << insn.inputs[i].creg;
-      buf << "(" << opargToString(m_cregs[insn.inputs[i].creg].oparg) << ")";
       buf << " o(" << opargToString(insn.inputs[i].oparg) << "))";
       break;
     case DSPEmitterIR::IROp::VREG:
-      buf << "v" << insn.inputs[i].vreg;
+      buf << "(v" << insn.inputs[i].vreg;
       buf << "(" << opargToString(m_vregs[insn.inputs[i].vreg].oparg) << ")";
-      buf << " c" << insn.inputs[i].creg;
-      buf << "(" << opargToString(m_cregs[insn.inputs[i].creg].oparg) << ")";
       buf << " o(" << opargToString(insn.inputs[i].oparg) << ")";
       break;
     default:
@@ -306,10 +300,8 @@ std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
     switch (insn.temps[i].type)
     {
     case DSPEmitterIR::IROp::VREG:
-      buf << "v" << insn.temps[i].vreg;
+      buf << "(v" << insn.temps[i].vreg;
       buf << "(" << opargToString(m_vregs[insn.temps[i].vreg].oparg) << ")";
-      buf << " c" << insn.temps[i].creg;
-      buf << "(" << opargToString(m_cregs[insn.temps[i].creg].oparg) << ")";
       buf << " o(" << opargToString(insn.temps[i].oparg) << ")";
       break;
     default:
@@ -329,12 +321,6 @@ std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
   for (auto vr : in->live_vregs)
   {
     buf << " " << vr;
-  }
-  buf << "\\n live cregs:";
-
-  for (auto cr : in->live_cregs)
-  {
-    buf << " " << cr;
   }
 
   return buf.str();
@@ -425,60 +411,7 @@ void DSPEmitterIR::dumpIRNodes() const
     ERROR_LOG(DSPLLE, "%s [ label=\"%s\\n%s\" ];", name.c_str(), name.c_str(), buf2.str().c_str());
   }
 
-  for (unsigned int i = 1; i < m_cregs.size(); i++)
-  {
-    std::stringstream buf2;
-    buf2 << "C_" << i;
-    std::string name = buf2.str();
-
-    buf2.str("");
-    buf2 << "reqs:";
-    if ((m_cregs[i].reqs & OpMask) == OpAny64)
-      buf2 << " Any64";
-    else if ((m_cregs[i].reqs & OpMask) == OpAny)
-      buf2 << " Any";
-    else
-    {
-      if ((m_cregs[i].reqs & OpAnyReg) == OpAnyReg)
-        buf2 << " AnyReg";
-      else if (m_cregs[i].reqs & OpRAX)
-        buf2 << " RAX";
-      else if (m_cregs[i].reqs & OpRCX)
-        buf2 << " RCX";
-      if (m_cregs[i].reqs & OpMem)
-        buf2 << " Mem";
-      if ((m_cregs[i].reqs & OpImmAny) == OpImmAny)
-        buf2 << " ImmAny";
-      else if (m_cregs[i].reqs & OpImm)
-        buf2 << " Imm";
-      else if (m_cregs[i].reqs & OpImm64)
-        buf2 << " Imm64";
-    }
-    buf2 << "(" << std::hex << m_cregs[i].reqs << std::dec << ")";
-
-    buf2 << "\\noparg: " << opargToString(m_cregs[i].oparg);
-    if (m_cregs[i].isImm)
-      buf2 << "\\nimm: " << std::hex << m_cregs[i].imm << std::dec;
-
-    ERROR_LOG(DSPLLE, "%s [ label=\"%s\\n%s\" ];", name.c_str(), name.c_str(), buf2.str().c_str());
-
-    for (auto cr : m_cregs[i].same_hostreg_cregs)
-    {
-      buf2.str("");
-      buf2 << "C_" << cr;
-      std::string othername = buf2.str();
-      ERROR_LOG(DSPLLE, "%s -> %s [color=red];", name.c_str(), othername.c_str());
-    }
-    for (auto cr : m_cregs[i].parallel_live_cregs)
-    {
-      buf2.str("");
-      buf2 << "C_" << cr;
-      std::string othername = buf2.str();
-      ERROR_LOG(DSPLLE, "%s -> %s [color=green];", name.c_str(), othername.c_str());
-    }
-  }
-
-  for (unsigned int i = 1; i < m_vregs.size(); i++)
+  for (unsigned i = 1; i < m_vregs.size(); i++)
   {
     std::stringstream buf2;
     buf2 << "V_" << i;
@@ -515,6 +448,13 @@ void DSPEmitterIR::dumpIRNodes() const
 
     ERROR_LOG(DSPLLE, "%s [ label=\"%s\\n%s\" ];", name.c_str(), name.c_str(), buf2.str().c_str());
 
+    for (auto vr : m_vregs[i].same_hostreg_vregs)
+    {
+      buf2.str("");
+      buf2 << "V_" << vr;
+      std::string othername = buf2.str();
+      ERROR_LOG(DSPLLE, "%s -> %s [color=red];", name.c_str(), othername.c_str());
+    }
     for (auto vr : m_vregs[i].parallel_live_vregs)
     {
       buf2.str("");
@@ -584,23 +524,23 @@ void DSPEmitterIR::dumpIRNodes() const
   ctr++;
 }
 
-void DSPEmitterIR::merge_cregs(int creg1, int creg2)
+void DSPEmitterIR::merge_vregs(int vreg1, int vreg2)
 {
-  // find all references to creg2 and replace them with ones to creg1
+  // find all references to vreg2 and replace them with ones to vreg1
   // but first, merge requirements.
-  m_cregs[creg1].reqs &= m_cregs[creg2].reqs;
-  // merge same_hostreg_cregs and parallel_live_cregs
-  for (auto i : m_cregs[creg2].same_hostreg_cregs)
+  m_vregs[vreg1].reqs &= m_vregs[vreg2].reqs;
+  // merge same_hostreg_vregs and parallel_live_vregs
+  for (auto i : m_vregs[vreg2].same_hostreg_vregs)
   {
-    m_cregs[i].same_hostreg_cregs.insert(creg1);
-    for (auto j : m_cregs[creg2].same_hostreg_cregs)
-      m_cregs[i].same_hostreg_cregs.insert(j);
+    m_vregs[i].same_hostreg_vregs.insert(vreg1);
+    for (auto j : m_vregs[vreg2].same_hostreg_vregs)
+      m_vregs[i].same_hostreg_vregs.insert(j);
   }
-  for (auto i : m_cregs[creg2].parallel_live_cregs)
+  for (auto i : m_vregs[vreg2].parallel_live_vregs)
   {
-    m_cregs[i].parallel_live_cregs.insert(creg1);
-    for (auto j : m_cregs[creg2].parallel_live_cregs)
-      m_cregs[i].parallel_live_cregs.insert(j);
+    m_vregs[i].parallel_live_vregs.insert(vreg1);
+    for (auto j : m_vregs[vreg2].parallel_live_vregs)
+      m_vregs[i].parallel_live_vregs.insert(j);
   }
   // adjust instructions
   for (auto n : m_node_storage)
@@ -609,16 +549,16 @@ void DSPEmitterIR::merge_cregs(int creg1, int creg2)
     if (!in)
       continue;
     for (int i = 0; i < NUM_INPUTS; i++)
-      if (in->insn.inputs[i].creg == creg2)
-        in->insn.inputs[i].creg = creg1;
+      if (in->insn.inputs[i].vreg == vreg2)
+        in->insn.inputs[i].vreg = vreg1;
     for (int i = 0; i < NUM_TEMPS; i++)
-      if (in->insn.temps[i].creg == creg2)
-        in->insn.temps[i].creg = creg1;
-    if (in->insn.output.creg == creg2)
-      in->insn.output.creg = creg1;
+      if (in->insn.temps[i].vreg == vreg2)
+        in->insn.temps[i].vreg = vreg1;
+    if (in->insn.output.vreg == vreg2)
+      in->insn.output.vreg = vreg1;
   }
-  m_cregs[creg2].same_hostreg_cregs.clear();
-  m_cregs[creg2].parallel_live_cregs.clear();
+  m_vregs[vreg2].same_hostreg_vregs.clear();
+  m_vregs[vreg2].parallel_live_vregs.clear();
 }
 }  // namespace x64
 }  // namespace JITIR

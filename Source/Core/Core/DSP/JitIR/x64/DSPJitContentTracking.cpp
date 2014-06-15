@@ -229,10 +229,7 @@ void DSPEmitterIR::analyseKnownSR()
 void DSPEmitterIR::analyseKnownRegs(IRNode* node, bool (&const_regs)[32], bool (&modified_regs)[32],
                                     u16 (&value_regs)[32], std::unordered_set<int>& const_vregs,
                                     std::unordered_set<int>& modified_vregs,
-                                    std::unordered_map<int, u64>& value_vregs,
-                                    std::unordered_set<int>& const_cregs,
-                                    std::unordered_set<int>& modified_cregs,
-                                    std::unordered_map<int, u64>& value_cregs)
+                                    std::unordered_map<int, u64>& value_vregs)
 {
   IRInsnNode* in = dynamic_cast<IRInsnNode*>(node);
 
@@ -244,9 +241,6 @@ void DSPEmitterIR::analyseKnownRegs(IRNode* node, bool (&const_regs)[32], bool (
     std::unordered_set<int> cnt_vregs = node->const_vregs;
     std::unordered_set<int> mod_vregs = node->modified_vregs;
     std::unordered_map<int, u64> var_vregs = node->value_vregs;
-    std::unordered_set<int> cnt_cregs = node->const_cregs;
-    std::unordered_set<int> mod_cregs = node->modified_cregs;
-    std::unordered_map<int, u64> var_cregs = node->value_cregs;
 
     memcpy(c_regs, node->const_regs, sizeof(c_regs));
     memcpy(m_regs, node->modified_regs, sizeof(m_regs));
@@ -256,14 +250,9 @@ void DSPEmitterIR::analyseKnownRegs(IRNode* node, bool (&const_regs)[32], bool (
     {
       cnt_vregs.insert(in->insn.output.vreg);
       var_vregs[in->insn.output.vreg] = m_vregs[in->insn.output.vreg].imm;
-      cnt_cregs.insert(in->insn.output.creg);
-      var_cregs[in->insn.output.creg] = m_cregs[in->insn.output.creg].imm;
     }
     else if (in->insn.output.type == IROp::VREG)
-    {
       cnt_vregs.erase(in->insn.output.vreg);
-      cnt_cregs.erase(in->insn.output.creg);
-    }
 
     if (in->insn.output.type == IROp::REG)
     {
@@ -324,16 +313,11 @@ void DSPEmitterIR::analyseKnownRegs(IRNode* node, bool (&const_regs)[32], bool (
         cnt_vregs.insert(in->insn.output.vreg);
         var_vregs[in->insn.output.vreg] = v_regs[reg];
         mod_vregs.erase(in->insn.output.vreg);
-        cnt_cregs.insert(in->insn.output.creg);
-        var_cregs[in->insn.output.creg] = v_regs[reg];
-        mod_cregs.erase(in->insn.output.creg);
       }
     }
 
     for (auto vr : mod_vregs)
       cnt_vregs.erase(vr);
-    for (auto cr : mod_cregs)
-      cnt_cregs.erase(cr);
     for (int i = 0; i < 32; i++)
       c_regs[i] &= !m_regs[i];
 
@@ -355,15 +339,6 @@ void DSPEmitterIR::analyseKnownRegs(IRNode* node, bool (&const_regs)[32], bool (
         modified_vregs.insert(r);
       const_vregs.insert(r);
       value_vregs[r] = var_vregs[r];
-    }
-    for (auto cr : mod_cregs)
-      modified_cregs.insert(cr);
-    for (auto cr : cnt_cregs)
-    {
-      if (const_cregs.count(cr) > 0 && value_cregs[cr] != var_cregs[cr])
-        modified_cregs.insert(cr);
-      const_cregs.insert(cr);
-      value_cregs[cr] = var_cregs[cr];
     }
   }
   else
@@ -387,15 +362,6 @@ void DSPEmitterIR::analyseKnownRegs(IRNode* node, bool (&const_regs)[32], bool (
       const_vregs.insert(r);
       value_vregs[r] = node->value_vregs[r];
     }
-    for (auto cr : node->modified_cregs)
-      modified_cregs.insert(cr);
-    for (auto cr : node->const_cregs)
-    {
-      if (const_cregs.count(cr) > 0 && value_cregs[cr] != node->value_cregs[cr])
-        modified_cregs.insert(cr);
-      const_cregs.insert(cr);
-      value_cregs[cr] = node->value_cregs[cr];
-    }
   }
 }
 
@@ -415,9 +381,6 @@ void DSPEmitterIR::analyseKnownRegs(IRBB* bb)
     std::unordered_set<int> const_vregs = n->const_vregs;
     std::unordered_set<int> modified_vregs = n->modified_vregs;
     std::unordered_map<int, u64> value_vregs = n->value_vregs;
-    std::unordered_set<int> const_cregs = n->const_cregs;
-    std::unordered_set<int> modified_cregs = n->modified_cregs;
-    std::unordered_map<int, u64> value_cregs = n->value_cregs;
 
     memcpy(const_regs, n->const_regs, sizeof(const_regs));
     memcpy(modified_regs, n->modified_regs, sizeof(modified_regs));
@@ -426,7 +389,7 @@ void DSPEmitterIR::analyseKnownRegs(IRBB* bb)
     for (auto n2 : n->prev)
     {
       analyseKnownRegs(n2, const_regs, modified_regs, value_regs, const_vregs, modified_vregs,
-                       value_vregs, const_cregs, modified_cregs, value_cregs);
+                       value_vregs);
     }
 
     // finish working structs
@@ -443,11 +406,6 @@ void DSPEmitterIR::analyseKnownRegs(IRBB* bb)
       const_vregs.erase(r);
       value_vregs.erase(r);
     }
-    for (auto cr : modified_cregs)
-    {
-      const_cregs.erase(cr);
-      value_cregs.erase(cr);
-    }
 
     // check for changes
     bool c = false;
@@ -458,8 +416,7 @@ void DSPEmitterIR::analyseKnownRegs(IRBB* bb)
         c = true;
     }
     if (c || n->const_vregs != const_vregs || n->modified_vregs != modified_vregs ||
-        n->value_vregs != value_vregs || n->const_cregs != const_cregs ||
-        n->modified_cregs != modified_cregs || n->value_cregs != value_cregs)
+        n->value_vregs != value_vregs)
     {
       memcpy(n->const_regs, const_regs, sizeof(n->const_regs));
       memcpy(n->modified_regs, modified_regs, sizeof(n->modified_regs));
@@ -467,9 +424,6 @@ void DSPEmitterIR::analyseKnownRegs(IRBB* bb)
       n->const_vregs = const_vregs;
       n->modified_vregs = modified_vregs;
       n->value_vregs = value_vregs;
-      n->const_cregs = const_cregs;
-      n->modified_cregs = modified_cregs;
-      n->value_cregs = value_cregs;
 
       for (auto n2 : n->next)
         todo.insert(n2);
@@ -498,9 +452,6 @@ void DSPEmitterIR::analyseKnownRegs()
     std::unordered_set<int> const_vregs = bb->start_node->const_vregs;
     std::unordered_set<int> modified_vregs = bb->start_node->modified_vregs;
     std::unordered_map<int, u64> value_vregs = bb->start_node->value_vregs;
-    std::unordered_set<int> const_cregs = bb->start_node->const_cregs;
-    std::unordered_set<int> modified_cregs = bb->start_node->modified_cregs;
-    std::unordered_map<int, u64> value_cregs = bb->start_node->value_cregs;
 
     memcpy(const_regs, bb->start_node->const_regs, sizeof(const_regs));
     memcpy(modified_regs, bb->start_node->modified_regs, sizeof(modified_regs));
@@ -509,7 +460,7 @@ void DSPEmitterIR::analyseKnownRegs()
     for (auto n2 : bb->prev)
     {
       analyseKnownRegs(n2->end_node, const_regs, modified_regs, value_regs, const_vregs,
-                       modified_vregs, value_vregs, const_cregs, modified_cregs, value_cregs);
+                       modified_vregs, value_vregs);
     }
 
     // finish working structs
@@ -526,11 +477,6 @@ void DSPEmitterIR::analyseKnownRegs()
       const_vregs.erase(vr);
       value_vregs.erase(vr);
     }
-    for (auto cr : modified_cregs)
-    {
-      const_cregs.erase(cr);
-      value_cregs.erase(cr);
-    }
 
     // check for changes
     bool c = false;
@@ -543,9 +489,7 @@ void DSPEmitterIR::analyseKnownRegs()
     }
     if (c || bb->start_node->const_vregs != const_vregs ||
         bb->start_node->modified_vregs != modified_vregs ||
-        bb->start_node->value_vregs != value_vregs || bb->start_node->const_cregs != const_cregs ||
-        bb->start_node->modified_cregs != modified_cregs ||
-        bb->start_node->value_cregs != value_cregs)
+        bb->start_node->value_vregs != value_vregs)
     {
       memcpy(bb->start_node->const_regs, const_regs, sizeof(bb->start_node->const_regs));
       memcpy(bb->start_node->modified_regs, modified_regs, sizeof(bb->start_node->modified_regs));
@@ -553,9 +497,6 @@ void DSPEmitterIR::analyseKnownRegs()
       bb->start_node->const_vregs = const_vregs;
       bb->start_node->modified_vregs = modified_vregs;
       bb->start_node->value_vregs = value_vregs;
-      bb->start_node->const_cregs = const_cregs;
-      bb->start_node->modified_cregs = modified_cregs;
-      bb->start_node->value_cregs = value_cregs;
 
       analyseKnownRegs(bb);
 
@@ -564,7 +505,7 @@ void DSPEmitterIR::analyseKnownRegs()
     }
   }
 
-  /* update vregs/cregs */
+  /* update vregs */
   for (auto n : m_node_storage)
   {
     IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
@@ -581,13 +522,10 @@ void DSPEmitterIR::analyseKnownRegs()
         ERROR_LOG(DSPLLE, "constifiying reg %d", reg);
         m_vregs[insn.output.vreg].isImm = true;
         m_vregs[insn.output.vreg].imm = n->value_regs[reg];
-        m_cregs[insn.output.creg].isImm = true;
-        m_cregs[insn.output.creg].imm = n->value_regs[reg];
 
         insn.emitter = &DSPEmitterIR::LoadImmOp;
         insn.inputs[0] = IROp::Imm(n->value_regs[reg]);
         insn.inputs[0].vreg = insn.output.vreg;
-        insn.inputs[0].creg = insn.output.creg;
       }
     }
   }

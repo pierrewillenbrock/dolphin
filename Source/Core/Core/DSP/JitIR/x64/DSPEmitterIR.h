@@ -294,12 +294,11 @@ private:
       op.imm = imm;
       return op;
     }
-    static IROp Vreg(int num, int cnum)
+    static IROp Vreg(int num)
     {
       IROp op = {0};
       op.type = VREG;
       op.vreg = num;
-      op.creg = cnum;
       return op;
     }
     static IROp None()
@@ -320,7 +319,6 @@ private:
       VREG,
     } type;
     int vreg;
-    int creg;
   };
   class IRInsn
   {
@@ -428,10 +426,7 @@ private:
     std::unordered_set<int> modified_vregs;
     std::unordered_map<int, u64> value_vregs;
     std::unordered_set<int> live_vregs;
-    std::unordered_set<int> const_cregs;
-    std::unordered_set<int> modified_cregs;
-    std::unordered_map<int, u64> value_cregs;
-    std::unordered_set<int> live_cregs;
+    int guest_vregs[32];
   };
   class IRInsnNode : public IRNode
   {
@@ -505,19 +500,9 @@ private:
     int reqs;
     int64_t imm;
     bool isImm;
-    Gen::OpArg oparg;                             // valid after allocHostRegs
-    std::unordered_set<int> parallel_live_vregs;  // valid after findLiveVRegs
-    bool active;                                  // emitter flag
-  };
-
-  struct CReg
-  {
-    int reqs;
-    int64_t imm;
-    bool isImm;
     Gen::OpArg oparg;  // valid after allocHostRegs
-    std::unordered_set<int> same_hostreg_cregs;
-    std::unordered_set<int> parallel_live_cregs;  // valid after findLiveVRegs
+    std::unordered_set<int> same_hostreg_vregs;
+    std::unordered_set<int> parallel_live_vregs;  // valid after findLiveVRegs
     bool active;                                  // emitter flag
   };
   struct DSPEmitterParallelSectioninfo
@@ -654,10 +639,7 @@ private:
   void analyseKnownRegs(IRNode* node, bool (&const_regs)[32], bool (&modified_regs)[32],
                         u16 (&value_regs)[32], std::unordered_set<int>& const_vregs,
                         std::unordered_set<int>& modified_vregs,
-                        std::unordered_map<int, u64>& value_vregs,
-                        std::unordered_set<int>& const_cregs,
-                        std::unordered_set<int>& modified_cregs,
-                        std::unordered_map<int, u64>& value_cregs);
+                        std::unordered_map<int, u64>& value_vregs);
   void analyseKnownRegs(IRBB* bb);
   void analyseKnownRegs();
   void checkImmVRegs();
@@ -674,14 +656,12 @@ private:
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
 
-  void convertCRegsToVRegs();
-
   void clearNodeStorage();
   IRBB* findAndSplitBB(IRNode* at);
   std::string dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const;
   void dumpIRNodes() const;
 
-  void merge_cregs(int vreg1, int vreg2);
+  void merge_vregs(int vreg1, int vreg2);
   IRNode* makeIRNode()
   {
     IRNode* n = new IRNode();
@@ -960,7 +940,6 @@ private:
   std::unordered_map<u16, AddressInfo> m_addr_info;
   std::unordered_map<IRNode*, u16> m_node_addr_map;
   std::vector<VReg> m_vregs;
-  std::vector<CReg> m_cregs;
 
   DSPCore& m_dsp_core;
 };

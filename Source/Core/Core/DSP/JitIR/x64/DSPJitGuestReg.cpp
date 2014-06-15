@@ -678,7 +678,7 @@ void DSPEmitterIR::addGuestLoadStore(IRNode* node, std::vector<IRNode*>& new_nod
   {
     if (!insn.emitter->inputs[i].reqs)
       continue;
-    IRInsn p = {NULL, {insn.inputs[i]}, IROp::Vreg(insn.inputs[i].vreg, insn.inputs[i].creg)};
+    IRInsn p = {NULL, {insn.inputs[i]}, IROp::Vreg(insn.inputs[i].vreg)};
     if (insn.inputs[i].type == IROp::IMM)
     {
       p.emitter = &LoadImmOp;
@@ -738,7 +738,7 @@ void DSPEmitterIR::addGuestLoadStore(IRNode* node, std::vector<IRNode*>& new_nod
   // inject the storing ops
   if (insn.emitter->output.reqs && insn.output.type == IROp::REG)
   {
-    IRInsn p = {NULL, {IROp::Vreg(insn.output.vreg, insn.output.creg)}, insn.output};
+    IRInsn p = {NULL, {IROp::Vreg(insn.output.vreg)}, insn.output};
     switch (insn.output.guest_reg)
     {
     case IROp::DSP_REG_PROD_ALL:
