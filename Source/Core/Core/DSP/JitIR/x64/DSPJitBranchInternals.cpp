@@ -50,20 +50,7 @@ void DSPEmitterIR::dropAllRegs(IRInsn const& insn)
   if (insn.SR.IsSimpleReg())
   {
     if (insn.modifies_SR)
-      MOV(16, M(&g_dsp.r.sr), insn.SR);
-
-    m_gpr.PutXReg(insn.SR.GetSimpleReg());
-  }
-  // going the easy route, since all the vregs
-  // are "active" at the moment. this will not be the case later
-  // but then again, at that time we will not have to tell the m_gpr
-  // about us releasing all registers.
-  for (unsigned int i = 0; i < m_vregs.size(); i++)
-  {
-    if (m_vregs[i].active)
-    {
-      m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
-    }
+      MOV(16, M_SDSP_r_sr(), insn.SR);
   }
 }
 

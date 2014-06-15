@@ -767,42 +767,46 @@ void DSPEmitterIR::EmitInsn(IRInsnNode* in)
   for (auto i : in->live_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())
-    {
-      m_gpr.GetXReg(m_vregs[i].oparg.GetSimpleReg());
       m_vregs[i].active = true;
-    }
   }
 
   X64Reg sr_reg;
   if (insn.needs_SR || insn.modifies_SR)
   {
+    for (auto i : in->live_vregs)
+    {
+      if (m_vregs[i].oparg.IsSimpleReg())
+        m_gpr.GetXReg(m_vregs[i].oparg.GetSimpleReg());
+    }
+
     sr_reg = m_gpr.GetFreeXReg();
+    m_gpr.PutXReg(sr_reg);
+
+    for (auto i : in->live_vregs)
+    {
+      if (m_vregs[i].oparg.IsSimpleReg())
+        m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
+    }
+
     insn.SR = R(sr_reg);
-    if (insn.modifies_SR != 0xffff || insn.needs_SR)
-      MOV(16, insn.SR, M_SDSP_r_sr());
   }
   else
     insn.SR = M_SDSP_r_sr();
 
+  if ((insn.modifies_SR && insn.modifies_SR != 0xffff) || insn.needs_SR)
+    MOV(16, insn.SR, M_SDSP_r_sr());
+
   (this->*insn.emitter->func)(insn);
 
-  if (insn.needs_SR || insn.modifies_SR)
-  {
-    if (insn.modifies_SR)
-      MOV(16, M_SDSP_r_sr(), insn.SR);
-
-    m_gpr.PutXReg(sr_reg);
-  }
+  if (insn.modifies_SR)
+    MOV(16, M_SDSP_r_sr(), insn.SR);
 
   // and now, drop it all again. this will not be needed when
   // we drop the m_gpr completely
   for (auto i : in->live_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())
-    {
-      m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
       m_vregs[i].active = false;
-    }
   }
 }
 
