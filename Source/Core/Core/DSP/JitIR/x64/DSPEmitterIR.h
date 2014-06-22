@@ -7,6 +7,8 @@
 #include <array>
 #include <cstddef>
 #include <list>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "Common/CommonTypes.h"
@@ -196,6 +198,320 @@ public:
   void msub(UDSPInstruction opc);
 
 private:
+  class IRInsn;
+  typedef void (DSPEmitterIR::*IREmitter)(IRInsn const& insn);
+  enum IROpReqs
+  {
+    OpRAX = 0x0001,     // i can take R(RAX) (usually used alone)
+    OpRCX = 0x0002,     // i can take R(RCX) (usually used alone)
+    OpRDX = 0x0004,     // i can take R(RDX) (usually used alone)
+    OpAnyReg = 0x000f,  // i can take any R
+    OpMem = 0x0010,     // i can take M(and derivatives)
+    OpImm = 0x0020,     // i can take Imm32,16,8
+    OpImm64 = 0x0040,   // i can take Imm64
+    OpImmAny = 0x0060,  // i can take Imm64,32,16,8
+    OpAny = 0x003f,     // i can take any OpArg(excluding Imm64)
+    OpAny64 = 0x007f,   // i can take any OpArg(including Imm64)
+    OpMask = 0x007f,
+    ExtendNone = 0x0000,
+    ExtendSign16 = 0x0100,  // if its in a reg, sign extend it for me
+    ExtendZero16 = 0x0180,  // if its in a reg, zero extend it for me
+    ExtendSign32 = 0x0200,
+    ExtendZero32 = 0x0280,
+    ExtendSign64 = 0x0300,  // these two can be reused(and made same
+    ExtendZero64 = 0x0380,  // ExtendNone) if needed
+    ExtendMask = 0x0380,
+    Shift16 = 0x0400,       // if its in a reg, shift it for me
+    Clobbered = 0x0800,     // if its in a reg, content gets destroyed
+    SameAsOutput = 0x1000,  // this inputs host reg should be the same
+    // as the output
+    NoSaturate = 0x2000,   // don't saturate when retrieving the reg
+    NoACMExtend = 0x4000,  // don't extend ACM on write
+  };
+  struct IROpInfo
+  {
+    int reqs;
+  };
+  enum
+  {
+    NUM_INPUTS = 3,
+    NUM_TEMPS = 4
+  };
+  struct IREmitInfo
+  {
+    const char* name;
+    IREmitter func;
+
+    u16 needs_SR;          // bitmask of SR bits used by this instruction
+    u16 modifies_SR;       // bitmask of SR bits (potentially) modifed
+    u16 constant_mask_SR;  // bits that get assigned a constant value
+    u16 constant_val_SR;   // the values assigned above
+    bool modifies_PC;
+
+    IROpInfo inputs[NUM_INPUTS];
+    IROpInfo output;
+    IROpInfo temps[NUM_TEMPS];
+  };
+  class IROp
+  {
+  public:
+    enum
+    {
+      DSP_REG_ACC0_ALL = 0x20,
+      DSP_REG_ACC1_ALL = 0x21,
+      DSP_REG_AX0_ALL = 0x22,
+      DSP_REG_AX1_ALL = 0x23,
+      DSP_REG_PROD_ALL = 0x24,
+    };
+
+    // overall plan:
+    // 1) do this per insn(done)
+    // 2) drop redundant store_greg/load_greg insns, and unify
+    // the vregs
+    // other todo:
+    // implement the ORing of parallel output to the same insn
+    // handle fetching from the same memory segment
+    // things that should be thought of:
+    //* kill m_gpr
+    //** what about insn.SR? => make it vreg?
+    //* switch insn "tree" to real graph
+    //* what to do with "active" vregs that need to be stored
+    //  when a branch happens(CallOp, JmpOp, HandleLoop,
+    //  CheckException, ... about everything calling
+    //  WriteBranchExit)
+    //* kill redundant StoreGuest/LoadGuest pairs, potentially with
+    //  new converter ops in between
+    //* kill noops with input==output
+    //* do something sane when we run out of hregs for vregs
+    //* avoid the above in deparallelizing
+    //* cycle counter => possible solution: add to global var on
+    //  leaving the BB. probably something for the "unsaved" part
+    //  of g_dsp
+    static IROp R(int reg)
+    {
+      IROp op = {0};
+      op.guest_reg = reg;
+      op.type = REG;
+      return op;
+    }
+    static IROp Imm(int64_t imm)
+    {
+      IROp op = {0};
+      op.type = IMM;
+      op.imm = imm;
+      return op;
+    }
+    static IROp Vreg(int num)
+    {
+      IROp op = {0};
+      op.type = VREG;
+      op.vreg = num;
+      return op;
+    }
+    static IROp None()
+    {
+      IROp op = {0};
+      op.guest_reg = -1;
+      return op;
+    }
+
+    int guest_reg;
+    int64_t imm;
+    Gen::OpArg oparg;
+    enum
+    {
+      INVALID = 0,
+      REG,
+      IMM,
+      VREG,
+    } type;
+    int vreg;
+  };
+  class IRInsn
+  {
+  public:
+    IREmitInfo const* emitter;
+    IROp inputs[NUM_INPUTS];
+    IROp output;
+    IROp temps[NUM_TEMPS];  // need to check how many we actually need
+
+    u16 needs_SR;  // these do the same as, and are ORed to EmitInfos
+    u16 modifies_SR;
+    u16 constant_mask_SR;
+    u16 constant_val_SR;
+
+    UDSPInstruction original;
+    u16 addr;         // filled in by ir_add_insn helper
+    u16 cycle_count;  // cycles done in this block
+
+    Gen::OpArg SR;  // may be M, especially if the insn doesn't use it
+
+    u16 later_needs_SR;  // SR bits needed here or later
+    // bits derived from earlier code
+    u16 const_SR;            // known constant value
+    u16 modified_SR;         // unpredictably modified
+    u16 value_SR;            // value for fixed SR bits
+    bool const_regs[32];     // known constant value
+    bool modified_regs[32];  // unpredictably modified
+    u16 value_regs[32];      // value for fixed regs
+    std::unordered_set<int> const_vregs;
+    std::unordered_set<int> modified_vregs;
+    std::unordered_map<int, u64> value_vregs;
+
+    mutable Gen::FixupBranch branchTaken;
+
+    std::unordered_set<int> live_vregs;
+    std::unordered_set<int> first_refed_vregs;
+    std::unordered_set<int> last_refed_vregs;
+  };
+  /*
+    We want some kind of graph.
+
+    Use case 1:
+      Iterate over all IRInsns. any order. IRInsns can only be modified.
+      (not created, destroyed or moved)
+
+    Use case 2:
+      Add a bunch of IRInsns during parsing. These IRInsns run in
+      parallel.
+
+    Use case 3:
+      Split out the guest register accesses: All IRInsns are split
+      into multiple IRInsns that run sequentally.
+
+    Use case 4:
+      Early on, some insns running in parallel may have side effects
+            on each other. This relationship needs to stay recoverable.
+
+    Use case 5:
+      Branches have two execution paths, that get executed exclusively.
+      The branch needs to be able to differentiate them, i.E. there is
+      a branch A and a branch B.
+      For now, these don't ever join back to the main flow, and are
+      really simple, but that will change once inter-BB optimization
+      is added.
+
+    Use case 6:
+      At some point, the whole graph should only represent
+      register dependencies and branches.(todo: figure out how branches
+      and the dependency graph interact.
+      "start"-node for providing all dependencies on the code running
+      earlier, multiple "end"-nodes depending on the results of
+      the respective branches. what about the branch-points? just
+      regular instructions, but with some way to determine which subset
+      of the children is the positive part? two sets of children!)
+
+    Idea:
+      IRNode, base class.
+              contains:
+                set of IRNodes it depends on
+                set of IRNodes depending on this
+      IRInsnNode, derives from ILNone.
+        contains:
+                the IRInsn
+      IRBranchNode, derives from IRInsnNode.
+              contains:
+                set of IRNodes depending on this in case of branch
+      all of these are kept on a single vector
+
+   */
+  class IRNode
+  {
+  public:
+    IRNode() : code(NULL) {}
+    virtual ~IRNode() {}
+
+    void addNext(IRNode* node);
+    void addPrev(IRNode* node);
+    void removeNext(IRNode* node);
+    void removePrev(IRNode* node);
+    void insertBefore(IRNode* first, IRNode* last);
+    void insertBefore(IRNode* node);
+    void insertAfter(IRNode* first, IRNode* last);
+    void insertAfter(IRNode* node);
+
+    std::unordered_set<IRNode*> prev;
+    std::unordered_set<IRNode*> next;
+    const u8* code;
+  };
+  class IRInsnNode : public IRNode
+  {
+  public:
+    IRInsn insn;
+  };
+  class IRBranchNode : public IRInsnNode
+  {
+  public:
+    virtual void addNextOnBranch(IRNode* node);
+    virtual void removeNext(IRNode* node);
+    virtual void insertAfterOnBranch(IRNode* first, IRNode* last);
+    void insertAfterOnBranch(IRNode* node);
+
+    std::unordered_set<IRNode*> branch;
+  };
+  class IRBB
+  {  // BasicBlocks
+  public:
+    IRBB() : nextNonBranched(NULL), nextBranched(NULL), start_node(NULL), end_node(NULL) {}
+
+    void setNextNonBranched(IRBB* bb)
+    {
+      next.insert(bb);
+      bb->prev.insert(this);
+      nextNonBranched = bb;
+    }
+    void setNextBranched(IRBB* bb)
+    {
+      next.insert(bb);
+      bb->prev.insert(this);
+      nextBranched = bb;
+    }
+    void replaceNextNonBranched(IRBB* bb)
+    {
+      next.erase(nextNonBranched);
+      nextNonBranched->prev.erase(this);
+      next.insert(bb);
+      bb->prev.insert(this);
+      nextNonBranched = bb;
+    }
+    void replaceNextBranched(IRBB* bb)
+    {
+      next.erase(nextBranched);
+      nextBranched->prev.erase(this);
+      next.insert(bb);
+      bb->prev.insert(this);
+      nextBranched = bb;
+    }
+
+    std::unordered_set<IRBB*> prev;
+    std::unordered_set<IRBB*> next;
+    std::unordered_set<IRNode*> nodes;
+    IRBB* nextNonBranched;  // used for emitting
+    IRBB* nextBranched;     // may be NULL
+
+    IRNode* start_node;  // possibly containing parallel sections
+    IRNode* end_node;    // may(mostly will) be a branch insn, and the
+    // only branch insn in this BB
+  };
+  class AddressInfo
+  {
+  public:
+    AddressInfo() : node(NULL), loop_begin(0xffff) {}
+
+    IRNode* node;
+    u16 loop_begin;
+  };
+  class VReg
+  {
+  public:
+    int reqs;
+    int64_t imm;
+    bool isImm;
+    Gen::OpArg oparg;
+    bool active;
+    std::unordered_set<int> parallel_live_vregs;
+  };
+
   using DSPCompiledCode = u32 (*)();
   using Block = const u8*;
 
@@ -303,6 +619,30 @@ private:
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
 
+  void clearNodeStorage();
+  std::string dumpIRNodeInsn(DSPEmitterIR::IRInsn const& insn) const;
+  void dumpIRNodes() const;
+  IRNode* makeIRNode()
+  {
+    IRNode* n = new IRNode();
+    m_node_storage.push_back(n);
+    return n;
+  }
+  IRInsnNode* makeIRInsnNode(IRInsn const& insn)
+  {
+    IRInsnNode* n = new IRInsnNode();
+    m_node_storage.push_back(n);
+    n->insn = insn;
+    return n;
+  }
+  IRBranchNode* makeIRBranchNode(IRInsn const& insn)
+  {
+    IRBranchNode* n = new IRBranchNode();
+    m_node_storage.push_back(n);
+    n->insn = insn;
+    return n;
+  }
+
   DSPJitIRRegCache m_gpr{*this};
 
   // during parsing: PC of the instruction being parsed
@@ -327,6 +667,19 @@ private:
   const u8* m_int3_loop;
   // placeholder for when we need a branch, but don't actually branch
   Gen::FixupBranch m_unused_jump;
+
+  // IRNode* and IRBB* get passed around and stored everywhere, so we need to keep their address
+  // constant. Every IRNode and IRBB gets referenced from m_node_storage and m_bb_storage exactly
+  // once so we can easily dispose of them again.
+  std::vector<IRNode*> m_node_storage;
+  std::vector<IRBB*> m_bb_storage;
+  std::vector<std::pair<IRNode*, IRNode*>> m_parallel_nodes;
+  IRBB* m_start_bb;
+  IRBB* m_end_bb;
+  std::list<IRBB*> m_branch_todo;
+  std::unordered_map<u16, AddressInfo> m_addr_info;
+  std::unordered_map<IRNode*, u16> m_node_addr_map;
+  std::vector<VReg> m_vregs;
 
   DSPCore& m_dsp_core;
 };
