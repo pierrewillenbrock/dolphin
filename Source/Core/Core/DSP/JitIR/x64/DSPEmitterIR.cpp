@@ -72,7 +72,7 @@ void DSPEmitterIR::DoState(PointerWrap& p)
 
 void DSPEmitterIR::ClearIRAM()
 {
-  for (size_t i = 0; i < DSP_IRAM_SIZE; i++)
+  for (size_t i = 0; i < MAX_BLOCKS; i++)
   {
     m_blocks[i] = (DSPCompiledCode)m_stub_entry_point;
     m_block_size[i] = 0;
