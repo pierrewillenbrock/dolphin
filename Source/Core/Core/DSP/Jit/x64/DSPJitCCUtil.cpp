@@ -137,26 +137,27 @@ void DSPEmitter::Update_SR_Register16(X64Reg val)
   m_gpr.PutReg(DSP_REG_SR);
 }
 
-// In: RAX: s64 _Value
-// Clobbers RCX
+// In: (val): s64 _Value
+// In: RCX: s64 new accumulator value
+// modifies SR bits 0, 1, 2, 3, 4, 5, fixed bits: 0: 0, 1: 0
 void DSPEmitter::Update_SR_Register16_OverS32(Gen::X64Reg val)
 {
+  Update_SR_Register16(val);
+
+  // using val as temporary
+
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
-  AND(16, sr_reg, Imm16(~SR_CMP_MASK));
+  // the OVER_S32 bit has been cleared in Update_SR_Register16
 
   //	// 0x10
   //	if (_Value != (s32)_Value) g_dsp.r[DSP_REG_SR] |= SR_OVER_S32;
-  MOVSX(64, 32, RCX, R(val));
-  CMP(64, R(RCX), R(val));
+  MOVSX(64, 32, val, R(RCX));
+  CMP(64, R(val), R(RCX));
   FixupBranch noOverS32 = J_CC(CC_E);
   OR(16, sr_reg, Imm16(SR_OVER_S32));
   SetJumpTarget(noOverS32);
 
   m_gpr.PutReg(DSP_REG_SR);
-  //	// 0x20 - Checks if top bits of m are equal
-  //	if ((((u16)_Value >> 14) == 0) || (((u16)_Value >> 14) == 3))
-  // AND(32, R(val), Imm32(0xc0000000));
-  Update_SR_Register16(val);
 }
 
 }  // namespace DSP::JIT::x64
