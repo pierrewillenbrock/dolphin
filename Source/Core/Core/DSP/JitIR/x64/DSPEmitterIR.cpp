@@ -47,8 +47,7 @@ constexpr u16 DSP_IDLE_SKIP_CYCLES = 0x1000;
 constexpr std::array<X64Reg, 14> s_allocation_order = {
     {R8, R9, R10, R11, R12, R13, R14, RSI, RDI, RBX, RCX, RDX, RAX, RBP}};
 
-DSPEmitterIR::DSPEmitterIR(DSPCore& dsp)
-    : m_blocks(MAX_BLOCKS), m_block_size(MAX_BLOCKS), m_dsp_core{dsp}
+DSPEmitterIR::DSPEmitterIR(DSPCore& dsp) : m_blocks(MAX_BLOCKS), m_dsp_core{dsp}
 {
   x64::InitInstructionTables();
   AllocCodeSpace(COMPILED_CODE_SIZE);
@@ -92,7 +91,6 @@ void DSPEmitterIR::ClearIRAM()
   for (size_t i = 0; i < MAX_BLOCKS; i++)
   {
     m_blocks[i] = (DSPCompiledCode)m_stub_entry_point;
-    m_block_size[i] = 0;
   }
   m_dsp_core.DSPState().reset_dspjit_codespace = true;
 }
@@ -105,7 +103,6 @@ void DSPEmitterIR::ClearIRAMandDSPJITCodespaceReset()
   for (size_t i = 0; i < MAX_BLOCKS; i++)
   {
     m_blocks[i] = (DSPCompiledCode)m_stub_entry_point;
-    m_block_size[i] = 0;
   }
   m_dsp_core.DSPState().reset_dspjit_codespace = false;
 }
@@ -1075,11 +1072,7 @@ bool DSPEmitterIR::EmitBB(IRBB* bb)
 
 void DSPEmitterIR::Compile(u16 start_addr)
 {
-  // Remember the current block address for later(WriteBlockLink and friends)
-  m_start_address = start_addr;
-
   m_compile_pc = start_addr;
-  m_block_size[start_addr] = 0;
 
   auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
 
@@ -1135,7 +1128,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
     const DSPOPCTemplate* opcode = GetOpTemplate(inst);
 
     DecodeInstruction(inst);
-    m_block_size[start_addr]++;
 
     m_compile_pc += opcode->size;
 
@@ -1344,14 +1336,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
   clearNodeStorage();
 
   m_blocks[start_addr] = (DSPCompiledCode)entryPoint;
-
-  if (m_block_size[start_addr] == 0)
-  {
-    // just a safeguard, should never happen anymore.
-    // if it does we might get stuck over in RunForCycles.
-    ERROR_LOG_FMT(DSPLLE, "Block at {:#06x} has zero size", start_addr);
-    m_block_size[start_addr] = 1;
-  }
 }
 
 void DSPEmitterIR::CompileCurrentIR(DSPEmitterIR& emitter)

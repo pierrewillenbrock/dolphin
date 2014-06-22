@@ -917,10 +917,8 @@ private:
 
   // during parsing: PC of the instruction being parsed
   u16 m_compile_pc;
-  u16 m_start_address;
 
   std::vector<DSPCompiledCode> m_blocks;
-  std::vector<u16> m_block_size;
 
   u16 m_cycles_left = 0;
 
