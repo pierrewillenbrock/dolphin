@@ -29,18 +29,21 @@ static u16 branch_needs_SR[16] = {SR_SIGN | SR_OVERFLOW,
                                   SR_OVERFLOW,
                                   0x0000};
 
-void DSPEmitterIR::IRReJitConditional(
-    u8 cond, DSPEmitterIR::IRInsn const& insn,
-    void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn), OpArg const& sr_reg,
-    bool negate, X64Reg tmp1, X64Reg tmp2)
+void DSPEmitterIR::IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn,
+                                      OpArg const& sr_reg, bool negate, X64Reg tmp1, X64Reg tmp2)
 {
   if (cond == 0xf && !negate)
   {  // Always true.
-    (this->*conditional_fn)(insn);
+    FixupBranch branchTaken = J(true);
+    SetJumpTarget(branchTaken, m_int3_loop);
+    insn.branchTaken = branchTaken;
+
     return;
   }
   if (cond == 0xf && negate)
   {  // Never true
+    // put in our dummy data
+    insn.branchTaken = m_unused_jump;
     return;
   }
 
@@ -91,13 +94,12 @@ void DSPEmitterIR::IRReJitConditional(
     TEST(16, R(tmp2), Imm16(SR_OVERFLOW));
     break;
   }
-  bool equal = (cond == 0xe) || (cond & 1);
+  bool equal = (cond != 0xe) && !(cond & 1);
   if (negate)
     equal = !equal;
-  FixupBranch skip_code = equal ? J_CC(CC_E, true) : J_CC(CC_NE, true);
-  // actually, this is guaranteed to emit code that does not return
-  (this->*conditional_fn)(insn);
-  SetJumpTarget(skip_code);
+  FixupBranch branchTaken = equal ? J_CC(CC_E, true) : J_CC(CC_NE, true);
+  SetJumpTarget(branchTaken, m_int3_loop);
+  insn.branchTaken = branchTaken;
 }
 
 // Generic jmp implementation
@@ -110,17 +112,32 @@ void DSPEmitterIR::ir_jcc(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
   u16 dest = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
-  IRInsn p = {&JmpOp,
-              {IROp::Imm(cc),
-               IROp::Imm(dest),               // address if true
-               IROp::Imm(m_compile_pc + 2)},  // address if false
-              IROp::None(),
-              {},
-              branch_needs_SR[cc],
-              0x0000,
-              0x0000,
-              0x0000};
-  ir_add_branch(p);
+
+  if (cc == 0xf)
+  {
+    IRInsn p2 = {
+        &WriteBranchExitOp, {IROp::Imm(dest)}, IROp::None(), {}, 0x0000, 0x0000, 0x0000, 0x0000};
+
+    ir_add_op(p2);
+  }
+  else
+  {
+    IRInsn p = {&JmpOp, {IROp::Imm(cc)}, IROp::None(), {}, branch_needs_SR[cc],
+                0x0000, 0x0000,          0x0000};
+
+    IRInsn p2 = {&WriteBranchExitOp,
+                 {IROp::Imm(dest)},  // address if true
+                 IROp::None(),
+                 {},
+                 0x0000,
+                 0x0000,
+                 0x0000,
+                 0x0000};
+
+    IRInsnNode* in = makeIRInsnNode(p2);
+
+    ir_add_branch(p, in, in);
+  }
 }
 
 // Generic jmpr implementation
@@ -131,17 +148,32 @@ void DSPEmitterIR::ir_jmprcc(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
   u8 reg = (opc >> 5) & 0x7;
-  IRInsn p = {&JmpOp,
-              {IROp::Imm(cc),
-               IROp::R(reg),                  // address if true
-               IROp::Imm(m_compile_pc + 2)},  // address if false
-              IROp::None(),
-              {},
-              branch_needs_SR[cc],
-              0x0000,
-              0x0000,
-              0x0000};
-  ir_add_branch(p);
+
+  if (cc == 0xf)
+  {
+    IRInsn p2 = {
+        &WriteBranchExitOp, {IROp::R(reg)}, IROp::None(), {}, 0x0000, 0x0000, 0x0000, 0x0000};
+
+    ir_add_op(p2);
+  }
+  else
+  {
+    IRInsn p = {&JmpOp, {IROp::Imm(cc)}, IROp::None(), {}, branch_needs_SR[cc],
+                0x0000, 0x0000,          0x0000};
+
+    IRInsn p2 = {&WriteBranchExitOp,
+                 {IROp::R(reg)},  // address if true
+                 IROp::None(),
+                 {},
+                 0x0000,
+                 0x0000,
+                 0x0000,
+                 0x0000};
+
+    IRInsnNode* in = makeIRInsnNode(p2);
+
+    ir_add_branch(p, in, in);
+  }
 }
 
 // Generic call implementation
@@ -155,17 +187,51 @@ void DSPEmitterIR::ir_call(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
   u16 dest = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
-  IRInsn p = {&CallOp,
-              {IROp::Imm(cc),
-               IROp::Imm(dest),               // call if true
-               IROp::Imm(m_compile_pc + 2)},  // return addr, addr if false
-              IROp::None(),
-              {},
-              branch_needs_SR[cc],
-              0x0000,
-              0x0000,
-              0x0000};
-  ir_add_branch(p);
+  if (cc == 0xf)
+  {
+    IRInsn p2 = {&CallUncondOp, {IROp::Imm(m_compile_pc + 2)},  // return addr
+                 IROp::None(),  {},
+                 0x0000,        0x0000,
+                 0x0000,        0x0000};
+    IRInsnNode* in = makeIRInsnNode(p2);
+
+    IRInsn p3 = {&WriteBranchExitOp,
+                 {IROp::Imm(dest)},  // callee addr
+                 IROp::None(),
+                 {},
+                 0x0000,
+                 0x0000,
+                 0x0000,
+                 0x0000};
+    IRInsnNode* in2 = makeIRInsnNode(p3);
+    in->addNext(in2);
+
+    ir_add_irnodes(in, in2);
+  }
+  else
+  {
+    IRInsn p = {&CallOp, {IROp::Imm(cc)}, IROp::None(), {}, branch_needs_SR[cc],
+                0x0000,  0x0000,          0x0000};
+
+    IRInsn p2 = {&CallUncondOp, {IROp::Imm(m_compile_pc + 2)},  // return addr
+                 IROp::None(),  {},
+                 0x0000,        0x0000,
+                 0x0000,        0x0000};
+    IRInsnNode* in = makeIRInsnNode(p2);
+
+    IRInsn p3 = {&WriteBranchExitOp,
+                 {IROp::Imm(dest)},  // callee addr
+                 IROp::None(),
+                 {},
+                 0x0000,
+                 0x0000,
+                 0x0000,
+                 0x0000};
+    IRInsnNode* in2 = makeIRInsnNode(p3);
+    in->addNext(in2);
+
+    ir_add_branch(p, in, in2);
+  }
 }
 
 // Generic callr implementation
@@ -178,17 +244,51 @@ void DSPEmitterIR::ir_callr(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
   u8 reg = (opc >> 5) & 0x7;
-  IRInsn p = {&CallOp,
-              {IROp::Imm(cc),
-               IROp::R(reg),                  // call if true
-               IROp::Imm(m_compile_pc + 1)},  // return addr, addr if false
-              IROp::None(),
-              {},
-              branch_needs_SR[cc],
-              0x0000,
-              0x0000,
-              0x0000};
-  ir_add_branch(p);
+  if (cc == 0xf)
+  {
+    IRInsn p2 = {&CallUncondOp, {IROp::Imm(m_compile_pc + 1)},  // return addr
+                 IROp::None(),  {},
+                 0x0000,        0x0000,
+                 0x0000,        0x0000};
+    IRInsnNode* in = makeIRInsnNode(p2);
+
+    IRInsn p3 = {&WriteBranchExitOp,
+                 {IROp::R(reg)},  // callee addr
+                 IROp::None(),
+                 {},
+                 0x0000,
+                 0x0000,
+                 0x0000,
+                 0x0000};
+    IRInsnNode* in2 = makeIRInsnNode(p3);
+    in->addNext(in2);
+
+    ir_add_irnodes(in, in2);
+  }
+  else
+  {
+    IRInsn p = {&CallOp, {IROp::Imm(cc)}, IROp::None(), {}, branch_needs_SR[cc],
+                0x0000,  0x0000,          0x0000};
+
+    IRInsn p2 = {&CallUncondOp, {IROp::Imm(m_compile_pc + 1)},  // return addr
+                 IROp::None(),  {},
+                 0x0000,        0x0000,
+                 0x0000,        0x0000};
+    IRInsnNode* in = makeIRInsnNode(p2);
+
+    IRInsn p3 = {&WriteBranchExitOp,
+                 {IROp::R(reg)},  // callee addr
+                 IROp::None(),
+                 {},
+                 0x0000,
+                 0x0000,
+                 0x0000,
+                 0x0000};
+    IRInsnNode* in2 = makeIRInsnNode(p3);
+    in->addNext(in2);
+
+    ir_add_branch(p, in, in2);
+  }
 }
 
 // Generic if implementation
@@ -202,17 +302,25 @@ void DSPEmitterIR::ir_ifcc(const UDSPInstruction opc)
     return;
   u16 dest = m_compile_pc + 1;
   IRInsn p = {&JmpOp,
-              {IROp::Imm(cc | 0x80),  // invert logic
-               IROp::Imm(dest +       // address if false
-                         GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(dest))->size),
-               IROp::Imm(dest)},  // address if true
+              {IROp::Imm(cc | 0x80)},  // invert logic
               IROp::None(),
               {},
               branch_needs_SR[cc],
               0x0000,
               0x0000,
               0x0000};
-  ir_add_branch(p);
+
+  IRInsn p2 = {&WriteBranchExitOp,
+               {IROp::Imm(dest + GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(dest))->size)},
+               IROp::None(),
+               {},
+               0x0000,
+               0x0000,
+               0x0000,
+               0x0000};
+  IRInsnNode* in = makeIRInsnNode(p2);
+
+  ir_add_branch(p, in, in);
 }
 
 // Generic ret implementation
@@ -223,15 +331,21 @@ void DSPEmitterIR::ir_ifcc(const UDSPInstruction opc)
 void DSPEmitterIR::ir_ret(const UDSPInstruction opc)
 {
   u8 cc = opc & 0xf;
-  IRInsn p = {&RetOp,
-              {IROp::Imm(cc), IROp::Imm(m_compile_pc + 1)},
-              IROp::None(),
-              {},
-              branch_needs_SR[cc],
-              0x0000,
-              0x0000,
-              0x0000};
-  ir_add_branch(p);
+  if (cc == 0xf)
+  {
+    IRInsn p2 = {&RetUncondOp, {}, IROp::None(), {}, 0x0000, 0x0000, 0x0000, 0x0000};
+    ir_add_op(p2);
+  }
+  else
+  {
+    IRInsn p = {&RetOp, {IROp::Imm(cc)}, IROp::None(), {}, branch_needs_SR[cc],
+                0x0000, 0x0000,          0x0000};
+
+    IRInsn p2 = {&RetUncondOp, {}, IROp::None(), {}, 0x0000, 0x0000, 0x0000, 0x0000};
+    IRInsnNode* in = makeIRInsnNode(p2);
+
+    ir_add_branch(p, in, in);
+  }
 }
 
 // RTI
@@ -244,7 +358,7 @@ void DSPEmitterIR::ir_rti(const UDSPInstruction opc)
   IRInsn p = {
       &RtiOp,
   };
-  ir_add_branch(p);
+  ir_add_op(p);
 }
 
 // HALT
@@ -255,7 +369,15 @@ void DSPEmitterIR::ir_halt(const UDSPInstruction opc)
   IRInsn p = {
       &HaltOp,
   };
-  ir_add_branch(p);
+  IRInsnNode* in = makeIRInsnNode(p);
+
+  IRInsn p2 = {&WriteBranchExitOp, {IROp::Imm(m_compile_pc)}};
+  IRInsnNode* in2 = new IRInsnNode();
+  m_node_storage.push_back(in2);
+  in2->insn = p2;
+  in->addNext(in2);
+
+  ir_add_irnodes(in, in2);
 }
 
 // LOOP $R
@@ -272,7 +394,18 @@ void DSPEmitterIR::ir_loop(const UDSPInstruction opc)
   u16 loop_pc = m_compile_pc + 1;
   IRInsn p = {
       &LoopOp, {IROp::R(reg), IROp::Imm(m_compile_pc + 1), IROp::Imm(loop_pc)}, IROp::None()};
-  ir_add_branch(p);
+
+  IRInsn p2 = {&WriteBranchExitOp,
+               {IROp::Imm(loop_pc + GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(loop_pc))->size)},
+               IROp::None()};
+  IRInsnNode* in = makeIRInsnNode(p2);
+
+  ir_add_branch(p, in, in);
+
+  if (m_addr_info[loop_pc + 1].loop_begin != 0xffff)
+    m_addr_info[loop_pc + 1].loop_begin = 0xfffe;
+  else
+    m_addr_info[loop_pc + 1].loop_begin = m_compile_pc + 1;
 }
 
 // LOOPI #I
@@ -289,7 +422,18 @@ void DSPEmitterIR::ir_loopi(const UDSPInstruction opc)
   u16 loop_pc = m_compile_pc + 1;
   IRInsn p = {
       &LoopOp, {IROp::Imm(cnt), IROp::Imm(m_compile_pc + 1), IROp::Imm(loop_pc)}, IROp::None()};
-  ir_add_branch(p);
+
+  IRInsn p2 = {&WriteBranchExitOp,
+               {IROp::Imm(loop_pc + GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(loop_pc))->size)},
+               IROp::None()};
+  IRInsnNode* in = makeIRInsnNode(p2);
+
+  ir_add_branch(p, in, in);
+
+  if (m_addr_info[loop_pc + 1].loop_begin != 0xffff)
+    m_addr_info[loop_pc + 1].loop_begin = 0xfffe;
+  else
+    m_addr_info[loop_pc + 1].loop_begin = m_compile_pc + 1;
 }
 
 // BLOOP $R, addrA
@@ -307,7 +451,18 @@ void DSPEmitterIR::ir_bloop(const UDSPInstruction opc)
   u16 loop_pc = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
   IRInsn p = {
       &LoopOp, {IROp::R(reg), IROp::Imm(m_compile_pc + 2), IROp::Imm(loop_pc)}, IROp::None()};
-  ir_add_branch(p);
+
+  IRInsn p2 = {&WriteBranchExitOp,
+               {IROp::Imm(loop_pc + GetOpTemplate(m_dsp_core.DSPState().ReadIMEM(loop_pc))->size)},
+               IROp::None()};
+  IRInsnNode* in = makeIRInsnNode(p2);
+
+  ir_add_branch(p, in, in);
+
+  if (m_addr_info[loop_pc + 1].loop_begin != 0xffff)
+    m_addr_info[loop_pc + 1].loop_begin = 0xfffe;
+  else
+    m_addr_info[loop_pc + 1].loop_begin = m_compile_pc + 2;
 }
 
 // BLOOPI #I, addrA
@@ -326,12 +481,23 @@ void DSPEmitterIR::ir_bloopi(const UDSPInstruction opc)
   u16 loop_pc = state.ReadIMEM(m_compile_pc + 1);
   IRInsn p = {
       &LoopOp, {IROp::Imm(cnt), IROp::Imm(m_compile_pc + 2), IROp::Imm(loop_pc)}, IROp::None()};
-  ir_add_branch(p);
+
+  IRInsn p2 = {&WriteBranchExitOp,
+               {IROp::Imm(loop_pc + GetOpTemplate(state.ReadIMEM(loop_pc))->size)},
+               IROp::None()};
+  IRInsnNode* in = makeIRInsnNode(p2);
+
+  ir_add_branch(p, in, in);
+
+  if (m_addr_info[loop_pc + 1].loop_begin != 0xffff)
+    m_addr_info[loop_pc + 1].loop_begin = 0xfffe;
+  else
+    m_addr_info[loop_pc + 1].loop_begin = m_compile_pc + 2;
 }
 
 void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
 {
-  const auto& state = m_dsp_core.DSPState();
+  // check if the loop is going to be entered and skip over if not.
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
   X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
@@ -343,31 +509,33 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     u16 cnt = insn.inputs[0].oparg.AsImm16().Imm16();
     if (cnt)
     {
+      // dummy jump
+      insn.branchTaken = m_unused_jump;
+
       dsp_reg_store_stack(StackRegister::Call, Imm16(loop_start), tmp1, tmp2, tmp3);
       dsp_reg_store_stack(StackRegister::LoopAddress, Imm16(loop_end), tmp1, tmp2, tmp3);
       dsp_reg_store_stack(StackRegister::LoopCounter, Imm16(cnt), tmp1, tmp2, tmp3);
     }
     else
     {
-      MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
-      dropAllRegs(insn);
-      WriteBranchExit(insn.cycle_count);
+      // when we know this, it would be better
+      // to completely skip over the loop body
+      FixupBranch branchTaken = J(true);
+      SetJumpTarget(branchTaken, m_int3_loop);
+      insn.branchTaken = branchTaken;
     }
   }
   else
   {
     TEST(16, insn.inputs[0].oparg, insn.inputs[0].oparg);
-    FixupBranch cnt = J_CC(CC_Z, true);
+    FixupBranch branchTaken = J_CC(CC_Z, true);
+
+    SetJumpTarget(branchTaken, m_int3_loop);
+    insn.branchTaken = branchTaken;
+
     dsp_reg_store_stack(StackRegister::LoopCounter, insn.inputs[0].oparg, tmp1, tmp2, tmp3);
     dsp_reg_store_stack(StackRegister::Call, Imm16(loop_start), tmp1, tmp2, tmp3);
     dsp_reg_store_stack(StackRegister::LoopAddress, Imm16(loop_end), tmp1, tmp2, tmp3);
-    FixupBranch exit = J(true);
-
-    SetJumpTarget(cnt);
-    MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(dsp_imem_read(loop_end))->size));
-    dropAllRegs(insn);
-    WriteBranchExit(insn.cycle_count);
-    SetJumpTarget(exit);
   }
 }
 
@@ -381,25 +549,35 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoopOp = {
 void DSPEmitterIR::iremit_HaltOp(IRInsn const& insn)
 {
   OR(16, M_SDSP_cr(), Imm16(CR_HALT));
-  SUB(16, M_SDSP_pc(), Imm16(1));
-  dropAllRegs(insn);
-  WriteBranchExit(insn.cycle_count);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HaltOp = {
     "HaltOp", &DSPEmitterIR::iremit_HaltOp, 0x0000, 0x0000, 0x0000, 0x0000, true};
 
-void DSPEmitterIR::irr_ret(DSPEmitterIR::IRInsn const& insn)
+void DSPEmitterIR::iremit_RetUncondOp(IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
   X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
   X64Reg tmp4 = insn.temps[3].oparg.GetSimpleReg();
+  // this cannot be (easily) predicted. leave the BranchExit here.
   dsp_reg_load_stack(StackRegister::Call, tmp4, tmp1, tmp2, tmp3);
   MOV(16, M_SDSP_pc(), R(tmp4));
   dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
 }
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RetUncondOp = {
+    "RetUncondOp",
+    &DSPEmitterIR::iremit_RetUncondOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {},
+    {},
+    {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_RetOp(IRInsn const& insn)
 {
@@ -407,15 +585,12 @@ void DSPEmitterIR::iremit_RetOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
-  IRReJitConditional(cc, insn, &DSPEmitterIR::irr_ret, insn.SR, false, tmp1, tmp2);
+  IRReJitConditional(cc, insn, insn.SR, false, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RetOp = {
-    "RetOp", &DSPEmitterIR::iremit_RetOp,
-    0x0000,  0x0000,
-    0x0000,  0x0000,
-    true,    {{OpImmAny}, {OpImmAny}},
-    {},      {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
+    "RetOp", &DSPEmitterIR::iremit_RetOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {{OpImmAny}},
+    {},      {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
 {
@@ -424,6 +599,7 @@ void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
   X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
   X64Reg tmp4 = insn.temps[3].oparg.GetSimpleReg();
 
+  // this cannot be (easily) predicted. leave the BranchExit here.
   dsp_reg_load_stack(StackRegister::Data, tmp4, tmp1, tmp2, tmp3);
   MOV(16, insn.SR, R(tmp4));
   dsp_reg_load_stack(StackRegister::Call, tmp4, tmp1, tmp2, tmp3);
@@ -439,54 +615,39 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RtiOp = {
     true,    {},
     {},      {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
-void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn)
-{
-  if (insn.inputs[1].oparg.IsImm())
-  {
-    MOV(16, M_SDSP_pc(), insn.inputs[1].oparg.AsImm16());
-  }
-  else
-  {
-    MOV(16, M_SDSP_pc(), insn.inputs[1].oparg);
-  }
-  dropAllRegs(insn);
-  WriteBranchExit(insn.cycle_count);
-}
-
 void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
-  IRReJitConditional(cc & 0xf, insn, &DSPEmitterIR::irr_jmp, insn.SR, cc & 0x80, tmp1, tmp2);
+  IRReJitConditional(cc & 0xf, insn, insn.SR, cc & 0x80, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::JmpOp = {
-    "JmpOp", &DSPEmitterIR::iremit_JmpOp,
-    0x0000,  0x0000,
-    0x0000,  0x0000,
-    true,    {{OpImmAny}, {OpAnyReg | OpImmAny}, {OpImmAny}},
+    "JmpOp", &DSPEmitterIR::iremit_JmpOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {{OpImmAny}},
     {},      {{OpAnyReg}, {OpAnyReg}}};
 
-void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn)
+void DSPEmitterIR::iremit_CallUncondOp(IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
   X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
 
-  dsp_reg_store_stack(StackRegister::Call, insn.inputs[2].oparg, tmp1, tmp2, tmp3);
-  if (insn.inputs[1].oparg.IsImm())
-  {
-    MOV(16, M_SDSP_pc(), insn.inputs[1].oparg.AsImm16());
-  }
-  else
-  {
-    MOV(16, M_SDSP_pc(), insn.inputs[1].oparg);
-  }
-  dropAllRegs(insn);
-  WriteBranchExit(insn.cycle_count);
+  dsp_reg_store_stack(StackRegister::Call, insn.inputs[0].oparg, tmp1, tmp2, tmp3);
 }
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CallUncondOp = {
+    "CallUncondOp",
+    &DSPEmitterIR::iremit_CallUncondOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {{OpImmAny}},
+    {},
+    {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_CallOp(IRInsn const& insn)
 {
@@ -494,14 +655,11 @@ void DSPEmitterIR::iremit_CallOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
-  IRReJitConditional(cc, insn, &DSPEmitterIR::irr_call, insn.SR, false, tmp1, tmp2);
+  IRReJitConditional(cc, insn, insn.SR, false, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CallOp = {
-    "CallOp", &DSPEmitterIR::iremit_CallOp,
-    0x0000,   0x0000,
-    0x0000,   0x0000,
-    true,     {{OpImmAny}, {OpAnyReg | OpImmAny}, {OpImmAny}},
-    {},       {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
+    "CallOp", &DSPEmitterIR::iremit_CallOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {{OpImmAny}},
+    {},       {{OpAnyReg}, {OpAnyReg}}};
 
 }  // namespace DSP::JITIR::x64

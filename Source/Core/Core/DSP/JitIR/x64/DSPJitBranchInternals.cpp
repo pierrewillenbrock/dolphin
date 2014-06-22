@@ -126,6 +126,62 @@ void DSPEmitterIR::postABICall(IRInsn const& insn, X64Reg returnreg)
 // then PC is modified with value from call stack $st0. Otherwise values from
 // call stack $st0 and both loop stacks $st2 and $st3 are popped and execution
 // continues at next opcode.
+void DSPEmitterIR::iremit_HandleLoopUnknownBeginOp(IRInsn const& insn)
+{
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+
+  // this cannot be easily predicted. leave it here.
+  // but this is the first one that we will try to predict, still
+  // easier to do than rets, since all "callers" ([b]loop[i]) have static
+  // addresses, and there should be a single loop op for each of the
+  // HandleLoop pseudo ops
+  MOVZX(32, 16, tmp1, M_SDSP_r_st(0));
+  MOV(16, M_SDSP_pc(), R(tmp1));
+
+  dropAllRegs(insn);
+  WriteBranchExit(insn.cycle_count);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopUnknownBeginOp = {
+    "HandleLoopUnknownBeginOp",
+    &DSPEmitterIR::iremit_HandleLoopUnknownBeginOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {},
+    {},
+    {{OpAnyReg}}};
+
+void DSPEmitterIR::iremit_HandleLoopJumpBeginOp(IRInsn const& insn)
+{
+  u16 loop_begin = insn.inputs[0].oparg.AsImm16().Imm16();
+
+  CMP(16, M_SDSP_r_st(0), Imm16(loop_begin));
+  FixupBranch branchTaken = J_CC(CC_NE, true);
+
+  SetJumpTarget(branchTaken, m_int3_loop);
+  insn.branchTaken = branchTaken;
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopJumpBeginOp = {
+    "HandleLoopJumpBeginOp",
+    &DSPEmitterIR::iremit_HandleLoopJumpBeginOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {{OpImmAny}},
+};
+
+// LOOP handling: Loop stack is used to control execution of repeated m_blocks of
+// instructions. Whenever there is value on stack $st2 and current PC is equal
+// value at $st2, then value at stack $st3 is decremented. If value is not zero
+// then PC is modified with value from call stack $st0. Otherwise values from
+// call stack $st0 and both loop stacks $st2 and $st3 are popped and execution
+// continues at next opcode.
 void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
 {
   u16 pc = insn.inputs[0].oparg.AsImm16().Imm16();
@@ -133,46 +189,29 @@ void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
   X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
 
-  MOVZX(32, 16, tmp1, M_SDSP_r_st(2));
-  TEST(32, R(tmp1), R(tmp1));
-  FixupBranch rLoopAddressExit = J_CC(CC_LE, true);
+  CMP(16, M_SDSP_r_st(2), Imm16(pc - 1));
+  FixupBranch rLoopAddressExit = J_CC(CC_NE, true);
 
-  MOVZX(32, 16, tmp1, M_SDSP_r_st(3));
-  TEST(32, R(tmp1), R(tmp1));
-  FixupBranch rLoopCounterExit = J_CC(CC_LE, true);
+  MOV(16, R(tmp1), M_SDSP_r_st(3));
+  TEST(16, R(tmp1), R(tmp1));
+  FixupBranch rLoopCounterExit = J_CC(CC_E, true);
 
-  MOVZX(32, 16, tmp1, M_SDSP_r_st(2));
-  MOVZX(32, 16, tmp2, M_SDSP_r_st(3));
+  SUB(16, R(tmp1), Imm16(1));
+  MOV(16, M_SDSP_r_st(3), R(tmp1));
+  FixupBranch branchTaken = J_CC(CC_G, true);
 
-  MOV(16, M_SDSP_pc(), Imm16(pc));
+  SetJumpTarget(branchTaken, m_int3_loop);
+  insn.branchTaken = branchTaken;
 
-  TEST(32, R(tmp2), R(tmp2));
-  FixupBranch rLoopCntG = J_CC(CC_E, true);
-  CMP(16, R(tmp1), Imm16(pc - 1));
-  FixupBranch rLoopAddrG = J_CC(CC_NE, true);
-
-  SUB(16, M_SDSP_r_st(3), Imm16(1));
-  CMP(16, M_SDSP_r_st(3), Imm16(0));
-
-  FixupBranch loadStack = J_CC(CC_LE, true);
-  MOVZX(32, 16, tmp1, M_SDSP_r_st(0));
-  MOV(16, M_SDSP_pc(), R(tmp1));
-  FixupBranch loopUpdated = J(true);
-
-  SetJumpTarget(loadStack);
+  // decremented counter, went 0.
+  // pop stack, then continue as if nothing happened
   dsp_reg_stack_pop(StackRegister::Call, tmp1, tmp2, tmp3);
   dsp_reg_stack_pop(StackRegister::LoopAddress, tmp1, tmp2, tmp3);
   dsp_reg_stack_pop(StackRegister::LoopCounter, tmp1, tmp2, tmp3);
 
-  SetJumpTarget(loopUpdated);
-  SetJumpTarget(rLoopAddrG);
-  SetJumpTarget(rLoopCntG);
-
-  dropAllRegs(insn);
-  WriteBranchExit(insn.cycle_count);
-
-  SetJumpTarget(rLoopAddressExit);
+  // wrong address or counter already was 0
   SetJumpTarget(rLoopCounterExit);
+  SetJumpTarget(rLoopAddressExit);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopOp = {
@@ -192,6 +231,30 @@ static void CheckExceptionsThunk(DSPCore& dsp)
   dsp.CheckExceptions();
 }
 
+void DSPEmitterIR::iremit_CheckExceptionsUncondOp(IRInsn const& insn)
+{
+  // pc behaviour here cannot be predicted at compile time.
+  MOV(16, M_SDSP_pc(), insn.inputs[0].oparg.AsImm16());
+
+  preABICall(insn);
+  ABI_CallFunctionP(CheckExceptionsThunk, &m_dsp_core);
+  postABICall(insn);
+
+  WriteBranchExit(insn.cycle_count, true);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsUncondOp = {
+    "CheckExceptionsUncondOp",
+    &DSPEmitterIR::iremit_CheckExceptionsUncondOp,
+    // the called irq cannot need any SR parts, and when we resume, the
+    // old analysis still holds.
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {{OpImmAny}}};
+
 void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
 {
   // no need to check for SR_INT_EXT_ENABLE here. the check in DSPCore
@@ -202,6 +265,8 @@ void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
   if ((insn.const_SR & SR_INT_ENABLE) != 0 && (insn.value_SR & SR_INT_ENABLE) == 0)
   {
     // interrupts disabled.
+    // dummy jump
+    insn.branchTaken = m_unused_jump;
     return;
   }
 
@@ -215,17 +280,10 @@ void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
   // Must go out of block if exception is detected
   // Check for interrupts and exceptions
   TEST(8, M_SDSP_exceptions(), Imm8(0xff));
-  FixupBranch skipCheck = J_CC(CC_Z, true);
+  FixupBranch branchTaken = J_CC(CC_NZ, true);
 
-  MOV(16, M_SDSP_pc(), insn.inputs[0].oparg.AsImm16());
-
-  preABICall(insn);
-  ABI_CallFunctionP(CheckExceptionsThunk, &m_dsp_core);
-  postABICall(insn);
-
-  WriteBranchExit(insn.cycle_count, true);
-
-  SetJumpTarget(skipCheck);
+  SetJumpTarget(branchTaken, m_int3_loop);
+  insn.branchTaken = branchTaken;
 
   if ((insn.const_SR & SR_INT_ENABLE) == 0)
     SetJumpTarget(int_disabled);
@@ -239,7 +297,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsOp = {
     0x0000,
     0x0000,
     true,
-    {{OpImmAny}}};
+    {}};
 
 void DSPEmitterIR::iremit_WriteBranchExitOp(IRInsn const& insn)
 {

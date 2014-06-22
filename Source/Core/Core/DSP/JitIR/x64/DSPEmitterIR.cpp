@@ -827,8 +827,20 @@ void DSPEmitterIR::EmitInsn(IRInsnNode* in)
   }
 }
 
-void DSPEmitterIR::EmitBB(IRBB* bb)
+bool DSPEmitterIR::EmitBB(IRBB* bb)
 {
+  ASSERT_MSG(DSPLLE, GetSpaceLeft() > 64, "code space too full");
+  if (bb->code)
+  {
+    // we already emitted this bb, so just do a JMP there.
+    JMP(bb->code, true);
+    return false;
+  }
+  bb->code = GetCodePtr();
+
+  // for fixup of the final branch
+  m_branch_todo.push_back(bb);
+
   IRNode* n = bb->start_node;
   while (1)
   {
@@ -844,6 +856,7 @@ void DSPEmitterIR::EmitBB(IRBB* bb)
 
     n = *(n->next.begin());
   }
+  return true;
 }
 
 void DSPEmitterIR::Compile(u16 start_addr)
@@ -891,9 +904,14 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     if (analyzer.IsCheckExceptions(m_compile_pc))
     {
-      IRInsn p = {&CheckExceptionsOp, {IROp::Imm(m_compile_pc)}};
+      IRInsn p = {&CheckExceptionsOp};
 
-      ir_add_branch(p);
+      IRInsn p2 = {&CheckExceptionsUncondOp, {IROp::Imm(m_compile_pc)}};
+      IRInsnNode* in = makeIRInsnNode(p2);
+
+      ir_add_branch(p, in, in);
+
+      ir_commit_parallel_nodes();
     }
 
     const UDSPInstruction inst = m_dsp_core.DSPState().ReadIMEM(m_compile_pc);
@@ -911,7 +929,51 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
       IRInsn p = {&HandleLoopOp, {IROp::Imm(m_compile_pc)}};
 
-      ir_add_branch(p);
+      IRBB* branch_bb = new IRBB();
+      m_bb_storage.push_back(branch_bb);
+      IRNode* branch_bb_node = makeIRNode();
+      branch_bb->start_node = branch_bb->end_node = branch_bb_node;
+      branch_bb->nodes.insert(branch_bb_node);
+
+      u16 pred_loop_begin = m_addr_info[m_compile_pc].loop_begin;
+      if (pred_loop_begin < 0xfffe)
+      {
+        IRInsn p2 = {&HandleLoopJumpBeginOp, {IROp::Imm(pred_loop_begin)}};
+
+        IRInsn p3 = {
+            &HandleLoopUnknownBeginOp,
+        };
+        IRInsnNode* in3 = makeIRInsnNode(p3);
+
+        IRBB* nbb = ir_add_branch(branch_bb, p2, in3, in3);
+
+        IRInsn p4 = {&WriteBranchExitOp, {IROp::Imm(pred_loop_begin)}};
+        IRInsnNode* in4 = makeIRInsnNode(p4);
+
+        ir_finish_irnodes(nbb, in4, in4);
+        nbb->end_node->addNext(in4);
+        nbb->end_node = in4;
+      }
+      else
+      {
+        IRInsn p3 = {
+            &HandleLoopUnknownBeginOp,
+        };
+        IRInsnNode* in3 = makeIRInsnNode(p3);
+
+        ir_finish_irnodes(branch_bb, in3, in3);
+        branch_bb->end_node->addNext(in3);
+        branch_bb->end_node = in3;
+      }
+
+      m_end_bb = ir_add_branch(m_end_bb, p, branch_bb);
+
+      ir_commit_parallel_nodes();
+
+      // todo: branch should be inverted(i.E. the
+      // path preparing the jump back should be directly
+      // after the loop-body, while the path out of the
+      // loop should be somewhere else)
     }
 
     if (opcode->branch && opcode->uncond_branch)
@@ -939,6 +1001,13 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   m_end_bb->setNextNonBranched(new_end_bb);
   m_end_bb = new_end_bb;
+
+  // collect all dangling ends. is simple.
+  for (auto bb : m_bb_storage)
+  {
+    if (!bb->nextNonBranched && bb != m_end_bb)
+      bb->setNextNonBranched(m_end_bb);
+  }
 
   // parsing done.
   dumpIRNodes();
@@ -1011,8 +1080,40 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   enterJitCode();
 
+  // future plan: create some kind of BB-scheduler that
+  // produces a somewhat optimial order of the BBs to schedule,
+  // then emit BBs in that order and fix up branches on the way,
+  // including using the branch inversion feature
+
   for (IRBB* bb = m_start_bb; bb != m_end_bb; bb = bb->nextNonBranched)
-    EmitBB(bb);
+  {
+    if (!EmitBB(bb))
+      break;
+  }
+
+  while (!m_branch_todo.empty())
+  {
+    IRBB* bb = m_branch_todo.front();
+    m_branch_todo.pop_front();
+    IRBranchNode* bn = dynamic_cast<IRBranchNode*>(bb->end_node);
+    if (bn)
+    {
+      if (bb->nextBranched->code)
+      {
+        // already know where this is going
+        SetJumpTarget(bn->insn.branchTaken, bb->nextBranched->code);
+      }
+      else
+      {
+        // fix the original branch
+        SetJumpTarget(bn->insn.branchTaken);
+        // emit all the bbs hanging there
+        for (IRBB* bb2 = bb->nextBranched; bb2 != m_end_bb; bb2 = bb2->nextNonBranched)
+          if (!EmitBB(bb2))
+            break;
+      }
+    }
+  }
 
   clearNodeStorage();
 
@@ -1146,31 +1247,58 @@ void DSPEmitterIR::ir_add_op(IRInsn insn)
   ir_add_irnodes(n, n);
 }
 
-void DSPEmitterIR::ir_add_branch(IRInsn insn)
+DSPEmitterIR::IRBB* DSPEmitterIR::ir_add_branch(IRBB* bb, IRInsn insn, IRBB* branch_bb)
 {
   // commit anything thats supposed to be parallel
   ir_commit_parallel_nodes();
 
   IRBranchNode* bn = makeIRBranchNode(insn);
-  ir_finish_irnodes(bn, bn);
+  ir_finish_irnodes(bb, bn, bn);
 
-  m_end_bb->end_node->addNext(bn);
-  m_end_bb->end_node = bn;
+  bb->end_node->addNext(bn);
+  bb->end_node = bn;
+
+  if (branch_bb)
+    bb->setNextBranched(branch_bb);
 
   // generate new BB
-  IRBB* new_end_bb = new IRBB();
-  m_bb_storage.push_back(new_end_bb);
-  IRNode* new_end_bb_node = makeIRNode();
-  new_end_bb->start_node = new_end_bb->end_node = new_end_bb_node;
-  new_end_bb->nodes.insert(new_end_bb_node);
+  IRBB* new_bb = new IRBB();
+  m_bb_storage.push_back(new_bb);
+  IRNode* new_bb_node = makeIRNode();
+  new_bb->start_node = new_bb->end_node = new_bb_node;
+  new_bb->nodes.insert(new_bb_node);
 
-  m_end_bb->next.insert(new_end_bb);
-  m_end_bb->nextNonBranched = new_end_bb;
-  new_end_bb->prev.insert(m_end_bb);
-  m_end_bb = new_end_bb;
+  bb->setNextNonBranched(new_bb);
+  return new_bb;
 }
 
-void DSPEmitterIR::ir_finish_irnodes(IRNode* first, IRNode* last)
+DSPEmitterIR::IRBB* DSPEmitterIR::ir_add_branch(IRBB* bb, IRInsn insn, IRNode* first, IRNode* last)
+{
+  IRBB* branch_bb = NULL;
+  if (first || last)
+  {
+    // generate branched bb
+    branch_bb = new IRBB();
+    m_bb_storage.push_back(branch_bb);
+    IRNode* branch_bb_node = makeIRNode();
+    branch_bb->start_node = branch_bb->end_node = branch_bb_node;
+    branch_bb->nodes.insert(branch_bb_node);
+
+    ir_finish_irnodes(branch_bb, first, last);
+
+    branch_bb->end_node->addNext(first);
+    branch_bb->end_node = last;
+  }
+
+  return ir_add_branch(bb, insn, branch_bb);
+}
+
+void DSPEmitterIR::ir_add_branch(IRInsn insn, IRNode* first, IRNode* last)
+{
+  m_end_bb = ir_add_branch(m_end_bb, insn, first, last);
+}
+
+void DSPEmitterIR::ir_finish_irnodes(IRBB* bb, IRNode* first, IRNode* last)
 {
   std::unordered_set<IRNode*> nodes;
   std::unordered_set<IRNode*> todo;
@@ -1183,11 +1311,17 @@ void DSPEmitterIR::ir_finish_irnodes(IRNode* first, IRNode* last)
 
     for (auto n2 : n->next)
       todo.insert(n2);
+    IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n);
+    if (bn)
+    {
+      for (auto n2 : bn->branch)
+        todo.insert(n2);
+    }
   }
 
   for (auto n : nodes)
   {
-    m_end_bb->nodes.insert(n);
+    bb->nodes.insert(n);
     IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
     if (!in)
       continue;
@@ -1195,13 +1329,18 @@ void DSPEmitterIR::ir_finish_irnodes(IRNode* first, IRNode* last)
   }
 }
 
-void DSPEmitterIR::ir_add_irnodes(IRNode* first, IRNode* last)
+void DSPEmitterIR::ir_add_irnodes(IRBB* bb, IRNode* first, IRNode* last)
 {
-  ir_finish_irnodes(first, last);
+  ir_finish_irnodes(bb, first, last);
   m_parallel_nodes.push_back(std::make_pair(first, last));
 }
 
-void DSPEmitterIR::ir_commit_parallel_nodes()
+void DSPEmitterIR::ir_add_irnodes(IRNode* first, IRNode* last)
+{
+  ir_add_irnodes(m_end_bb, first, last);
+}
+
+void DSPEmitterIR::ir_commit_parallel_nodes(IRBB* bb)
 {
   if (m_parallel_nodes.empty())
     return;
@@ -1209,22 +1348,27 @@ void DSPEmitterIR::ir_commit_parallel_nodes()
   // begin and end of parallel sections. at least for now.
   // ir_add_branch does this by itself to avoid the final added end node
   IRNode* new_end = makeIRNode();
-  m_end_bb->nodes.insert(new_end);
+  bb->nodes.insert(new_end);
   if (m_parallel_nodes.size() == 1)
   {
-    m_end_bb->end_node->addNext(m_parallel_nodes[0].first);
+    bb->end_node->addNext(m_parallel_nodes[0].first);
     m_parallel_nodes[0].second->addNext(new_end);
   }
   else
   {
     for (auto pnp : m_parallel_nodes)
     {
-      m_end_bb->end_node->addNext(pnp.first);
+      bb->end_node->addNext(pnp.first);
       new_end->addPrev(pnp.second);
     }
   }
-  m_end_bb->end_node = new_end;
+  bb->end_node = new_end;
   m_parallel_nodes.clear();
+}
+
+void DSPEmitterIR::ir_commit_parallel_nodes()
+{
+  ir_commit_parallel_nodes(m_end_bb);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::InvalidOp = {"InvalidOp", NULL};
@@ -1233,5 +1377,16 @@ void DSPEmitterIR::iremit_NoOp(IRInsn const& insn)
 {
   // really, does nothing
 }
+
+void DSPEmitterIR::iremit_RegFixOp(IRInsn const& insn)
+{
+  // not done, yet. different options, actually.
+  //* replace with multiple ops
+  //* create a single op that handles all register conversions
+  // do we even have registers in flight at the moment?
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RegFixOp = {"RegFixOp",
+                                                                &DSPEmitterIR::iremit_RegFixOp};
 
 }  // namespace DSP::JITIR::x64

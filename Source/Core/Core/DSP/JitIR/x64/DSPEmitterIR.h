@@ -541,14 +541,8 @@ private:
   void WriteBranchExit(u16 execd_cycles, bool keepGpr = true);
   void dropAllRegs(IRInsn const& insn);
 
-  void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn,
-                          void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn),
-                          Gen::OpArg const& sr_reg, bool negate, Gen::X64Reg tmp1,
-                          Gen::X64Reg tmp2);
-
-  void irr_ret(IRInsn const& insn);
-  void irr_jmp(IRInsn const& insn);
-  void irr_call(IRInsn const& insn);
+  void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn, Gen::OpArg const& sr_reg,
+                          bool negate, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
 
   void Update_SR_Register(IRInsn const& insn, Gen::OpArg const& val, Gen::OpArg const& sr_reg,
                           Gen::X64Reg tmp1);
@@ -619,11 +613,16 @@ private:
   // possible. if deparallelizing is impossible, it may need to emit
   // extra moves, and then deparallelize. we'll see)
   void ir_finish_insn(IRInsn& insn);
-  void ir_finish_irnodes(IRNode* first, IRNode* last);
+  void ir_finish_irnodes(IRBB* bb, IRNode* first, IRNode* last);
   void ir_add_op(IRInsn insn);
-  void ir_add_branch(IRInsn insn);
+  void ir_add_op(IRBB* bb, IRInsn insn);
+  void ir_add_branch(IRInsn insn, IRNode* first = NULL, IRNode* last = NULL);
+  IRBB* ir_add_branch(IRBB* bb, IRInsn insn, IRNode* first = NULL, IRNode* last = NULL);
+  IRBB* ir_add_branch(IRBB* bb, IRInsn insn, IRBB* branch_bb);
   void ir_add_irnodes(IRNode* first, IRNode* last);
+  void ir_add_irnodes(IRBB* bb, IRNode* first, IRNode* last);
   void ir_commit_parallel_nodes();
+  void ir_commit_parallel_nodes(IRBB* bb);
   void assignVRegs(IRInsn& insn);
 
   static int ir_to_regcache_reg(int reg);
@@ -656,7 +655,8 @@ private:
   void updateInsnOpArgs(IRInsn& insn);
   void updateInsnOpArgs();
 
-  void EmitBB(IRBB* bb);
+  /* returns false if it did not actually emit the BB, but just JMPed */
+  bool EmitBB(IRBB* bb);
   void EmitInsn(IRInsnNode* in);
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
@@ -746,17 +746,25 @@ private:
   // SR bits
   void iremit_SBSetOp(IRInsn const& insn);
   void iremit_SBClrOp(IRInsn const& insn);
+  // Unconditional Branches
+  void iremit_HaltOp(IRInsn const& insn);
+  void iremit_RtiOp(IRInsn const& insn);
+  void iremit_RetUncondOp(IRInsn const& insn);
+  void iremit_CallUncondOp(IRInsn const& insn);
+
+  void iremit_HandleLoopUnknownBeginOp(IRInsn const& insn);
+  void iremit_CheckExceptionsUncondOp(IRInsn const& insn);
+  void iremit_WriteBranchExitOp(IRInsn const& insn);
+
   // Branches
   void iremit_LoopOp(IRInsn const& insn);
-  void iremit_HaltOp(IRInsn const& insn);
   void iremit_RetOp(IRInsn const& insn);
-  void iremit_RtiOp(IRInsn const& insn);
   void iremit_JmpOp(IRInsn const& insn);
   void iremit_CallOp(IRInsn const& insn);
 
+  void iremit_HandleLoopJumpBeginOp(IRInsn const& insn);
   void iremit_HandleLoopOp(IRInsn const& insn);
   void iremit_CheckExceptionsOp(IRInsn const& insn);
-  void iremit_WriteBranchExitOp(IRInsn const& insn);
 
   // helpers for moving things between vregs and gregs
   void iremit_LoadImmOp(IRInsn const& insn);
@@ -770,6 +778,8 @@ private:
   void iremit_StoreGuestSROp(IRInsn const& insn);
   void iremit_StoreGuestACMOp(IRInsn const& insn);
   void iremit_StoreGuestOp(IRInsn const& insn);
+  // placeholder for moving things between hregs
+  void iremit_RegFixOp(IRInsn const& insn);
   // helpers to combine concurrent outputs
   void iremit_GRegOrACCACCOp(IRInsn const& insn);
   void iremit_GRegOrACCACLOp(IRInsn const& insn);
@@ -846,17 +856,26 @@ private:
   // SR bits
   static IREmitInfo const SBSetOp;
   static IREmitInfo const SBClrOp;
+  // Unconditional Branches
+  static IREmitInfo const HaltOp;
+  static IREmitInfo const RtiOp;
+  static IREmitInfo const RetUncondOp;
+  static IREmitInfo const CallUncondOp;
+
+  static IREmitInfo const HandleLoopUnknownBeginOp;
+  static IREmitInfo const CheckExceptionsUncondOp;
+  static IREmitInfo const WriteBranchExitOp;
+
   // Branches
   static IREmitInfo const LoopOp;
-  static IREmitInfo const HaltOp;
   static IREmitInfo const RetOp;
-  static IREmitInfo const RtiOp;
   static IREmitInfo const JmpOp;
   static IREmitInfo const CallOp;
 
+  static IREmitInfo const HandleLoopJumpBeginOp;
   static IREmitInfo const HandleLoopOp;
   static IREmitInfo const CheckExceptionsOp;
-  static IREmitInfo const WriteBranchExitOp;
+
   // helpers for moving things between vregs and gregs
   static IREmitInfo const LoadImmOp;
   static IREmitInfo const LoadGuestProdOp;
@@ -869,6 +888,8 @@ private:
   static IREmitInfo const StoreGuestSROp;
   static IREmitInfo const StoreGuestACMOp;
   static IREmitInfo const StoreGuestOp;
+  // placeholder for moving things between hregs
+  static IREmitInfo const RegFixOp;
   // helpers to combine concurrent outputs
   static IREmitInfo const GRegOrACCACCOp;
   static IREmitInfo const GRegOrACCACLOp;
