@@ -93,7 +93,7 @@ void DSPEmitterIR::dropAllRegs(IRInsn const& insn)
   // about us releasing all registers.
   for (unsigned int i = 0; i < m_vregs.size(); i++)
   {
-    if (m_vregs[i].oparg.IsSimpleReg())
+    if (m_vregs[i].active)
     {
       m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
     }

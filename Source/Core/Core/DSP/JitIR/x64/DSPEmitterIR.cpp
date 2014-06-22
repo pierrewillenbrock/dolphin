@@ -523,108 +523,138 @@ void DSPEmitterIR::deparallelize(IRBB* bb)
   deparallelize(bb->start_node);
 }
 
+void DSPEmitterIR::allocHostRegs()
+{
+  for (IRBB* bb = m_start_bb; !bb->next.empty(); bb = bb->nextNonBranched)
+  {
+    for (IRNode* n = bb->start_node; !n->next.empty(); n = *n->next.begin())
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+      if (!in)
+        continue;
+      IRInsn& insn = in->insn;
+      // now, do some of the work of the host register allocator:
+      // decide what to do with imms, and allocate the hregs
+      // this happens entirely with the vregs data(except for
+      // the actual assignment of opargs into the IROps)
+
+      // this is just a very simple allocator. when we do whole
+      // BBs, this needs to take into account the lifetime of
+      // different vregs, especially to allocate the same host reg
+      // to vregs that don't live at the same time
+
+      // collect the vregs touched by this instruction
+      // this "replaces" the lifetime analysis for now
+      insn.live_vregs.clear();
+      for (unsigned int i = 0; i < NUM_TEMPS; i++)
+      {
+        if (insn.temps[i].vreg > 0)
+          insn.live_vregs.insert(insn.temps[i].vreg);
+      }
+      for (unsigned int i = 0; i < NUM_INPUTS; i++)
+      {
+        if (insn.inputs[i].vreg > 0)
+          insn.live_vregs.insert(insn.inputs[i].vreg);
+      }
+      if (insn.output.vreg > 0)
+        insn.live_vregs.insert(insn.output.vreg);
+
+      // check if we can assign the imms
+      for (auto i : insn.live_vregs)
+      {
+        if (m_vregs[i].isImm)
+        {
+          if ((m_vregs[i].reqs & OpImm) && (s16)m_vregs[i].imm == m_vregs[i].imm)
+          {
+            m_vregs[i].oparg = Imm16(m_vregs[i].imm);
+          }
+          else if ((m_vregs[i].reqs & OpImm) && (s32)m_vregs[i].imm == m_vregs[i].imm)
+          {
+            m_vregs[i].oparg = Imm32(m_vregs[i].imm);
+          }
+          else if (m_vregs[i].reqs & OpImm64)
+          {
+            m_vregs[i].oparg = Imm64(m_vregs[i].imm);
+          }
+          else
+          {
+            // demote to register
+            m_vregs[i].isImm = false;
+          }
+        }
+      }
+      // grab all the vregs that need special hregs
+      for (auto i : insn.live_vregs)
+      {
+        if (m_vregs[i].isImm)
+          continue;
+        if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
+          m_vregs[i].oparg = R(RAX);
+        if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
+          m_vregs[i].oparg = R(RCX);
+      }
+
+      // allocate the rest
+      for (auto i : insn.live_vregs)
+      {
+        if (m_vregs[i].isImm)
+          continue;
+        if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
+          continue;
+        if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
+          continue;
+        X64Reg hreg = m_gpr.GetFreeXReg();
+        m_vregs[i].oparg = R(hreg);
+      }
+
+      // finally, put all the opargs back into the insn.
+      // we can already do this here
+      for (unsigned int i = 0; i < NUM_TEMPS; i++)
+      {
+        if (insn.temps[i].vreg > 0)
+          insn.temps[i].oparg = m_vregs[insn.temps[i].vreg].oparg;
+      }
+      for (unsigned int i = 0; i < NUM_INPUTS; i++)
+      {
+        if (insn.inputs[i].vreg > 0)
+          insn.inputs[i].oparg = m_vregs[insn.inputs[i].vreg].oparg;
+      }
+      if (insn.output.vreg > 0)
+        insn.output.oparg = m_vregs[insn.output.vreg].oparg;
+
+      // and now, drop it all again. this will not be needed when
+      // we drop the m_gpr completely
+      for (auto i : insn.live_vregs)
+      {
+        if (m_vregs[i].oparg.IsSimpleReg())
+          m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
+      }
+    }
+  }
+}
+
 void DSPEmitterIR::EmitInsn(IRInsn& insn)
 {
   _assert_msg_(DSPLLE, insn.emitter->func, "unhandled IL Op %s", insn.emitter->name);
 
   _assert_msg_(DSPLLE, GetSpaceLeft() > 64, "code space too full");
 
+  // tell the m_gpr about our vregs
+  // mark the active vregs active, so we can tell the m_gpr about
+  // them being put, if needed(dropAllRegs)
+  for (auto i : insn.live_vregs)
+  {
+    if (m_vregs[i].oparg.IsSimpleReg())
+    {
+      m_gpr.GetXReg(m_vregs[i].oparg.GetSimpleReg());
+      m_vregs[i].active = true;
+    }
+  }
+
   if (insn.needs_SR || insn.modifies_SR)
     insn.SR = m_gpr.GetReg(DSP_REG_SR, true);
   else
     insn.SR = M_SDSP_r_sr();
-
-  // now, do some of the work of the host register allocator:
-  // decide what to do with imms, and allocate the hregs
-  // this happens entirely with the vregs data(except for
-  // the actual assignment of opargs into the IROps)
-  //<< start of register allocation
-
-  // this is just a very simple allocator. when we do whole
-  // BBs, this needs to take into account the lifetime of
-  // different vregs, especially to allocate the same host reg
-  // to vregs that don't live at the same time
-
-  // collect the vregs touched by this instruction
-  // this "replaces" the lifetime analysis for now
-  std::unordered_set<int> live_vregs;
-  for (unsigned int i = 0; i < NUM_TEMPS; i++)
-  {
-    if (insn.temps[i].vreg > 0)
-      live_vregs.insert(insn.temps[i].vreg);
-  }
-  for (unsigned int i = 0; i < NUM_INPUTS; i++)
-  {
-    if (insn.inputs[i].vreg > 0)
-      live_vregs.insert(insn.inputs[i].vreg);
-  }
-  if (insn.output.vreg > 0)
-    live_vregs.insert(insn.output.vreg);
-
-  // check if we can assign the imms
-  for (auto i : live_vregs)
-  {
-    if (m_vregs[i].isImm)
-    {
-      if ((m_vregs[i].reqs & OpImm) && (s16)m_vregs[i].imm == m_vregs[i].imm)
-      {
-        m_vregs[i].oparg = Imm16(m_vregs[i].imm);
-      }
-      else if ((m_vregs[i].reqs & OpImm) && (s32)m_vregs[i].imm == m_vregs[i].imm)
-      {
-        m_vregs[i].oparg = Imm32(m_vregs[i].imm);
-      }
-      else if (m_vregs[i].reqs & OpImm64)
-      {
-        m_vregs[i].oparg = Imm64(m_vregs[i].imm);
-      }
-      else
-      {
-        // demote to register
-        m_vregs[i].isImm = false;
-      }
-    }
-  }
-  // grab all the vregs that need special hregs
-  for (auto i : live_vregs)
-  {
-    if (m_vregs[i].isImm)
-      continue;
-    if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
-      m_vregs[i].oparg = R(RAX);
-    if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
-      m_vregs[i].oparg = R(RCX);
-  }
-
-  // allocate the rest
-  for (auto i : live_vregs)
-  {
-    if (m_vregs[i].isImm)
-      continue;
-    if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
-      continue;
-    if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
-      continue;
-    X64Reg hreg = m_gpr.GetFreeXReg();
-    m_vregs[i].oparg = R(hreg);
-  }
-
-  // finally, put all the opargs back into the insn.
-  // we can already do this here
-  for (unsigned int i = 0; i < NUM_TEMPS; i++)
-  {
-    if (insn.temps[i].vreg > 0)
-      insn.temps[i].oparg = m_vregs[insn.temps[i].vreg].oparg;
-  }
-  for (unsigned int i = 0; i < NUM_INPUTS; i++)
-  {
-    if (insn.inputs[i].vreg > 0)
-      insn.inputs[i].oparg = m_vregs[insn.inputs[i].vreg].oparg;
-  }
-  if (insn.output.vreg > 0)
-    insn.output.oparg = m_vregs[insn.output.vreg].oparg;
-
-  // end of register allocation >>
 
   // do the actual loading. these should just be injected
   // into the insn stream, so we can manipulate them
@@ -678,12 +708,12 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
 
   // and now, drop it all again. this will not be needed when
   // we drop the m_gpr completely
-  for (auto i : live_vregs)
+  for (auto i : insn.live_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())
     {
       m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
-      m_vregs[i].oparg = M((void*)0);
+      m_vregs[i].active = false;
     }
   }
 }
@@ -801,6 +831,10 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   for (auto bb : m_bb_storage)
     deparallelize(bb);
+
+  allocHostRegs();
+
+  dumpIRNodes();
 
   const u8* entryPoint = AlignCode16();
 

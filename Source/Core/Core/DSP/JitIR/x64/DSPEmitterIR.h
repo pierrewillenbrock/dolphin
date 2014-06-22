@@ -636,6 +636,7 @@ private:
   void DecodeInstruction(UDSPInstruction inst);
   void deparallelize(IRNode* node);
   void deparallelize(IRBB* bb);
+  void allocHostRegs();
 
   void EmitBB(IRBB* bb);
   void EmitInsn(IRInsn& insn);
