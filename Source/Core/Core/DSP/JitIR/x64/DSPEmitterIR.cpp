@@ -474,6 +474,40 @@ void DSPEmitterIR::deparallelize(IRBB* bb)
   deparallelize(bb->start_node);
 }
 
+void DSPEmitterIR::EmitInsn(IRInsn& insn)
+{
+  _assert_msg_(DSPLLE, insn.emitter->func, "unhandled IL Op %s", insn.emitter->name);
+
+  _assert_msg_(DSPLLE, GetSpaceLeft() > 64, "code space too full");
+
+  // now, see if this insn has any special needs for its regs
+  // we start with the temporaries.
+  // temporaries are for reg allocation, only.
+  for (unsigned int i = 0; i < NUM_TEMPS; i++)
+  {
+    if ((insn.emitter->temps[i].reqs & OpMask) == OpAnyReg)
+    {
+      X64Reg reg = m_gpr.GetFreeXReg();
+      insn.temps[i].oparg = R(reg);
+    }
+    // don't need to do anything for these. yet.
+    if ((insn.emitter->temps[i].reqs & OpMask) == OpRAX)
+      insn.temps[i].oparg = R(RAX);
+    if ((insn.emitter->temps[i].reqs & OpMask) == OpRDX)
+      insn.temps[i].oparg = R(RDX);
+    if ((insn.emitter->temps[i].reqs & OpMask) == OpRCX)
+      insn.temps[i].oparg = R(RCX);
+  }
+
+  (this->*insn.emitter->func)(insn);
+
+  for (unsigned int i = 0; i < NUM_TEMPS; i++)
+  {
+    if ((insn.emitter->temps[i].reqs & OpMask) == OpAnyReg)
+      m_gpr.PutXReg(insn.temps[i].oparg.GetSimpleReg());
+  }
+}
+
 void DSPEmitterIR::EmitBB(IRBB* bb)
 {
   IRNode* n = bb->start_node;
@@ -482,7 +516,7 @@ void DSPEmitterIR::EmitBB(IRBB* bb)
     IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
 
     if (in)
-      (this->*(in->insn.emitter->func))(in->insn);
+      EmitInsn(in->insn);
 
     ASSERT_MSG(DSPLLE, n->next.size() < 2, "cannot handle parallel insns in emitter");
 

@@ -637,6 +637,7 @@ private:
   void deparallelize(IRBB* bb);
 
   void EmitBB(IRBB* bb);
+  void EmitInsn(IRInsn& insn);
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
 
