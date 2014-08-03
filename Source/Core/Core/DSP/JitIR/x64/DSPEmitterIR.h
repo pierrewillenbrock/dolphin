@@ -739,6 +739,11 @@ private:
   void iremit_HandleLoopOp(IRInsn const& insn);
   void iremit_CheckExceptionsOp(IRInsn const& insn);
 
+  // helpers for moving things between vregs and gregs
+  void iremit_LoadImmOp(IRInsn const& insn);
+  void iremit_LoadGuestOp(IRInsn const& insn);
+  void iremit_StoreGuestOp(IRInsn const& insn);
+
   // ******* Information Structs for Emitters *******
 
   static IREmitInfo const InvalidOp;
@@ -808,6 +813,10 @@ private:
   static IREmitInfo const UpdatePCOp;
   static IREmitInfo const HandleLoopOp;
   static IREmitInfo const CheckExceptionsOp;
+  // helpers for moving things between vregs and gregs
+  static IREmitInfo const LoadImmOp;
+  static IREmitInfo const LoadGuestOp;
+  static IREmitInfo const StoreGuestOp;
 
   DSPJitIRRegCache m_gpr{*this};
 

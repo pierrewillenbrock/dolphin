@@ -87,18 +87,16 @@ void DSPEmitterIR::dropAllRegs(IRInsn const& insn)
 {
   if (insn.SR.IsSimpleReg())
     m_gpr.PutReg(DSP_REG_SR);
-  for (int i = 0; i < NUM_INPUTS; i++)
+  // going the easy route, since all the vregs
+  // are "active" at the moment. this will not be the case later
+  // but then again, at that time we will not have to tell the m_gpr
+  // about us releasing all registers.
+  for (unsigned int i = 0; i < m_vregs.size(); i++)
   {
-    if (insn.inputs[i].oparg.IsSimpleReg())
-      m_gpr.PutXReg(insn.inputs[i].oparg.GetSimpleReg());
-  }
-  if (insn.output.oparg.IsSimpleReg())
-    m_gpr.PutXReg(insn.output.oparg.GetSimpleReg());
-  for (int i = 0; i < NUM_TEMPS; i++)
-  {
-    if (insn.temps[i].oparg.IsSimpleReg() && insn.temps[i].oparg.GetSimpleReg() != RCX &&
-        insn.temps[i].oparg.GetSimpleReg() != RAX)
-      m_gpr.PutXReg(insn.temps[i].oparg.GetSimpleReg());
+    if (m_vregs[i].oparg.IsSimpleReg())
+    {
+      m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
+    }
   }
 }
 

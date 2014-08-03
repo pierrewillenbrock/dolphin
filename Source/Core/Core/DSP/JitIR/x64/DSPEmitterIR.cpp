@@ -480,159 +480,150 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
 
   _assert_msg_(DSPLLE, GetSpaceLeft() > 64, "code space too full");
 
-  // now, see if this insn has any special needs for its regs
-  // we start with the temporaries.
-  // temporaries are for reg allocation, only.
+  m_vregs.clear();  // this may be moved outside the outer loop
+
+  //<<start of vreg assignment pass
+
   for (unsigned int i = 0; i < NUM_TEMPS; i++)
   {
-    if ((insn.emitter->temps[i].reqs & OpMask) == OpAnyReg)
+    if (insn.emitter->temps[i].reqs)
     {
-      X64Reg reg = m_gpr.GetFreeXReg();
-      insn.temps[i].oparg = R(reg);
+      insn.temps[i].vreg = m_vregs.size();
+      insn.temps[i].type = IROp::VREG;
+      VReg vr = {insn.emitter->temps[i].reqs, 0, false, M((void*)0)};
+      m_vregs.push_back(vr);
     }
-    // don't need to do anything for these. yet.
-    if ((insn.emitter->temps[i].reqs & OpMask) == OpRAX)
-      insn.temps[i].oparg = R(RAX);
-    if ((insn.emitter->temps[i].reqs & OpMask) == OpRCX)
-      insn.temps[i].oparg = R(RCX);
   }
+
+  bool output_is_input = false;
+  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  {
+    if (insn.emitter->inputs[i].reqs)
+    {
+      insn.inputs[i].vreg = m_vregs.size();
+      VReg vr = {insn.emitter->inputs[i].reqs, 0, false, M((void*)0)};
+      if (insn.inputs[i].type == IROp::IMM)
+      {
+        vr.imm = insn.inputs[i].imm;
+        vr.isImm = true;  // can be changed to false if reqs+imm requires
+      }
+      m_vregs.push_back(vr);
+      if (insn.emitter->inputs[i].reqs & SameAsOutput)
+      {
+        output_is_input = true;
+        insn.output.vreg = insn.inputs[i].vreg;
+      }
+    }
+  }
+
+  if (!output_is_input && insn.emitter->output.reqs)
+  {
+    insn.output.vreg = m_vregs.size();
+    VReg vr = {insn.emitter->output.reqs, 0, false, M((void*)0)};
+    m_vregs.push_back(vr);
+  }
+
+  // end of vreg assignment pass >>
 
   if (insn.needs_SR || insn.modifies_SR)
     insn.SR = m_gpr.GetReg(DSP_REG_SR, true);
   else
     insn.SR = M_SDSP_r_sr();
 
-  // todo: implement a temporary reg pool that gets filled here
-  // but is used similar to the get/putXReg in m_gpr
+  // now, do some of the work of the host register allocator:
+  // decide what to do with imms, and allocate the vregs
+  // this happens entirely with the vregs data
+  //<< start of register allocation
 
-  bool output_is_input = false;
-  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  // this is just a very simple allocator. when we do whole
+  // BBs, this needs to take into account the lifetime of
+  // different vregs, especially to allocate the same host reg
+  // to vregs that don't live at the same time
+
+  // check if we can assign the imms
+  for (unsigned int i = 0; i < m_vregs.size(); i++)
   {
-    if (insn.inputs[i].type == IROp::IMM)
+    if (m_vregs[i].isImm)
     {
-      if ((insn.emitter->inputs[i].reqs & OpImm) && (s16)insn.inputs[i].imm == insn.inputs[i].imm)
+      if ((m_vregs[i].reqs & OpImm) && (s16)m_vregs[i].imm == m_vregs[i].imm)
       {
-        insn.inputs[i].oparg = Imm16(insn.inputs[i].imm);
+        m_vregs[i].oparg = Imm16(m_vregs[i].imm);
       }
-      else if ((insn.emitter->inputs[i].reqs & OpImm) &&
-               (s32)insn.inputs[i].imm == insn.inputs[i].imm)
+      else if ((m_vregs[i].reqs & OpImm) && (s32)m_vregs[i].imm == m_vregs[i].imm)
       {
-        insn.inputs[i].oparg = Imm32(insn.inputs[i].imm);
+        m_vregs[i].oparg = Imm32(m_vregs[i].imm);
       }
-      else if (insn.emitter->inputs[i].reqs & OpImm64)
+      else if (m_vregs[i].reqs & OpImm64)
       {
-        insn.inputs[i].oparg = Imm64(insn.inputs[i].imm);
+        m_vregs[i].oparg = Imm64(m_vregs[i].imm);
       }
-      else if ((insn.emitter->inputs[i].reqs & OpAnyReg) == OpAnyReg)
+      else
       {
-        X64Reg hreg = m_gpr.GetFreeXReg();
-        MOV(64, R(hreg), Imm64(insn.inputs[i].imm));
-        insn.inputs[i].oparg = R(hreg);
+        // demote to register
+        m_vregs[i].isImm = false;
       }
-    }
-    else if (insn.inputs[i].type == IROp::REG)
-    {
-      if ((insn.emitter->inputs[i].reqs & OpAnyReg) == OpAnyReg)
-      {
-        X64Reg hreg = m_gpr.GetFreeXReg();
-        if (insn.inputs[i].guest_reg == IROp::DSP_REG_PROD_ALL)
-        {
-          X64Reg tmp1 = m_gpr.GetFreeXReg();
-          get_long_prod(hreg, tmp1);
-          m_gpr.PutXReg(tmp1);
-        }
-        else if (insn.inputs[i].guest_reg == DSP_REG_SR)
-        {
-          MOV(16, R(hreg), insn.SR);
-        }
-        else if (((insn.inputs[i].guest_reg != DSP_REG_ACM0 &&
-                   insn.inputs[i].guest_reg != DSP_REG_ACM1) ||
-                  (insn.emitter->inputs[i].reqs & NoSaturate)) &&
-                 insn.inputs[i].guest_reg != DSP_REG_ST0 &&
-                 insn.inputs[i].guest_reg != DSP_REG_ST1 &&
-                 insn.inputs[i].guest_reg != DSP_REG_ST2 && insn.inputs[i].guest_reg != DSP_REG_ST3)
-        {
-          int greg = ir_to_regcache_reg(insn.inputs[i].guest_reg);
-
-          RegisterExtension extend;
-
-          switch (insn.emitter->inputs[i].reqs & ExtendMask)
-          {
-          case ExtendSign16:
-            extend = RegisterExtension::Sign;
-            break;
-          case ExtendZero16:
-            extend = RegisterExtension::Zero;
-            break;
-          case ExtendSign32:
-            extend = RegisterExtension::Sign;
-            break;
-          case ExtendZero32:
-            extend = RegisterExtension::Zero;
-            break;
-          case ExtendSign64:
-            extend = RegisterExtension::Sign;
-            break;
-          case ExtendZero64:
-            extend = RegisterExtension::Zero;
-            break;
-          case ExtendNone:
-            extend = RegisterExtension::None;
-            break;
-          default:
-            _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
-            extend = RegisterExtension::None;
-            break;
-          }
-
-          m_gpr.ReadReg(greg, hreg, extend);
-        }
-        else
-        {
-          int greg = ir_to_regcache_reg(insn.inputs[i].guest_reg);
-          RegisterExtension extend;
-
-          switch (insn.emitter->inputs[i].reqs & ExtendMask)
-          {
-          case ExtendSign16:
-            extend = RegisterExtension::Sign;
-            break;
-          case ExtendZero16:
-            extend = RegisterExtension::Zero;
-            break;
-          case ExtendNone:
-            extend = RegisterExtension::None;
-            break;
-          default:
-            _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
-            extend = RegisterExtension::None;
-            break;
-          }
-
-          X64Reg tmp1 = m_gpr.GetFreeXReg();
-          X64Reg tmp2 = m_gpr.GetFreeXReg();
-          X64Reg tmp3 = m_gpr.GetFreeXReg();
-          dsp_op_read_reg(greg, hreg, extend, insn.SR, tmp1, tmp2, tmp3);
-          m_gpr.PutXReg(tmp3);
-          m_gpr.PutXReg(tmp2);
-          m_gpr.PutXReg(tmp1);
-        }
-        insn.inputs[i].oparg = R(hreg);
-      }
-    }
-    if (insn.emitter->inputs[i].reqs & SameAsOutput)
-    {
-      insn.output.oparg = insn.inputs[i].oparg;
-      output_is_input = true;
     }
   }
-
-  if ((insn.emitter->output.reqs & OpAnyReg) == OpAnyReg)
+  // grab all the vregs that need special hregs
+  for (unsigned int i = 0; i < m_vregs.size(); i++)
   {
-    if (!output_is_input)
+    if (m_vregs[i].isImm)
+      continue;
+    if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
+      m_vregs[i].oparg = R(RAX);
+    if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
+      m_vregs[i].oparg = R(RCX);
+  }
+
+  // allocate the rest
+  for (unsigned int i = 0; i < m_vregs.size(); i++)
+  {
+    if (m_vregs[i].isImm)
+      continue;
+    if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
+      continue;
+    if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
+      continue;
+    X64Reg hreg = m_gpr.GetFreeXReg();
+    m_vregs[i].oparg = R(hreg);
+  }
+
+  // finally, put all the opargs back into the insn.
+  // we can already do this here
+  for (unsigned int i = 0; i < NUM_TEMPS; i++)
+  {
+    if (insn.temps[i].vreg >= 0)
+      insn.temps[i].oparg = m_vregs[insn.temps[i].vreg].oparg;
+  }
+  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  {
+    if (insn.inputs[i].vreg >= 0)
+      insn.inputs[i].oparg = m_vregs[insn.inputs[i].vreg].oparg;
+  }
+  if (insn.output.vreg >= 0)
+    insn.output.oparg = m_vregs[insn.output.vreg].oparg;
+
+  // end of register allocation >>
+
+  // do the actual loading. these should just be injected
+  // into the insn stream, so we can manipulate them
+  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  {
+    if (insn.emitter->inputs[i].reqs)
     {
-      X64Reg hreg = m_gpr.GetFreeXReg();
-      insn.output.oparg = R(hreg);
+      if (insn.inputs[i].type == IROp::IMM)
+      {
+        IRInsn p = {&LoadImmOp, {insn.inputs[i]}, IROp::Vreg(insn.inputs[i].vreg)};
+        p.output.oparg = m_vregs[p.output.vreg].oparg;
+        iremit_LoadImmOp(p);
+      }
+      else if (insn.inputs[i].type == IROp::REG)
+      {
+        IRInsn p = {&LoadGuestOp, {insn.inputs[i]}, IROp::Vreg(insn.inputs[i].vreg)};
+        p.SR = insn.SR;
+        p.output.oparg = m_vregs[p.output.vreg].oparg;
+        iremit_LoadGuestOp(p);
+      }
     }
   }
 
@@ -643,102 +634,25 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
 
   (this->*insn.emitter->func)(insn);
 
-  for (unsigned int i = 0; i < NUM_TEMPS; i++)
+  // do the actual storing. these should just be injected
+  // into the insn stream, so we can manipulate them
+  if (insn.emitter->output.reqs)
   {
-    if ((insn.emitter->temps[i].reqs & OpMask) == OpAnyReg)
-      m_gpr.PutXReg(insn.temps[i].oparg.GetSimpleReg());
-  }
-
-  if ((insn.emitter->output.reqs & OpAnyReg) && insn.output.oparg.IsSimpleReg())
-  {
-    X64Reg hreg = insn.output.oparg.GetSimpleReg();
-    if (insn.output.guest_reg == IROp::DSP_REG_PROD_ALL)
-    {
-      X64Reg tmp1 = m_gpr.GetFreeXReg();
-      set_long_prod(hreg, tmp1);
-      m_gpr.PutXReg(tmp1);
-    }
-    else
-    {
-      int greg = ir_to_regcache_reg(insn.output.guest_reg);
-      if (greg >= DSP_REG_ST0 && greg <= DSP_REG_ST3)
-      {
-        X64Reg tmp1 = m_gpr.GetFreeXReg();
-        X64Reg tmp2 = m_gpr.GetFreeXReg();
-        X64Reg tmp3 = m_gpr.GetFreeXReg();
-        dsp_reg_store_stack((StackRegister)(greg - DSP_REG_ST0), hreg, tmp1, tmp2, tmp3);
-        m_gpr.PutXReg(tmp3);
-        m_gpr.PutXReg(tmp2);
-        m_gpr.PutXReg(tmp1);
-      }
-      else if (greg == DSP_REG_SR)
-      {
-        MOV(16, insn.SR, R(hreg));
-      }
-      else
-      {
-        m_gpr.WriteReg(greg, R(hreg));
-      }
-      if (!(insn.emitter->output.reqs & NoACMExtend))
-      {
-        X64Reg tmp1 = m_gpr.GetFreeXReg();
-        dsp_conditional_extend_accum(greg, insn.SR, tmp1);
-        m_gpr.PutXReg(tmp1);
-      }
-    }
-    if (!output_is_input)
-    {
-      m_gpr.PutXReg(hreg);
-    }
-  }
-  else if ((insn.emitter->output.reqs & OpImmAny) && insn.output.oparg.IsImm())
-  {
-    if (insn.output.guest_reg == IROp::DSP_REG_PROD_ALL)
-    {
-      X64Reg tmp1 = m_gpr.GetFreeXReg();
-      X64Reg tmp2 = m_gpr.GetFreeXReg();
-      MOV(64, R(tmp2), insn.output.oparg);
-      set_long_prod(tmp2, tmp1);
-      m_gpr.PutXReg(tmp2);
-      m_gpr.PutXReg(tmp1);
-    }
-    else
-    {
-      int greg = ir_to_regcache_reg(insn.output.guest_reg);
-      if (greg >= DSP_REG_ST0 && greg <= DSP_REG_ST3)
-      {
-        X64Reg tmp1 = m_gpr.GetFreeXReg();
-        X64Reg tmp2 = m_gpr.GetFreeXReg();
-        X64Reg tmp3 = m_gpr.GetFreeXReg();
-        X64Reg tmp4 = m_gpr.GetFreeXReg();
-        MOV(64, R(tmp4), insn.output.oparg);
-        dsp_reg_store_stack((StackRegister)(greg - DSP_REG_ST0), tmp4, tmp1, tmp2, tmp3);
-        m_gpr.PutXReg(tmp4);
-        m_gpr.PutXReg(tmp3);
-        m_gpr.PutXReg(tmp2);
-        m_gpr.PutXReg(tmp1);
-      }
-      else
-      {
-        m_gpr.WriteReg(greg, insn.output.oparg);
-      }
-      if (!(insn.emitter->output.reqs & NoACMExtend))
-      {
-        dsp_conditional_extend_accum_imm(greg, insn.output.oparg.AsImm64().Imm64(), insn.SR);
-      }
-    }
+    IRInsn p = {&StoreGuestOp, {IROp::Vreg(insn.output.vreg)}, insn.output};
+    p.SR = insn.SR;
+    p.inputs[0].oparg = m_vregs[p.inputs[0].vreg].oparg;
+    iremit_StoreGuestOp(p);
   }
 
   if (insn.needs_SR || insn.modifies_SR)
     m_gpr.PutReg(DSP_REG_SR, insn.modifies_SR);
 
-  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  // and now, drop it all again. this will not be needed when
+  // we drop the m_gpr completely
+  for (unsigned int i = 0; i < m_vregs.size(); i++)
   {
-    if ((insn.emitter->inputs[i].reqs & OpAnyReg) == OpAnyReg && insn.inputs[i].oparg.IsSimpleReg())
-    {
-      X64Reg hreg = insn.inputs[i].oparg.GetSimpleReg();
-      m_gpr.PutXReg(hreg);
-    }
+    if (m_vregs[i].oparg.IsSimpleReg())
+      m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
   }
 }
 
