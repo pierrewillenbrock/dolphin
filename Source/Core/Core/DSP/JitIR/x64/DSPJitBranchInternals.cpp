@@ -30,6 +30,8 @@ namespace x64
 
 void DSPEmitterIR::WriteBranchExit(bool keepGpr)
 {
+  if (m_spill_count > 0)
+    ADD(64, R(RSP), Imm32(((m_spill_count + 1) / 2) * 16));
   leaveJitCode();
 
   // Check the result of the sub

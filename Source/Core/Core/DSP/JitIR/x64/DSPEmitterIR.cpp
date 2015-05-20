@@ -1169,6 +1169,164 @@ bool DSPEmitterIR::allocHostRegs(bool strict)
   return success;
 }
 
+bool DSPEmitterIR::allocateHostRegs(bool strict)
+{
+  // clear information going to be collected below
+  for (auto& vr : m_vregs)
+  {
+    vr.same_hostreg_vregs.clear();
+    vr.parallel_live_vregs.clear();
+  }
+
+  for (auto n : m_node_storage)
+  {
+    n->live_vregs.clear();
+  }
+
+  // fills sameHostReg information in m_vregs
+  extractSameHostReg();
+
+  // fills insns.*.live_vregs
+  analyseVRegLifetime();
+
+  // if we keep the live_vregs correct, we can do load/store
+  // removal here, and know all the time if we can afford to use another
+  // host reg
+
+  // fills m_vregs[*].parallel_live_vregs from insns.*.live_vreg
+  findLiveVRegs();
+
+  return allocHostRegs(strict);
+}
+
+void DSPEmitterIR::iremit_UnSpillOp(IRInsn const& insn)
+{
+  u64 spill_idx = insn.inputs[0].imm;
+  int reqs = m_vregs[insn.output.vreg].reqs;
+  // spilling from stack. stack grows downward, so it is
+  // rsp+spill_idx
+  OpArg dst = insn.output.oparg;
+  OpArg src = MDisp(RSP, spill_idx * 8);
+  switch (reqs & ExtendMask)
+  {
+  case ExtendSign16:
+    MOVSX(64, 16, dst.GetSimpleReg(), src);
+    break;
+  case ExtendZero16:
+    MOVZX(64, 16, dst.GetSimpleReg(), src);
+    break;
+  case ExtendSign32:
+    MOVSX(64, 32, dst.GetSimpleReg(), src);
+    break;
+  case ExtendZero32:  // implicit zero extend
+    MOV(32, dst, src);
+    break;
+  case ExtendSign64:
+  case ExtendZero64:
+  case ExtendNone:
+    MOV(64, dst, src);
+    break;
+  }
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::UnSpillOp = {
+    "UnSpillOp", &DSPEmitterIR::iremit_UnSpillOp, 0, 0, 0, 0, false, {{OpImmAny}}, {OpAnyReg}};
+
+void DSPEmitterIR::iremit_SpillOp(IRInsn const& insn)
+{
+  u64 spill_idx = insn.inputs[1].imm;
+  // spilling from stack. stack grows downward, so it is
+  // rsp+spill_idx
+  MOV(64, MDisp(RSP, spill_idx * 8), insn.inputs[0].oparg);
+}
+
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SpillOp = {
+    "SpillOp", &DSPEmitterIR::iremit_SpillOp, 0, 0, 0, 0, false, {{OpAnyReg}, {OpImmAny}},
+};
+
+void DSPEmitterIR::spillVReg(int vreg)
+{
+  ASSERT_MSG(DSPLLE, !m_vregs[vreg].isImm, "trying to spill immediate VReg %d", vreg);
+  // find all instructions actually using this vreg
+  for (auto bb : m_bb_storage)
+  {
+    std::unordered_set<IRInsnNode*> todo;
+    for (auto n : bb->nodes)
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+      if (in)
+        todo.insert(in);
+    }
+    for (auto in : todo)
+    {
+      IRInsn& insn = in->insn;
+      bool output_is_input = false;
+      for (int i = 0; i < NUM_INPUTS; i++)
+      {
+        if (insn.inputs[i].type == IROp::VREG && insn.inputs[i].vreg == vreg)
+        {
+          int vreg_idx = m_vregs.size();
+          insn.inputs[i].vreg = vreg_idx;
+          VReg vr = {insn.emitter->inputs[i].reqs, 0, false, M((void*)0)};
+          m_vregs.push_back(vr);
+
+          output_is_input = insn.emitter->inputs[i].reqs & SameAsOutput;
+          if (output_is_input)
+            insn.output.vreg = vreg_idx;
+
+          IRInsn p = {&UnSpillOp, {IROp::Imm(m_spill_count)}, IROp::Vreg(vreg_idx)};
+          assignVRegs(p);
+          // should probably let something else
+          // do this, but we run late so we
+          // can get away with hardcoding
+          m_vregs[p.inputs[0].vreg].isImm = true;
+          m_vregs[p.inputs[0].vreg].oparg = Imm16(m_vregs[p.inputs[0].vreg].imm);
+          IRInsnNode* in2 = makeIRInsnNode(p);
+
+          bb->nodes.insert(in2);
+          in->insertBefore(in2);
+          addGuestLoadStore(in2, bb);
+        }
+      }
+      for (int i = 0; i < NUM_TEMPS; i++)
+      {
+        ASSERT_MSG(DSPLLE, insn.temps[i].vreg != vreg, "trying to spill temporary %d!!", i);
+      }
+
+      if (insn.output.type == IROp::VREG && insn.output.vreg == vreg)
+      {
+        int vreg_idx;
+        if (!output_is_input)
+        {
+          vreg_idx = m_vregs.size();
+          insn.output.vreg = vreg_idx;
+          VReg vr = {insn.emitter->output.reqs, 0, false, M((void*)0)};
+          m_vregs.push_back(vr);
+        }
+        else
+          vreg_idx = insn.output.vreg;
+
+        IRInsn p = {
+            &SpillOp, {IROp::Vreg(vreg_idx), IROp::Imm(m_spill_count)},
+        };
+        assignVRegs(p);
+        // should probably let something else
+        // do this, but we run late so we
+        // can get away with hardcoding
+        m_vregs[p.inputs[1].vreg].isImm = true;
+        m_vregs[p.inputs[1].vreg].oparg = Imm16(m_vregs[p.inputs[1].vreg].imm);
+        IRInsnNode* in2 = makeIRInsnNode(p);
+
+        bb->nodes.insert(in2);
+        in->insertAfter(in2);
+        addGuestLoadStore(in2, bb);
+      }
+    }
+  }
+
+  m_spill_count++;
+}
+
 void DSPEmitterIR::updateInsnOpArgs(IRInsn& insn)
 {
   for (unsigned int i = 0; i < NUM_TEMPS; i++)
@@ -1279,8 +1437,10 @@ void DSPEmitterIR::Compile(u16 start_addr)
   auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
 
   m_vregs.clear();
-  VReg vr = {0, 0, false, M((void*)0)};
-  m_vregs.push_back(vr);  // reserve vreg 0
+  {
+    VReg vr = {0, 0, false, M((void*)0)};
+    m_vregs.push_back(vr);  // reserve vreg 0
+  }
 
   clearNodeStorage();
 
@@ -1483,31 +1643,67 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   removeCheckExceptions();
 
-  // fills sameHostReg information in vregs
-  extractSameHostReg();
-
-  // fills insns.*.live_vregs
-  analyseVRegLifetime();
-
-  // if we keep the live_vregs correct, we can do load/store
-  // removal here, and know all the time if we can afford to use another
-  // host reg
-
-  // fills vregs[*].parallel_live_vregs from insns.*.live_vreg
-  findLiveVRegs();
-
-  while (!allocHostRegs(false))
+  m_spill_count = 0;
+  while (!allocateHostRegs(false))
   {
     //* find candidate for spilling
-    //* split the vreg usage, insert spill ops
+    /*
+        auto most_live_vregs = node_storage.begin();
+        for(auto n : node_storage)
+        {
+          if ((*most_live_vregs)->live_vregs.size() <
+              n->live_vregs.size())
+            most_live_vregs = n;
+        }
+    */
+    for (auto& vr : m_vregs)
+    {
+      vr.live_count = 0;
+      vr.refed_count = 0;
+    }
 
-    // for spill to work, we need to know which vreg and
-    // at which insn
-    //		spillVReg(IRBB *bb, IRNode *node, int vreg);
-    break;
+    for (auto n : m_node_storage)
+    {
+      for (auto vr : n->live_vregs)
+        m_vregs[vr].live_count++;
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+      if (!in)
+        continue;
+      for (unsigned int i = 0; i < NUM_INPUTS; i++)
+        m_vregs[in->insn.inputs[i].vreg].refed_count++;
+      for (unsigned int i = 0; i < NUM_TEMPS; i++)
+        m_vregs[in->insn.temps[i].vreg].refed_count++;
+      m_vregs[in->insn.output.vreg].refed_count++;
+    }
+
+    int best_vreg = 1;
+    for (unsigned int i = 2; i < m_vregs.size(); i++)
+    {
+      if (m_vregs[i].refed_count == 0 || m_vregs[i].isImm)
+        continue;
+      if (m_vregs[best_vreg].refed_count == 0 ||
+          float(m_vregs[best_vreg].live_count) / float(m_vregs[best_vreg].refed_count) <
+              float(m_vregs[i].live_count) / float(m_vregs[i].refed_count))
+        best_vreg = i;
+    }
+
+    ERROR_LOG(DSPLLE, "spilling vreg %d(live for %d, refed %d times)", best_vreg,
+              m_vregs[best_vreg].live_count, m_vregs[best_vreg].refed_count);
+    // idea:
+    // * find the instruction with most live vregs
+    // * only take these vregs into account
+    // * order the vregs by lifetime and usage during lifetime
+    //   (perhaps like (lifetime in instructions having this
+    //      vreg active)/(instructions using this vreg)  )
+    // * take a high ranking vreg and spill(see below)
+
+    //* split the vreg usage, insert spill ops
+    // for spill to work, we need to know which vreg
+    spillVReg(best_vreg);
+    dumpIRNodes();
   }
   dumpIRNodes();
-  allocHostRegs(true);
+  allocateHostRegs(true);
 
   updateInsnOpArgs();
 
@@ -1517,6 +1713,9 @@ void DSPEmitterIR::Compile(u16 start_addr)
   const u8* entryPoint = AlignCode16();
 
   enterJitCode();
+  // prepare spill area
+  if (m_spill_count > 0)
+    SUB(64, R(RSP), Imm32(((m_spill_count + 1) / 2) * 16));
 
   // future plan: create some kind of BB-scheduler that
   // produces a somewhat optimial order of the BBs to schedule,

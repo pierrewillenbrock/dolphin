@@ -509,7 +509,9 @@ private:
     Gen::OpArg oparg;  // valid after allocHostRegs
     std::unordered_set<int> same_hostreg_vregs;
     std::unordered_set<int> parallel_live_vregs;  // valid after findLiveVRegs
-    bool active;                                  // emitter flag
+    unsigned live_count;
+    unsigned refed_count;
+    bool active;  // emitter flag
   };
   struct DSPEmitterParallelSectioninfo
   {
@@ -655,6 +657,8 @@ private:
   void findLiveVRegs();
   void extractSameHostReg();
   bool allocHostRegs(bool strict = true);
+  bool allocateHostRegs(bool strict = true);
+  void spillVReg(int vreg);
   void updateInsnOpArgs(IRInsn& insn);
   void updateInsnOpArgs();
 
@@ -802,6 +806,9 @@ private:
   void iremit_GRegOrAXAXLOp(IRInsn const& insn);
   void iremit_GRegOrAXAXHOp(IRInsn const& insn);
   void iremit_GRegOr1616Op(IRInsn const& insn);
+  // spilling ops
+  void iremit_UnSpillOp(IRInsn const& insn);
+  void iremit_SpillOp(IRInsn const& insn);
 
   // noop that can be removed when the load stores have been taken
   // care of
@@ -916,6 +923,9 @@ private:
   static IREmitInfo const GRegOrAXAXHOp;
   static IREmitInfo const GRegOrAXAXLOp;
   static IREmitInfo const GRegOr1616Op;
+  // spilling ops
+  static IREmitInfo const UnSpillOp;
+  static IREmitInfo const SpillOp;
 
   // during parsing: PC of the instruction being parsed
   u16 m_compile_pc;
@@ -948,6 +958,7 @@ private:
   std::unordered_map<u16, AddressInfo> m_addr_info;
   std::unordered_map<IRNode*, u16> m_node_addr_map;
   std::vector<VReg> m_vregs;
+  int m_spill_count;
 
   DSPCore& m_dsp_core;
 };
