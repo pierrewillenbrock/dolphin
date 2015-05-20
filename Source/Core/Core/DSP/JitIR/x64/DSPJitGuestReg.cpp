@@ -148,7 +148,7 @@ size_t DSPEmitterIR::regSize(int reg)
   case IROp::DSP_REG_PROD_ALL:
     return 8;
   default:
-    _assert_msg_(DSPLLE, 0, "cannot happen");
+    ASSERT_MSG(DSPLLE, 0, "cannot happen");
     return 0;
   }
 }
@@ -197,7 +197,7 @@ void DSPEmitterIR::iremit_LoadGuestStackOp(IRInsn const& insn)
     MOVZX(64, 16, hreg, R(hreg));
     break;
   default:
-    _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+    ASSERT_MSG(DSPLLE, 0, "unrecognized extend requirement");
     break;
   }
 }
@@ -252,7 +252,7 @@ void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
       MOV(32, R(hreg), Imm32(0x00008000));
       break;
     default:
-      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      ASSERT_MSG(DSPLLE, 0, "unrecognized extend requirement");
       break;
     }
     FixupBranch done_negative = J();
@@ -274,7 +274,7 @@ void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
       MOV(16, R(hreg), mem);
       break;
     default:
-      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      ASSERT_MSG(DSPLLE, 0, "unrecognized extend requirement");
       break;
     }
 
@@ -298,7 +298,7 @@ void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
       MOV(16, R(hreg), mem);
       break;
     default:
-      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      ASSERT_MSG(DSPLLE, 0, "unrecognized extend requirement");
       break;
     }
   }
@@ -330,7 +330,7 @@ void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
       MOV(32, R(hreg), Imm32(0x00008000));
       break;
     default:
-      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      ASSERT_MSG(DSPLLE, 0, "unrecognized extend requirement");
       break;
     }
     FixupBranch done_negative = J();
@@ -353,7 +353,7 @@ void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
       MOV(16, R(hreg), mem);
       break;
     default:
-      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      ASSERT_MSG(DSPLLE, 0, "unrecognized extend requirement");
       break;
     }
 
@@ -397,7 +397,7 @@ void DSPEmitterIR::iremit_LoadGuestFastOp(IRInsn const& insn)
       MOV(16, R(hreg), mem);
       break;
     default:
-      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      ASSERT_MSG(DSPLLE, 0, "unrecognized extend requirement");
       break;
     }
     break;
@@ -412,7 +412,7 @@ void DSPEmitterIR::iremit_LoadGuestFastOp(IRInsn const& insn)
       MOV(32, R(hreg), mem);
       break;
     default:
-      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      ASSERT_MSG(DSPLLE, 0, "unrecognized extend requirement");
       break;
     }
     break;
@@ -425,12 +425,12 @@ void DSPEmitterIR::iremit_LoadGuestFastOp(IRInsn const& insn)
       MOV(64, R(hreg), mem);
       break;
     default:
-      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      ASSERT_MSG(DSPLLE, 0, "unrecognized extend requirement");
       break;
     }
     break;
   default:
-    _assert_msg_(DSPLLE, 0, "unsupported memory size");
+    ASSERT_MSG(DSPLLE, 0, "unsupported memory size");
     break;
   }
 }
@@ -560,7 +560,7 @@ void DSPEmitterIR::iremit_StoreGuestACMOp(IRInsn const& insn)
   }
   else
   {
-    _assert_msg_(DSPLLE, 0, "StoreGuestACMOp only handles Imm and R");
+    ASSERT_MSG(DSPLLE, 0, "StoreGuestACMOp only handles Imm and R");
   }
 
   FixupBranch is_40bit = J();
@@ -621,7 +621,7 @@ void DSPEmitterIR::iremit_StoreGuestOp(IRInsn const& insn)
       break;
     }
     default:
-      _assert_msg_(DSPLLE, 0, "unsupported memory size");
+      ASSERT_MSG(DSPLLE, 0, "unsupported memory size");
       break;
     }
   }
@@ -645,12 +645,12 @@ void DSPEmitterIR::iremit_StoreGuestOp(IRInsn const& insn)
       MOV(64, mem, src);
       break;
     default:
-      _assert_msg_(DSPLLE, 0, "unsupported memory size");
+      ASSERT_MSG(DSPLLE, 0, "unsupported memory size");
       break;
     }
   }
   else
-    _assert_msg_(DSPLLE, 0, "must be imm or reg");
+    ASSERT_MSG(DSPLLE, 0, "must be imm or reg");
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestOp = {
@@ -776,18 +776,13 @@ void DSPEmitterIR::addGuestLoadStore(IRNode* node, std::vector<IRNode*>& new_nod
     nlist.push_back(p);
   }
 
+  ASSERT_MSG(DSPLLE, !bn || nlist.empty(), "cannot handle store ops on branch instructions");
+
   for (auto nit = nlist.rbegin(); nit != nlist.rend(); nit++)
   {
     IRInsnNode* n2 = makeIRInsnNode(*nit);
     new_nodes.push_back(n2);
     in->insertAfter(n2);
-    if (bn)
-    {
-      IRInsnNode* n3 = new IRInsnNode();
-      new_nodes.push_back(n3);
-      n3->insn = *nit;
-      bn->insertAfterOnBranch(n3);
-    }
   }
 }
 

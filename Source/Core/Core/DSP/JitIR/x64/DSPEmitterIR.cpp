@@ -1515,12 +1515,6 @@ void DSPEmitterIR::ir_finish_irnodes(IRBB* bb, IRNode* first, IRNode* last)
 
     for (auto n2 : n->next)
       todo.insert(n2);
-    IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n);
-    if (bn)
-    {
-      for (auto n2 : bn->branch)
-        todo.insert(n2);
-    }
   }
 
   for (auto n : nodes)

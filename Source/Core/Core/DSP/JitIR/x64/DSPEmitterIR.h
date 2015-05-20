@@ -435,13 +435,6 @@ private:
   };
   class IRBranchNode : public IRInsnNode
   {
-  public:
-    virtual void addNextOnBranch(IRNode* node);
-    virtual void removeNext(IRNode* node);
-    virtual void insertAfterOnBranch(IRNode* first, IRNode* last);
-    void insertAfterOnBranch(IRNode* node);
-
-    std::unordered_set<IRNode*> branch;
   };
   class IRBB
   {  // BasicBlocks

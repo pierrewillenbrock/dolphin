@@ -150,7 +150,6 @@ void DSPEmitterIR::analyseKnownSR(IRBB* bb)
     IRNode* n = *todo.begin();
     todo.erase(todo.begin());
     IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
-    IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n);
     u16 const_SR = n->const_SR;
     u16 value_SR = n->value_SR;
     u16 modified_SR = n->modified_SR;
@@ -177,12 +176,6 @@ void DSPEmitterIR::analyseKnownSR(IRBB* bb)
       std::unordered_set<IRInsnNode*> nexts;
       for (auto n2 : n->next)
         todo.insert(n2);
-
-      if (bn)
-      {
-        for (auto n2 : bn->branch)
-          todo.insert(n2);
-      }
     }
   }
 }

@@ -46,16 +46,11 @@ void DSPEmitterIR::IRNode::insertBefore(IRNode* first, IRNode* last)
 {
   for (auto n : prev)
   {
-    // check if we are on *its branch(if any) or next
-    IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n);
-    if (bn && bn->branch.find(this) != bn->branch.end())
-    {
-      bn->addNextOnBranch(first);
-    }
-    else
-    {
-      n->addNext(first);
-    }
+    // there cannot be a branch node as a prev of another node
+    ASSERT_MSG(DSPLLE, !dynamic_cast<IRBranchNode*>(n),
+               "branch nodes are not allowed in node.prev");
+
+    (n)->addNext(first);
   }
   while (!prev.empty())
   {
@@ -81,32 +76,6 @@ void DSPEmitterIR::IRNode::insertAfter(IRNode* first, IRNode* last)
 void DSPEmitterIR::IRNode::insertAfter(IRNode* node)
 {
   insertAfter(node, node);
-}
-
-void DSPEmitterIR::IRBranchNode::addNextOnBranch(IRNode* node)
-{
-  branch.insert(node);
-  node->prev.insert(this);
-}
-
-void DSPEmitterIR::IRBranchNode::removeNext(IRNode* node)
-{
-  branch.erase(node);
-  DSPEmitterIR::IRNode::removeNext(node);
-}
-
-void DSPEmitterIR::IRBranchNode::insertAfterOnBranch(IRNode* first, IRNode* last)
-{
-  for (auto n : branch)
-    last->addNext(n);
-  while (!branch.empty())
-    removeNext(*branch.begin());
-  addNextOnBranch(first);
-}
-
-void DSPEmitterIR::IRBranchNode::insertAfterOnBranch(IRNode* node)
-{
-  insertAfterOnBranch(node, node);
 }
 
 void DSPEmitterIR::clearNodeStorage()
@@ -145,12 +114,12 @@ DSPEmitterIR::IRBB* DSPEmitterIR::findAndSplitBB(IRNode* at)
     for (auto n2 : n->prev)
       todo_nodes.insert(n2);
   }
-  _assert_msg_(DSPLLE, bb_start_node, "could not find start node relative to %p", at);
+  ASSERT_MSG(DSPLLE, bb_start_node, "could not find start node relative to %p", at);
   IRBB* old_bb = NULL;
   for (auto bb : m_bb_storage)
     if (bb->start_node == bb_start_node)
       old_bb = bb;
-  _assert_msg_(DSPLLE, old_bb, "could not find bb for node %p (via node %p)", at, bb_start_node);
+  ASSERT_MSG(DSPLLE, old_bb, "could not find bb for node %p (via node %p)", at, bb_start_node);
   if (!nodes_for_move.empty())
   {
     IRBB* new_bb = new IRBB();
@@ -287,13 +256,6 @@ void DSPEmitterIR::dumpIRNodes() const
 
       ERROR_LOG(DSPLLE, "%s -> %s [weight=40];", name.c_str(), branched.c_str());
       ERROR_LOG(DSPLLE, "%s -> %s [weight=100];", name.c_str(), fallthrough.c_str());
-      for (auto n2 : bn->branch)
-      {
-        std::stringstream buf3;
-        buf3 << "N_" << ctr << n2;
-        std::string nm = buf3.str();
-        ERROR_LOG(DSPLLE, "%s -> %s [weight=100];", branched.c_str(), nm.c_str());
-      }
       for (auto n2 : bn->next)
       {
         std::stringstream buf3;
