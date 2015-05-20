@@ -628,6 +628,7 @@ private:
   static int ir_to_regcache_reg(int reg);
 
   void DecodeInstruction(UDSPInstruction inst);
+  void connectLoops();
   void handleOverlappingOps(IRBB* bb);
   void addGuestLoadStore(IRNode* node, std::vector<IRNode*>& new_nodes);
   void addGuestLoadStore(IRNode* node, IRBB* bb = NULL);
@@ -665,6 +666,7 @@ private:
   static constexpr size_t MAX_BLOCKS = 0x10000;
 
   void clearNodeStorage();
+  IRBB* findAndSplitBB(IRNode* at);
   std::string dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const;
   void dumpIRNodes() const;
   IRNode* makeIRNode()

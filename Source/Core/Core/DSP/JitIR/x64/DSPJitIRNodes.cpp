@@ -122,6 +122,81 @@ void DSPEmitterIR::clearNodeStorage()
   m_end_bb = NULL;
 }
 
+/* locates the IRBB for the given IRNode and splits it if needed to satisfy
+ * bb->start_node == at
+ */
+DSPEmitterIR::IRBB* DSPEmitterIR::findAndSplitBB(IRNode* at)
+{
+  IRNode* bb_start_node = NULL;
+  std::unordered_set<IRNode*> nodes_for_move;
+  std::unordered_set<IRNode*> todo_nodes;
+  if (at->prev.empty())
+    bb_start_node = at;
+  for (auto n : at->prev)
+    todo_nodes.insert(n);
+  while (!todo_nodes.empty())
+  {
+    IRNode* n = *todo_nodes.begin();
+    todo_nodes.erase(todo_nodes.begin());
+    if (n->prev.empty())
+      bb_start_node = n;
+
+    nodes_for_move.insert(n);
+    for (auto n2 : n->prev)
+      todo_nodes.insert(n2);
+  }
+  _assert_msg_(DSPLLE, bb_start_node, "could not find start node relative to %p", at);
+  IRBB* old_bb = NULL;
+  for (auto bb : m_bb_storage)
+    if (bb->start_node == bb_start_node)
+      old_bb = bb;
+  _assert_msg_(DSPLLE, old_bb, "could not find bb for node %p (via node %p)", at, bb_start_node);
+  if (!nodes_for_move.empty())
+  {
+    IRBB* new_bb = new IRBB();
+    m_bb_storage.push_back(new_bb);
+
+    new_bb->start_node = bb_start_node;
+    if (at->prev.size() > 1)
+    {
+      IRNode* new_end_node = makeIRNode();
+      while (!at->prev.empty())
+      {
+        IRNode* n = *at->prev.begin();
+        at->removePrev(n);
+        n->addNext(new_end_node);
+      }
+      new_bb->end_node = new_end_node;
+    }
+    else
+    {
+      new_bb->end_node = *at->prev.begin();
+      at->removePrev(*at->prev.begin());
+    }
+
+    for (auto n : nodes_for_move)
+    {
+      old_bb->nodes.erase(n);
+      new_bb->nodes.insert(n);
+    }
+
+    while (!old_bb->prev.empty())
+    {
+      IRBB* bb = *old_bb->prev.begin();
+      if (bb->nextNonBranched == old_bb)
+        bb->replaceNextNonBranched(new_bb);
+      if (bb->nextBranched == old_bb)
+        bb->replaceNextBranched(new_bb);
+    }
+
+    new_bb->setNextNonBranched(old_bb);
+
+    old_bb->start_node = at;
+  }
+
+  return old_bb;
+}
+
 std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
 {
   DSPEmitterIR::IRInsn const& insn = in->insn;

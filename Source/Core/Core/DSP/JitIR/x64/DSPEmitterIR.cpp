@@ -192,6 +192,38 @@ void DSPEmitterIR::assignVRegs(IRInsn& insn)
   }
 }
 
+void DSPEmitterIR::connectLoops()
+{
+  // copy because we will remove things from m_end_bb->prev, invalidating
+  // iterators
+  std::unordered_set<IRBB*> todo = m_end_bb->prev;
+  for (auto n : todo)
+  {
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n->end_node);
+    if (!in)
+      continue;
+    if (in->insn.emitter != &WriteBranchExitOp || in->insn.inputs[0].type != IROp::IMM)
+      continue;
+    // and now, the jump.
+    u16 jump_pc = in->insn.inputs[0].imm;
+    if (jump_pc == 0)
+      continue;
+    if (m_addr_info.find(jump_pc) == m_addr_info.end())
+      continue;
+    if (!m_addr_info[jump_pc].node)
+      continue;
+    // we replace the insn.
+
+    IRInsn p = {&RegFixOp};
+    assignVRegs(p);
+    in->insn = p;
+
+    // now hook up the target.
+    IRBB* target = findAndSplitBB(m_addr_info[jump_pc].node);
+    n->replaceNextNonBranched(target);
+  }
+}
+
 void DSPEmitterIR::collectCycleCountUpdates(IRBB* bb, IRNode* node, IRNode* last_node,
                                             unsigned& cycle_count)
 {
@@ -1171,11 +1203,18 @@ void DSPEmitterIR::Compile(u16 start_addr)
     }
   }
 
-  IRInsn p = {&WriteBranchExitOp, {IROp::Imm(m_compile_pc)}};
+  {
+    // add a WriteBranchExitOp if needed
+    IRInsnNode* in = reinterpret_cast<IRInsnNode*>(m_end_bb->end_node);
+    if (!in || in->insn.emitter != &WriteBranchExitOp)
+    {
+      IRInsn p = {&WriteBranchExitOp, {IROp::Imm(m_compile_pc)}};
 
-  ir_add_op(p);
+      ir_add_op(p);
 
-  ir_commit_parallel_nodes();
+      ir_commit_parallel_nodes();
+    }
+  }
 
   // add final end_bb
   IRBB* new_end_bb = new IRBB();
@@ -1194,6 +1233,8 @@ void DSPEmitterIR::Compile(u16 start_addr)
       bb->setNextNonBranched(m_end_bb);
   }
 
+  connectLoops();
+
   // parsing done.
   dumpIRNodes();
 
@@ -1201,8 +1242,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
   // ucode, but it may still rely on the effect
   for (auto bb : m_bb_storage)
     handleOverlappingOps(bb);
-
-  dumpIRNodes();
 
   for (auto bb : m_bb_storage)
     addGuestLoadStore(bb);
@@ -1531,25 +1570,43 @@ void DSPEmitterIR::ir_commit_parallel_nodes(IRBB* bb)
 {
   if (m_parallel_nodes.empty())
     return;
+  IRInsnNode* in = reinterpret_cast<IRInsnNode*>(bb->end_node);
+  if (in &&
+      (in->insn.emitter == &WriteBranchExitOp || in->insn.emitter == &CheckExceptionsUncondOp ||
+       in->insn.emitter == &HandleLoopUnknownBeginOp || in->insn.emitter == &RetUncondOp ||
+       in->insn.emitter == &RtiOp || in->insn.emitter == &HaltOp))
+  {
+    // no need to add anything; it will not be executed.
+    m_parallel_nodes.clear();
+    return;
+  }
+
   // need to make sure there is always a "normal" IRNode at the
   // begin and end of parallel sections. at least for now.
   // ir_add_branch does this by itself to avoid the final added end node
-  IRNode* new_end = makeIRNode();
-  bb->nodes.insert(new_end);
   if (m_parallel_nodes.size() == 1)
   {
     bb->end_node->addNext(m_parallel_nodes[0].first);
-    m_parallel_nodes[0].second->addNext(new_end);
+    bb->end_node = m_parallel_nodes[0].second;
   }
   else
   {
+    if (in)
+    {
+      IRNode* tn = makeIRNode();
+      bb->nodes.insert(tn);
+      bb->end_node->addNext(tn);
+      bb->end_node = tn;
+    }
+    IRNode* new_end = makeIRNode();
+    bb->nodes.insert(new_end);
     for (auto pnp : m_parallel_nodes)
     {
       bb->end_node->addNext(pnp.first);
       new_end->addPrev(pnp.second);
     }
+    bb->end_node = new_end;
   }
-  bb->end_node = new_end;
   m_parallel_nodes.clear();
 }
 
