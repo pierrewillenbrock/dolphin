@@ -653,7 +653,7 @@ private:
   void analyseVRegLifetime(IRBB* bb);
   void analyseVRegLifetime();
   void findLiveVRegs();
-  void allocHostRegs();
+  bool allocHostRegs(bool strict = true);
   void updateInsnOpArgs(IRInsn& insn);
   void updateInsnOpArgs();
 

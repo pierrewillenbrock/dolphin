@@ -1048,13 +1048,14 @@ static X64Reg findHostReg(std::unordered_set<X64Reg> inuse)
   return INVALID_REG;
 }
 
-void DSPEmitterIR::allocHostRegs()
+bool DSPEmitterIR::allocHostRegs(bool strict)
 {
   // todo: refactor the allocation into one function, getting passed
   // which reqs to handle and/or from which pool to choose
 
   std::unordered_set<int> vreg_todo;
   std::list<int> vreg_allocation_order;
+  bool success = false;
 
   for (unsigned int i = 1; i < m_vregs.size(); i++)
   {
@@ -1084,7 +1085,7 @@ void DSPEmitterIR::allocHostRegs()
 
   for (auto i : vreg_allocation_order)
   {
-    if (m_vregs[i].oparg.IsSimpleReg())
+    if (m_vregs[i].oparg.IsSimpleReg() && m_vregs[i].oparg.GetSimpleReg() != INVALID_REG)
       continue;
 
     std::unordered_set<X64Reg> inuse;
@@ -1108,13 +1109,46 @@ void DSPEmitterIR::allocHostRegs()
     else
       hreg = findHostReg(inuse);
 
-    _assert_msg_(DSPLLE, hreg != INVALID_REG, "could not allocate host reg");
-    _assert_msg_(DSPLLE, inuse.count(hreg) == 0, "register is already in use");
+    ASSERT_MSG(DSPLLE, !strict || hreg != INVALID_REG, "could not allocate host reg");
+    ASSERT_MSG(DSPLLE, !strict || inuse.count(hreg) == 0, "register is already in use");
+    OpArg o;
+    if (hreg == INVALID_REG || inuse.count(hreg) != 0)
+      o = M((void*)0);
+    else
+      o = R(hreg);
 
-    m_vregs[i].oparg = R(hreg);
+    m_vregs[i].oparg = o;
     for (auto vr : m_vregs[i].same_hostreg_vregs)
-      m_vregs[vr].oparg = R(hreg);
+      m_vregs[vr].oparg = o;
   }
+
+  success = true;
+  for (unsigned int i = 1; i < m_vregs.size(); i++)
+  {
+    if (m_vregs[i].isImm)
+      continue;
+    if (strict)
+    {
+      ASSERT_MSG(DSPLLE,
+                 m_vregs[i].oparg.IsSimpleReg() && m_vregs[i].oparg.GetSimpleReg() != INVALID_REG,
+                 "Allocation for VReg %d failed", i);
+      ASSERT_MSG(DSPLLE,
+                 (m_vregs[i].reqs & OpAnyReg) != OpRAX || m_vregs[i].oparg.GetSimpleReg() == RAX,
+                 "OpRAX requirement not met on VReg %d", i);
+      ASSERT_MSG(DSPLLE,
+                 (m_vregs[i].reqs & OpAnyReg) != OpRCX || m_vregs[i].oparg.GetSimpleReg() == RCX,
+                 "OpRCX requirement not met on VReg %d", i);
+    }
+    if (!m_vregs[i].oparg.IsSimpleReg())
+      success = false;
+    if (m_vregs[i].oparg.GetSimpleReg() == INVALID_REG)
+      success = false;
+    if ((m_vregs[i].reqs & OpAnyReg) == OpRAX && m_vregs[i].oparg.GetSimpleReg() != RAX)
+      success = false;
+    if ((m_vregs[i].reqs & OpAnyReg) == OpRCX && m_vregs[i].oparg.GetSimpleReg() != RCX)
+      success = false;
+  }
+  return success;
 }
 
 void DSPEmitterIR::updateInsnOpArgs(IRInsn& insn)
@@ -1440,7 +1474,18 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   // fills vregs[*].parallel_live_vregs from insns.*.live_vreg
   findLiveVRegs();
-  allocHostRegs();
+  while (!allocHostRegs(false))
+  {
+    //* find candidate for spilling
+    //* split the vreg usage, insert spill ops
+
+    // for spill to work, we need to know which vreg and
+    // at which insn
+    //		spillVReg(IRBB *bb, IRNode *node, int vreg);
+    break;
+  }
+  dumpIRNodes();
+  allocHostRegs(true);
 
   updateInsnOpArgs();
 
