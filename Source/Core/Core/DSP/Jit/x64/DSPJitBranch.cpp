@@ -291,7 +291,7 @@ void DSPEmitter::HandleLoop()
   MOVZX(32, 16, ECX, M_SDSP_r_st(3));
 
   TEST(32, R(RCX), R(RCX));
-  FixupBranch rLoopCntG = J_CC(CC_LE, true);
+  FixupBranch rLoopCntG = J_CC(CC_E, true);
   CMP(16, R(RAX), Imm16(m_compile_pc - 1));
   FixupBranch rLoopAddrG = J_CC(CC_NE, true);
 
