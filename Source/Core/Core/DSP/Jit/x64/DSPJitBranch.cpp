@@ -305,9 +305,9 @@ void DSPEmitter::HandleLoop()
 
   SetJumpTarget(loadStack);
   DSPJitRegCache c(m_gpr);
-  dsp_reg_load_stack(StackRegister::Call);
-  dsp_reg_load_stack(StackRegister::LoopAddress);
-  dsp_reg_load_stack(StackRegister::LoopCounter);
+  dsp_reg_stack_pop(StackRegister::Call);
+  dsp_reg_stack_pop(StackRegister::LoopAddress);
+  dsp_reg_stack_pop(StackRegister::LoopCounter);
   m_gpr.FlushRegs(c);
 
   SetJumpTarget(loopUpdated);
