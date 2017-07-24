@@ -276,9 +276,7 @@ void DSPEmitter::rti(const UDSPInstruction opc)
 void DSPEmitter::halt(const UDSPInstruction)
 {
   OR(16, M_SDSP_cr(), Imm16(CR_HALT));
-  //	g_dsp.pc = dsp_reg_load_stack(StackRegister::Call);
-  dsp_reg_load_stack(StackRegister::Call);
-  MOV(16, M_SDSP_pc(), R(DX));
+  SUB(16, M_SDSP_pc(), Imm16(1));
 }
 
 // LOOP handling: Loop stack is used to control execution of repeated blocks of
