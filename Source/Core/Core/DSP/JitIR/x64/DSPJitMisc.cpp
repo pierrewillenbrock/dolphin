@@ -19,9 +19,15 @@ void DSPEmitterIR::mrr(const UDSPInstruction opc)
   u8 sreg = opc & 0x1f;
   u8 dreg = (opc >> 5) & 0x1f;
 
-  dsp_op_read_reg(sreg, EDX);
-  dsp_op_write_reg(dreg, EDX);
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  X64Reg tmp2 = m_gpr.GetFreeXReg();
+
+  dsp_op_read_reg(sreg, EDX, RegisterExtension::None, tmp1, tmp2);
+  dsp_op_write_reg(dreg, EDX, tmp1, tmp2);
   dsp_conditional_extend_accum(dreg);
+
+  m_gpr.PutXReg(tmp2);
+  m_gpr.PutXReg(tmp1);
 }
 
 // LRI $D, #I
@@ -35,10 +41,17 @@ void DSPEmitterIR::mrr(const UDSPInstruction opc)
 // S16 mode.
 void DSPEmitterIR::lri(const UDSPInstruction opc)
 {
-  const u8 reg = opc & 0x1F;
-  const u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
-  dsp_op_write_reg_imm(reg, imm);
+  u8 reg = opc & 0x1F;
+  u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  X64Reg tmp2 = m_gpr.GetFreeXReg();
+
+  dsp_op_write_reg_imm(reg, imm, tmp1, tmp2);
   dsp_conditional_extend_accum_imm(reg, imm);
+
+  m_gpr.PutXReg(tmp2);
+  m_gpr.PutXReg(tmp1);
 }
 
 // LRIS $(0x18+D), #I
@@ -48,8 +61,15 @@ void DSPEmitterIR::lris(const UDSPInstruction opc)
 {
   u8 reg = ((opc >> 8) & 0x7) + DSP_REG_AXL0;
   u16 imm = (s8)opc;
-  dsp_op_write_reg_imm(reg, imm);
+
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  X64Reg tmp2 = m_gpr.GetFreeXReg();
+
+  dsp_op_write_reg_imm(reg, imm, tmp1, tmp2);
   dsp_conditional_extend_accum_imm(reg, imm);
+
+  m_gpr.PutXReg(tmp2);
+  m_gpr.PutXReg(tmp1);
 }
 
 //----
@@ -70,8 +90,12 @@ void DSPEmitterIR::nx(const UDSPInstruction opc)
 // Decrement address register $arD.
 void DSPEmitterIR::dar(const UDSPInstruction opc)
 {
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+
   //	g_dsp.r[opc & 0x3] = dsp_decrement_addr_reg(opc & 0x3);
-  decrement_addr_reg(opc & 0x3);
+  decrement_addr_reg(opc & 0x3, tmp1);
+
+  m_gpr.PutXReg(tmp1);
 }
 
 // IAR $arD
@@ -79,8 +103,12 @@ void DSPEmitterIR::dar(const UDSPInstruction opc)
 // Increment address register $arD.
 void DSPEmitterIR::iar(const UDSPInstruction opc)
 {
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+
   //	g_dsp.r[opc & 0x3] = dsp_increment_addr_reg(opc & 0x3);
-  increment_addr_reg(opc & 0x3);
+  increment_addr_reg(opc & 0x3, tmp1);
+
+  m_gpr.PutXReg(tmp1);
 }
 
 // SUBARN $arD
@@ -89,9 +117,13 @@ void DSPEmitterIR::iar(const UDSPInstruction opc)
 // used only in IPL-NTSC ucode
 void DSPEmitterIR::subarn(const UDSPInstruction opc)
 {
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+
   //	u8 dreg = opc & 0x3;
   //	g_dsp.r[dreg] = dsp_decrease_addr_reg(dreg, (s16)g_dsp.r[DSP_REG_IX0 + dreg]);
-  decrease_addr_reg(opc & 0x3);
+  decrease_addr_reg(opc & 0x3, tmp1);
+
+  m_gpr.PutXReg(tmp1);
 }
 
 // ADDARN $arD, $ixS
@@ -100,12 +132,16 @@ void DSPEmitterIR::subarn(const UDSPInstruction opc)
 // It is critical for the Zelda ucode that this one wraps correctly.
 void DSPEmitterIR::addarn(const UDSPInstruction opc)
 {
+  X64Reg tmp1 = m_gpr.GetFreeXReg();
+
   //	u8 dreg = opc & 0x3;
   //	u8 sreg = (opc >> 2) & 0x3;
   //	g_dsp.r[dreg] = dsp_increase_addr_reg(dreg, (s16)g_dsp.r[DSP_REG_IX0 + sreg]);
 
   // From looking around it is always called with the matching index register
-  increase_addr_reg(opc & 0x3, (opc >> 2) & 0x3);
+  increase_addr_reg(opc & 0x3, (opc >> 2) & 0x3, tmp1);
+
+  m_gpr.PutXReg(tmp1);
 }
 
 //----
