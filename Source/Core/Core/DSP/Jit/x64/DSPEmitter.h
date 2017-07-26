@@ -245,7 +245,8 @@ private:
 
   // CC helpers
   void Update_SR_Register64(Gen::X64Reg val = Gen::EAX, Gen::X64Reg scratch = Gen::EDX);
-  void Update_SR_Register64_Carry(Gen::X64Reg val, Gen::X64Reg carry_ovfl, bool carry_eq = false);
+  void Update_SR_Register64_Carry(Gen::X64Reg new_val, Gen::X64Reg old_val,
+                                  bool subtraction = false);
   void Update_SR_Register16(Gen::X64Reg val = Gen::EAX);
   void Update_SR_Register16_OverS32(Gen::X64Reg val = Gen::EAX);
 

@@ -66,22 +66,24 @@ void DSPEmitter::Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg scratch)
   Update_SR_Register(val, scratch);
 }
 
-// In: (val): s64 _Value
-// In: (carry_ovfl): 1 = carry, 2 = overflow
-// Clobbers RDX
-void DSPEmitter::Update_SR_Register64_Carry(X64Reg val, X64Reg carry_ovfl, bool carry_eq)
+// In: (new_val): value after the add/subtract
+// In: (old_val): value before the add/subtract
+// In: RDX: value that was added/negative of value that was subtracted
+// clobbers (new_val), (old_val), RDX
+// modifies SR bits 0, 1, 2, 3, 4, 5, 7, fixed bits: none
+void DSPEmitter::Update_SR_Register64_Carry(X64Reg new_val, X64Reg old_val, bool subtraction)
 {
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   //	g_dsp.r[DSP_REG_SR] &= ~SR_CMP_MASK;
   AND(16, sr_reg, Imm16(~SR_CMP_MASK));
 
-  CMP(64, R(carry_ovfl), R(val));
+  CMP(64, R(old_val), R(new_val));
 
   // 0x01
   //	g_dsp.r[DSP_REG_SR] |= SR_CARRY;
   // Carry = (acc>res)
   // Carry2 = (acc>=res)
-  FixupBranch noCarry = J_CC(carry_eq ? CC_B : CC_BE);
+  FixupBranch noCarry = J_CC(subtraction ? CC_B : CC_BE);
   OR(16, sr_reg, Imm16(SR_CARRY));
   SetJumpTarget(noCarry);
 
@@ -89,22 +91,15 @@ void DSPEmitter::Update_SR_Register64_Carry(X64Reg val, X64Reg carry_ovfl, bool 
   //	g_dsp.r[DSP_REG_SR] |= SR_OVERFLOW;
   //	g_dsp.r[DSP_REG_SR] |= SR_OVERFLOW_STICKY;
   // Overflow = ((acc ^ res) & (ax ^ res)) < 0
-  XOR(64, R(carry_ovfl), R(val));
-  XOR(64, R(RDX), R(val));
-  TEST(64, R(carry_ovfl), R(RDX));
+  XOR(64, R(old_val), R(new_val));
+  XOR(64, R(RDX), R(new_val));
+  TEST(64, R(old_val), R(RDX));
   FixupBranch noOverflow = J_CC(CC_GE);
   OR(16, sr_reg, Imm16(SR_OVERFLOW | SR_OVERFLOW_STICKY));
   SetJumpTarget(noOverflow);
 
   m_gpr.PutReg(DSP_REG_SR);
-  if (carry_eq)
-  {
-    Update_SR_Register();
-  }
-  else
-  {
-    Update_SR_Register(val);
-  }
+  Update_SR_Register(new_val);
 }
 
 // In: RAX: s64 _Value
