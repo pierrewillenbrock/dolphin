@@ -151,7 +151,7 @@ void DSPEmitter::sbset(const UDSPInstruction opc)
   setCompileSR(1 << bit);
 }
 
-// 1000 1bbb xxxx xxxx, bbb >= 010
+// 1000 bbbv xxxx xxxx, bbb >= 101
 // This is a bunch of flag setters, flipping bits in SR. So far so good,
 // but it's harder to know exactly what effect they have.
 void DSPEmitter::srbith(const UDSPInstruction opc)
