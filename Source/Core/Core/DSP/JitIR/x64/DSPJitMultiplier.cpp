@@ -164,9 +164,7 @@ void DSPEmitterIR::movp(const UDSPInstruction opc)
   get_long_prod(RAX, tmp1);
   m_gpr.PutXReg(tmp1);
   //	dsp_set_long_acc(dreg, acc);
-  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg, false);
-  MOV(64, accreg, R(RAX));
-  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
+  m_gpr.WriteReg(DSP_REG_ACC0_64 + dreg, R(RAX));
   //	Update_SR_Register64(acc);
   if (FlagsNeeded())
   {
@@ -190,9 +188,7 @@ void DSPEmitterIR::movnp(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp1);
   NEG(64, R(EAX));
   //	dsp_set_long_acc(dreg, acc);
-  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg, false);
-  MOV(64, accreg, R(RAX));
-  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
+  m_gpr.WriteReg(DSP_REG_ACC0_64 + dreg, R(RAX));
   //	Update_SR_Register64(acc);
   if (FlagsNeeded())
   {
@@ -216,9 +212,7 @@ void DSPEmitterIR::movpz(const UDSPInstruction opc)
   round_long(RAX);
   m_gpr.PutXReg(tmp1);
   //	dsp_set_long_acc(dreg, acc);
-  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg, false);
-  MOV(64, accreg, R(RAX));
-  m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
+  m_gpr.WriteReg(DSP_REG_ACC0_64 + dreg, R(RAX));
   //	Update_SR_Register64(acc);
   if (FlagsNeeded())
   {
@@ -258,17 +252,13 @@ void DSPEmitterIR::addpaxz(const UDSPInstruction opc)
     get_long_prod(RDX, tmp2);
     MOV(64, R(RCX), R(RAX));
 
-    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg, false);
-    MOV(64, accreg, R(RCX));
-    m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
+    m_gpr.WriteReg(DSP_REG_ACC0_64 + dreg, R(RCX));
 
     Update_SR_Register64_Carry(EAX, tmp1, RDX);
   }
   else
   {
-    OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + dreg, false);
-    MOV(64, accreg, R(RAX));
-    m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
+    m_gpr.WriteReg(DSP_REG_ACC0_64 + dreg, R(RAX));
   }
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
@@ -375,9 +365,7 @@ void DSPEmitterIR::mulmv(const UDSPInstruction opc)
   mul(opc);
   //	dsp_set_long_acc(rreg, acc);
   POP(64, R(RAX));
-  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + rreg, false);
-  MOV(64, accreg, R(RAX));
-  m_gpr.PutReg(DSP_REG_ACC0_64 + rreg);
+  m_gpr.WriteReg(DSP_REG_ACC0_64 + rreg, R(RAX));
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
@@ -403,9 +391,7 @@ void DSPEmitterIR::mulmvz(const UDSPInstruction opc)
   round_long(RDX);
   m_gpr.PutXReg(tmp1);
   //	dsp_set_long_acc(rreg, acc);
-  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + rreg, false);
-  MOV(64, accreg, R(RDX));
-  m_gpr.PutReg(DSP_REG_ACC0_64 + rreg);
+  m_gpr.WriteReg(DSP_REG_ACC0_64 + rreg, R(RDX));
   mul(opc);
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
@@ -563,9 +549,7 @@ void DSPEmitterIR::mulxmv(const UDSPInstruction opc)
   //	dsp_set_long_prod(prod);
   set_long_prod(RAX, tmp2);
   //	dsp_set_long_acc(rreg, acc);
-  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + rreg, false);
-  MOV(64, accreg, R(tmp1));
-  m_gpr.PutReg(DSP_REG_ACC0_64 + rreg);
+  m_gpr.WriteReg(DSP_REG_ACC0_64 + rreg, R(tmp1));
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
@@ -623,9 +607,7 @@ void DSPEmitterIR::mulxmvz(const UDSPInstruction opc)
   //	dsp_set_long_prod(prod);
   set_long_prod(RAX, tmp2);
   //	dsp_set_long_acc(rreg, acc);
-  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + rreg, false);
-  MOV(64, accreg, R(tmp1));
-  m_gpr.PutReg(DSP_REG_ACC0_64 + rreg);
+  m_gpr.WriteReg(DSP_REG_ACC0_64 + rreg, R(tmp1));
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
@@ -729,9 +711,7 @@ void DSPEmitterIR::mulcmv(const UDSPInstruction opc)
   set_long_prod(RAX, tmp1);
   //	dsp_set_long_acc(rreg, acc);
   POP(64, R(RAX));
-  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + rreg, false);
-  MOV(64, accreg, R(RAX));
-  m_gpr.PutReg(DSP_REG_ACC0_64 + rreg);
+  m_gpr.WriteReg(DSP_REG_ACC0_64 + rreg, R(RAX));
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
@@ -770,9 +750,7 @@ void DSPEmitterIR::mulcmvz(const UDSPInstruction opc)
   set_long_prod(RAX, tmp1);
   //	dsp_set_long_acc(rreg, acc);
   POP(64, R(RAX));
-  OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + rreg, false);
-  MOV(64, accreg, R(RAX));
-  m_gpr.PutReg(DSP_REG_ACC0_64 + rreg);
+  m_gpr.WriteReg(DSP_REG_ACC0_64 + rreg, R(RAX));
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {

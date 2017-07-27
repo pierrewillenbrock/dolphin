@@ -310,10 +310,7 @@ void DSPEmitterIR::dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExten
 void DSPEmitterIR::increment_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
                                       Gen::X64Reg tmp4)
 {
-  const OpArg wr_reg = m_gpr.GetReg(DSP_REG_WR0 + reg);
-  MOVZX(32, 16, tmp3, wr_reg);
-  m_gpr.PutReg(DSP_REG_WR0 + reg, false);
-
+  m_gpr.ReadReg(DSP_REG_WR0 + reg, tmp3, RegisterExtension::Zero);
   const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
   MOVZX(32, 16, tmp1, ar_reg);
 
@@ -339,10 +336,7 @@ void DSPEmitterIR::increment_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp
 void DSPEmitterIR::decrement_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
                                       Gen::X64Reg tmp4)
 {
-  const OpArg wr_reg = m_gpr.GetReg(DSP_REG_WR0 + reg);
-  MOVZX(32, 16, tmp3, wr_reg);
-  m_gpr.PutReg(DSP_REG_WR0 + reg, false);
-
+  m_gpr.ReadReg(DSP_REG_WR0 + reg, tmp3, RegisterExtension::Zero);
   const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
   MOVZX(32, 16, tmp2, ar_reg);
 
@@ -371,14 +365,8 @@ void DSPEmitterIR::decrement_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp
 void DSPEmitterIR::increase_addr_reg(int reg, int _ix_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
                                      Gen::X64Reg tmp3, Gen::X64Reg tmp4)
 {
-  const OpArg wr_reg = m_gpr.GetReg(DSP_REG_WR0 + reg);
-  MOVZX(32, 16, tmp3, wr_reg);
-  m_gpr.PutReg(DSP_REG_WR0 + reg, false);
-
-  const OpArg ix_reg = m_gpr.GetReg(DSP_REG_IX0 + _ix_reg);
-  MOVSX(32, 16, tmp4, ix_reg);
-  m_gpr.PutReg(DSP_REG_IX0 + _ix_reg, false);
-
+  m_gpr.ReadReg(DSP_REG_WR0 + reg, tmp3, RegisterExtension::Zero);
+  m_gpr.ReadReg(DSP_REG_IX0 + _ix_reg, tmp4, RegisterExtension::Sign);
   const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
   MOVZX(32, 16, tmp2, ar_reg);
 
@@ -434,14 +422,8 @@ void DSPEmitterIR::increase_addr_reg(int reg, int _ix_reg, Gen::X64Reg tmp1, Gen
 void DSPEmitterIR::decrease_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
                                      Gen::X64Reg tmp4)
 {
-  const OpArg wr_reg = m_gpr.GetReg(DSP_REG_WR0 + reg);
-  MOVZX(32, 16, tmp3, wr_reg);
-  m_gpr.PutReg(DSP_REG_WR0 + reg, false);
-
-  const OpArg ix_reg = m_gpr.GetReg(DSP_REG_IX0 + reg);
-  MOVSX(32, 16, tmp4, ix_reg);
-  m_gpr.PutReg(DSP_REG_IX0 + reg, false);
-
+  m_gpr.ReadReg(DSP_REG_WR0 + reg, tmp3, RegisterExtension::Zero);
+  m_gpr.ReadReg(DSP_REG_IX0 + reg, tmp4, RegisterExtension::Sign);
   const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
   MOVZX(32, 16, tmp2, ar_reg);
 
@@ -635,9 +617,7 @@ void DSPEmitterIR::dmem_read_imm(u16 address, X64Reg host_dreg)
 void DSPEmitterIR::get_long_prod(Gen::X64Reg long_prod, Gen::X64Reg tmp1)
 {
   // s64 val   = (s8)(u8)g_dsp.r[DSP_REG_PRODH];
-  const OpArg prod_reg = m_gpr.GetReg(DSP_REG_PROD_64);
-  MOV(64, R(long_prod), prod_reg);
-  m_gpr.PutReg(DSP_REG_PROD_64, false);
+  m_gpr.ReadReg(DSP_REG_PROD_64, long_prod, RegisterExtension::None);
   // no use in keeping prod_reg any longer.
   MOV(64, R(tmp1), R(long_prod));
   SHL(64, R(long_prod), Imm8(64 - 40));  // sign extend
@@ -653,11 +633,9 @@ void DSPEmitterIR::set_long_prod(X64Reg host_sreg, X64Reg tmp1)
 {
   MOV(64, R(tmp1), Imm64(0x000000ffffffffffULL));
   AND(64, R(host_sreg), R(tmp1));
-  const OpArg prod_reg = m_gpr.GetReg(DSP_REG_PROD_64, false);
-  //	g_dsp.r[DSP_REG_PRODL] = (u16)val;
-  MOV(64, prod_reg, R(host_sreg));
 
-  m_gpr.PutReg(DSP_REG_PROD_64, true);
+  //	g_dsp.r[DSP_REG_PRODL] = (u16)val;
+  m_gpr.WriteReg(DSP_REG_PROD_64, R(host_sreg));
 }
 
 void DSPEmitterIR::round_long(X64Reg long_acc)
