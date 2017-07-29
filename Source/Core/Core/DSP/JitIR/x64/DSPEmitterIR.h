@@ -547,13 +547,12 @@ private:
   void WriteBranchExit(u16 execd_cycles, bool keepGpr = true);
 
   void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn,
-                          void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn,
-                                                               Gen::X64Reg tmp1, Gen::X64Reg tmp2),
+                          void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn),
                           Gen::X64Reg tmp1, Gen::X64Reg tmp2);
 
-  void irr_ret(IRInsn const& insn, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void irr_jmp(IRInsn const& insn, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void irr_call(IRInsn const& insn, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
+  void irr_ret(IRInsn const& insn);
+  void irr_jmp(IRInsn const& insn);
+  void irr_call(IRInsn const& insn);
 
   void Update_SR_Register(Gen::X64Reg val, Gen::X64Reg tmp1);
 
