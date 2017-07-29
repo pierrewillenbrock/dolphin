@@ -154,6 +154,12 @@ DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter)
   {
     m_regs[i].size = 2;
   }
+
+  m_regs[DSP_REG_ST0].size = 0;
+  m_regs[DSP_REG_ST1].size = 0;
+  m_regs[DSP_REG_ST2].size = 0;
+  m_regs[DSP_REG_ST3].size = 0;
+
 // special composite registers
 #ifdef STATIC_REG_ACCS
   m_regs[DSP_REG_ACC0_64].host_reg = R8;
