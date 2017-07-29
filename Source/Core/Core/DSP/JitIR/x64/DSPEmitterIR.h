@@ -545,6 +545,7 @@ private:
   bool FlagsNeeded(u16 address) const;
 
   void WriteBranchExit(u16 execd_cycles, bool keepGpr = true);
+  void dropAllRegs(IRInsn const& insn);
 
   void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn,
                           void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn),

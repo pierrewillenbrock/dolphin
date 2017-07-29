@@ -83,6 +83,25 @@ void DSPEmitterIR::checkExceptions(u32 retval, u16 pc, OpArg const& sr_reg)
   SetJumpTarget(int_disabled);
 }
 
+void DSPEmitterIR::dropAllRegs(IRInsn const& insn)
+{
+  if (insn.SR.IsSimpleReg())
+    m_gpr.PutReg(DSP_REG_SR);
+  for (int i = 0; i < NUM_INPUTS; i++)
+  {
+    if (insn.inputs[i].oparg.IsSimpleReg())
+      m_gpr.PutXReg(insn.inputs[i].oparg.GetSimpleReg());
+  }
+  if (insn.output.oparg.IsSimpleReg())
+    m_gpr.PutXReg(insn.output.oparg.GetSimpleReg());
+  for (int i = 0; i < NUM_TEMPS; i++)
+  {
+    if (insn.temps[i].oparg.IsSimpleReg() && insn.temps[i].oparg.GetSimpleReg() != RCX &&
+        insn.temps[i].oparg.GetSimpleReg() != RAX && insn.temps[i].oparg.GetSimpleReg() != RDX)
+      m_gpr.PutXReg(insn.temps[i].oparg.GetSimpleReg());
+  }
+}
+
 // LOOP handling: Loop stack is used to control execution of repeated blocks of
 // instructions. Whenever there is value on stack $st2 and current PC is equal
 // value at $st2, then value at stack $st3 is decremented. If value is not zero

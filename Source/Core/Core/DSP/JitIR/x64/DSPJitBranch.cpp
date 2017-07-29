@@ -91,13 +91,10 @@ void DSPEmitterIR::IRReJitConditional(
     TEST(16, R(EAX), Imm16(SR_OVERFLOW));
     break;
   }
-  DSPJitIRRegCache c1(m_gpr);
   bool equal = (cond == 0xe) || (cond & 1);
   if (negate)
     equal = !equal;
   FixupBranch skip_code = equal ? J_CC(CC_E, true) : J_CC(CC_NE, true);
-  (this->*conditional_fn)(insn);  // actually, this is guaranteed to not return
-  m_gpr.FlushRegs(c1);
   // actually, this is guaranteed to emit code that does not return
   (this->*conditional_fn)(insn);
   SetJumpTarget(skip_code);
@@ -358,9 +355,7 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
 
     SetJumpTarget(cnt);
     MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
-    m_gpr.PutXReg(tmp2);
-    m_gpr.PutXReg(tmp1);
-    m_gpr.PutReg(DSP_REG_SR);
+    dropAllRegs(insn);
     WriteBranchExit(insn.cycle_count);
     m_gpr.FlushRegs(c1, false);
     SetJumpTarget(exit);
@@ -380,9 +375,7 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     {
       MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
       DSPJitIRRegCache c(m_gpr);
-      m_gpr.PutXReg(tmp2);
-      m_gpr.PutXReg(tmp1);
-      m_gpr.PutReg(DSP_REG_SR);
+      dropAllRegs(insn);
       WriteBranchExit(insn.cycle_count);
       m_gpr.FlushRegs(c, false);
     }
@@ -414,9 +407,7 @@ void DSPEmitterIR::irr_ret(DSPEmitterIR::IRInsn const& insn)
   dsp_reg_load_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
   MOV(16, M_SDSP_pc(), R(DX));
   DSPJitIRRegCache c(m_gpr);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
-  m_gpr.PutReg(DSP_REG_SR);
+  dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
   m_gpr.FlushRegs(c, false);
 }
@@ -478,9 +469,7 @@ void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn)
     ASSERT_MSG(DSPLLE, 0, "unhandled JmpOp variant");
   }
   DSPJitIRRegCache c(m_gpr);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
-  m_gpr.PutReg(DSP_REG_SR);
+  dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
   m_gpr.FlushRegs(c, false);
 }
@@ -524,9 +513,7 @@ void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn)
     ASSERT_MSG(DSPLLE, 0, "unhandled CallOp variant");
   }
   DSPJitIRRegCache c(m_gpr);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
-  m_gpr.PutReg(DSP_REG_SR);
+  dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
   m_gpr.FlushRegs(c, false);
 }
