@@ -844,13 +844,13 @@ void DSPJitIRRegCache::WriteReg(int dreg, OpArg arg)
     switch (m_regs[dreg].size)
     {
     case 2:
-      m_emitter.MOV(16, reg, Imm16(arg.Imm16()));
+      m_emitter.MOV(16, reg, arg.AsImm16());
       break;
     case 4:
-      m_emitter.MOV(32, reg, Imm32(arg.Imm32()));
+      m_emitter.MOV(32, reg, arg.AsImm32());
       break;
     case 8:
-      m_emitter.MOV(64, reg, Imm64(arg.Imm64()));
+      m_emitter.MOV(64, reg, arg.AsImm64());
       break;
     default:
       ASSERT_MSG(DSPLLE, 0, "unsupported memory size");
