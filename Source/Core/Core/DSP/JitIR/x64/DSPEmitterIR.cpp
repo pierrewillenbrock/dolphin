@@ -525,6 +525,19 @@ void DSPEmitterIR::deparallelize(IRBB* bb)
 
 void DSPEmitterIR::allocHostRegs()
 {
+  // at this point, parallel ops are not allowed.
+  std::vector<IRNode*> first_ref;
+  std::vector<IRNode*> last_ref;
+
+  first_ref.resize(m_vregs.size());
+  last_ref.resize(m_vregs.size());
+
+  for (auto& n : first_ref)
+    n = nullptr;
+
+  for (auto& n : last_ref)
+    n = nullptr;
+
   for (IRBB* bb = m_start_bb; !bb->next.empty(); bb = bb->nextNonBranched)
   {
     for (IRNode* n = bb->start_node; !n->next.empty(); n = *n->next.begin())
@@ -533,103 +546,233 @@ void DSPEmitterIR::allocHostRegs()
       if (!in)
         continue;
       IRInsn& insn = in->insn;
-      // now, do some of the work of the host register allocator:
-      // decide what to do with imms, and allocate the hregs
-      // this happens entirely with the vregs data(except for
-      // the actual assignment of opargs into the IROps)
 
-      // this is just a very simple allocator. when we do whole
-      // BBs, this needs to take into account the lifetime of
-      // different vregs, especially to allocate the same host reg
-      // to vregs that don't live at the same time
-
-      // collect the vregs touched by this instruction
-      // this "replaces" the lifetime analysis for now
-      insn.live_vregs.clear();
       for (unsigned int i = 0; i < NUM_TEMPS; i++)
       {
-        if (insn.temps[i].vreg > 0)
-          insn.live_vregs.insert(insn.temps[i].vreg);
-      }
-      for (unsigned int i = 0; i < NUM_INPUTS; i++)
-      {
-        if (insn.inputs[i].vreg > 0)
-          insn.live_vregs.insert(insn.inputs[i].vreg);
-      }
-      if (insn.output.vreg > 0)
-        insn.live_vregs.insert(insn.output.vreg);
-
-      // check if we can assign the imms
-      for (auto i : insn.live_vregs)
-      {
-        if (m_vregs[i].isImm)
+        int vreg = insn.temps[i].vreg;
+        if (vreg > 0)
         {
-          if ((m_vregs[i].reqs & OpImm) && (s16)m_vregs[i].imm == m_vregs[i].imm)
-          {
-            m_vregs[i].oparg = Imm16(m_vregs[i].imm);
-          }
-          else if ((m_vregs[i].reqs & OpImm) && (s32)m_vregs[i].imm == m_vregs[i].imm)
-          {
-            m_vregs[i].oparg = Imm32(m_vregs[i].imm);
-          }
-          else if (m_vregs[i].reqs & OpImm64)
-          {
-            m_vregs[i].oparg = Imm64(m_vregs[i].imm);
-          }
-          else
-          {
-            // demote to register
-            m_vregs[i].isImm = false;
-          }
+          if (!first_ref[vreg])
+            first_ref[vreg] = n;
+          last_ref[vreg] = n;
         }
       }
-      // grab all the vregs that need special hregs
-      for (auto i : insn.live_vregs)
+      for (unsigned int i = 0; i < NUM_INPUTS; i++)
       {
-        if (m_vregs[i].isImm)
-          continue;
-        if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
-          m_vregs[i].oparg = R(RAX);
-        if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
-          m_vregs[i].oparg = R(RCX);
+        int vreg = insn.inputs[i].vreg;
+        if (vreg > 0)
+        {
+          if (!first_ref[vreg])
+            first_ref[vreg] = n;
+          last_ref[vreg] = n;
+        }
       }
-
-      // allocate the rest
-      for (auto i : insn.live_vregs)
+      int vreg = insn.output.vreg;
+      if (vreg > 0)
       {
-        if (m_vregs[i].isImm)
-          continue;
-        if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
-          continue;
-        if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
-          continue;
-        X64Reg hreg = m_gpr.GetFreeXReg();
-        m_vregs[i].oparg = R(hreg);
+        if (!first_ref[vreg])
+          first_ref[vreg] = n;
+        last_ref[vreg] = n;
       }
+    }
+  }
 
-      // finally, put all the opargs back into the insn.
-      // we can already do this here
+  // check if we can assign the imms
+  for (unsigned int i = 1; i < m_vregs.size(); i++)
+  {
+    if (m_vregs[i].isImm)
+    {
+      if ((m_vregs[i].reqs & OpImm) && (s16)m_vregs[i].imm == m_vregs[i].imm)
+      {
+        m_vregs[i].oparg = Imm16(m_vregs[i].imm);
+      }
+      else if ((m_vregs[i].reqs & OpImm) && (s32)m_vregs[i].imm == m_vregs[i].imm)
+      {
+        m_vregs[i].oparg = Imm32(m_vregs[i].imm);
+      }
+      else if (m_vregs[i].reqs & OpImm64)
+      {
+        m_vregs[i].oparg = Imm64(m_vregs[i].imm);
+      }
+      else
+      {
+        // demote to register
+        m_vregs[i].isImm = false;
+      }
+    }
+  }
+
+  std::unordered_set<int> live_vregs;
+
+  for (IRBB* bb = m_start_bb; !bb->next.empty(); bb = bb->nextNonBranched)
+  {
+    for (IRNode* n = bb->start_node; !n->next.empty(); n = *n->next.begin())
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+      if (!in)
+        continue;
+      IRInsn& insn = in->insn;
+
       for (unsigned int i = 0; i < NUM_TEMPS; i++)
       {
-        if (insn.temps[i].vreg > 0)
-          insn.temps[i].oparg = m_vregs[insn.temps[i].vreg].oparg;
+        int vreg = insn.temps[i].vreg;
+        if (vreg > 0 && first_ref[vreg] == n)
+        {
+          live_vregs.insert(vreg);
+          insn.first_refed_vregs.insert(vreg);
+        }
       }
       for (unsigned int i = 0; i < NUM_INPUTS; i++)
       {
-        if (insn.inputs[i].vreg > 0)
-          insn.inputs[i].oparg = m_vregs[insn.inputs[i].vreg].oparg;
+        int vreg = insn.inputs[i].vreg;
+        if (vreg > 0 && first_ref[vreg] == n)
+        {
+          live_vregs.insert(vreg);
+          insn.first_refed_vregs.insert(vreg);
+        }
       }
-      if (insn.output.vreg > 0)
-        insn.output.oparg = m_vregs[insn.output.vreg].oparg;
-
-      // and now, drop it all again. this will not be needed when
-      // we drop the m_gpr completely
-      for (auto i : insn.live_vregs)
       {
-        if (m_vregs[i].oparg.IsSimpleReg())
-          m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
+        int vreg = insn.output.vreg;
+        if (vreg > 0 && first_ref[vreg] == n)
+        {
+          live_vregs.insert(vreg);
+          insn.first_refed_vregs.insert(vreg);
+        }
+      }
+
+      insn.live_vregs = live_vregs;
+
+      for (unsigned int i = 0; i < NUM_TEMPS; i++)
+      {
+        int vreg = insn.temps[i].vreg;
+        if (vreg > 0 && last_ref[vreg] == n)
+        {
+          live_vregs.erase(vreg);
+          insn.last_refed_vregs.insert(vreg);
+        }
+      }
+      for (unsigned int i = 0; i < NUM_INPUTS; i++)
+      {
+        int vreg = insn.inputs[i].vreg;
+        if (vreg > 0 && last_ref[vreg] == n)
+        {
+          live_vregs.erase(vreg);
+          insn.last_refed_vregs.insert(vreg);
+        }
+      }
+      {
+        int vreg = insn.output.vreg;
+        if (vreg > 0 && last_ref[vreg] == n)
+        {
+          live_vregs.erase(vreg);
+          insn.last_refed_vregs.insert(vreg);
+        }
       }
     }
+  }
+
+  // allocate RAX/RCX
+  for (unsigned int i1 = 1; i1 < m_vregs.size(); i1++)
+  {
+    if (m_vregs[i1].isImm)
+      continue;
+    if ((m_vregs[i1].reqs & OpAnyReg) != OpRAX && (m_vregs[i1].reqs & OpAnyReg) != OpRCX)
+      continue;
+
+    std::set<X64Reg> inuse;
+    for (IRNode* n = first_ref[i1];; n = *n->next.begin())
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+      if (!in)
+        continue;
+      IRInsn& insn = in->insn;
+      for (auto i2 : insn.live_vregs)
+      {
+        if (m_vregs[i2].oparg.IsSimpleReg())
+          inuse.insert(m_vregs[i2].oparg.GetSimpleReg());
+      }
+      if (n == last_ref[i1])
+        break;
+    }
+
+    for (auto hreg : inuse)
+      m_gpr.GetXReg(hreg);
+
+    {
+      X64Reg hreg = INVALID_REG;
+      if ((m_vregs[i1].reqs & OpAnyReg) == OpRAX)
+        hreg = RAX;
+      if ((m_vregs[i1].reqs & OpAnyReg) == OpRCX)
+        hreg = RCX;
+
+      m_gpr.GetXReg(hreg);
+      m_vregs[i1].oparg = R(hreg);
+
+      m_gpr.PutXReg(hreg);
+    }
+
+    for (auto hreg : inuse)
+      m_gpr.PutXReg(hreg);
+  }
+
+  // allocate the rest
+  for (unsigned int i1 = 1; i1 < m_vregs.size(); i1++)
+  {
+    if (m_vregs[i1].isImm)
+      continue;
+    if (m_vregs[i1].oparg.IsSimpleReg())
+      continue;
+
+    std::set<X64Reg> inuse;
+    for (IRNode* n = first_ref[i1];; n = *n->next.begin())
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+      if (!in)
+        continue;
+      IRInsn& insn = in->insn;
+      for (auto i2 : insn.live_vregs)
+      {
+        if (m_vregs[i2].oparg.IsSimpleReg())
+          inuse.insert(m_vregs[i2].oparg.GetSimpleReg());
+      }
+      if (n == last_ref[i1])
+        break;
+    }
+
+    for (auto hreg : inuse)
+      m_gpr.GetXReg(hreg);
+
+    {
+      X64Reg hreg = m_gpr.GetFreeXReg();
+      m_vregs[i1].oparg = R(hreg);
+      m_gpr.PutXReg(hreg);
+    }
+
+    for (auto hreg : inuse)
+      m_gpr.PutXReg(hreg);
+  }
+
+  // finally, put all the opargs back into the insn.
+  // we can already do this here
+  for (auto n : m_node_storage)
+  {
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (!in)
+      continue;
+    IRInsn& insn = in->insn;
+
+    for (unsigned int i = 0; i < NUM_TEMPS; i++)
+    {
+      if (insn.temps[i].vreg > 0)
+        insn.temps[i].oparg = m_vregs[insn.temps[i].vreg].oparg;
+    }
+    for (unsigned int i = 0; i < NUM_INPUTS; i++)
+    {
+      if (insn.inputs[i].vreg > 0)
+        insn.inputs[i].oparg = m_vregs[insn.inputs[i].vreg].oparg;
+    }
+    if (insn.output.vreg > 0)
+      insn.output.oparg = m_vregs[insn.output.vreg].oparg;
   }
 }
 
