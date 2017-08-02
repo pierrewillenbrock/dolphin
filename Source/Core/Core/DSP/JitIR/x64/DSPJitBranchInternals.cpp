@@ -70,7 +70,6 @@ void DSPEmitterIR::checkExceptions(u32 retval, u16 pc, OpArg const& sr_reg)
   MOV(16, M_SDSP_pc(), Imm16(pc));
 
   DSPJitIRRegCache c(m_gpr);
-  m_gpr.PutReg(DSP_REG_SR);
   m_gpr.PushRegs();
   ABI_CallFunctionP(CheckExceptionsThunk, &m_dsp_core);
   m_gpr.PopRegs();
@@ -85,7 +84,12 @@ void DSPEmitterIR::checkExceptions(u32 retval, u16 pc, OpArg const& sr_reg)
 void DSPEmitterIR::dropAllRegs(IRInsn const& insn)
 {
   if (insn.SR.IsSimpleReg())
-    m_gpr.PutReg(DSP_REG_SR);
+  {
+    if (insn.modifies_SR)
+      MOV(16, M(&g_dsp.r.sr), insn.SR);
+
+    m_gpr.PutXReg(insn.SR.GetSimpleReg());
+  }
   // going the easy route, since all the vregs
   // are "active" at the moment. this will not be the case later
   // but then again, at that time we will not have to tell the m_gpr

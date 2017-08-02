@@ -97,12 +97,6 @@ public:
      conditional branch
    */
 
-  // Drop this copy without warning
-  void Drop();
-
-  // Prepare state so that another flushed DSPJitIRRegCache can take over
-  void FlushRegs();
-
   void LoadRegs(bool emit = true);  // Load statically allocated regs from memory
   void SaveRegs();                  // Save statically allocated regs to memory
 
@@ -114,26 +108,17 @@ public:
   // and puts contents of RAX there
   void PopRegs(Gen::X64Reg returnreg = Gen::INVALID_REG);
 
-  // Returns a register with the same contents as reg that is safe
-  // to use through saveStaticRegs and for ABI-calls
-  Gen::X64Reg MakeABICallSafe(Gen::X64Reg reg);
-
-  // Gives no SCALE_RIP with abs(offset) >= 0x80000000
-  // 32/64 bit writes allowed when the register has a _64 or _32 suffix
-  // only 16 bit writes allowed without any suffix.
-  Gen::OpArg GetReg(int reg, bool load = true);
-  // Done with all usages of OpArg above
-  void PutReg(int reg, bool dirty = true);
-
-  void ReadReg(int sreg, Gen::X64Reg host_dreg, RegisterExtension extend);
-  void WriteReg(int dreg, Gen::OpArg arg);
-
   // Find a free host reg, spill if used, reserve
   Gen::X64Reg GetFreeXReg();
   // Spill a specific host reg if used, reserve
   void GetXReg(Gen::X64Reg reg);
   // Unreserve the given host reg
   void PutXReg(Gen::X64Reg reg);
+
+  void ResetXRegs();
+
+  size_t RegSize(int reg) { return m_regs[reg].size; }
+  Gen::OpArg RegMem(int reg) { return m_regs[reg].mem; }
 
 private:
   struct X64CachedReg
@@ -143,37 +128,14 @@ private:
 
   struct DynamicReg
   {
-    Gen::OpArg loc;
     Gen::OpArg mem;
     size_t size;
-    bool dirty;
-    bool used;
-    int last_use_ctr;
-    int parentReg;
-    int shift;  // Current shift if parentReg == DSP_REG_NONE
-                // otherwise the shift this part can be found at
-    Gen::X64Reg host_reg;
-
-    // TODO:
-    // + drop sameReg
-    // + add parentReg
-    // + add shift:
-    //   - if parentReg != DSP_REG_NONE, this is the shift where this
-    //     register is found in the parentReg
-    //   - if parentReg == DSP_REG_NONE, this is the current shift _state_
   };
 
   // Find a free host reg
   Gen::X64Reg FindFreeXReg() const;
   Gen::X64Reg SpillXReg();
   Gen::X64Reg FindSpillFreeXReg();
-  void SpillXReg(Gen::X64Reg reg);
-
-  void MovToHostReg(size_t reg, Gen::X64Reg host_reg, bool load);
-  void MovToHostReg(size_t reg, bool load);
-  void RotateHostReg(size_t reg, int shift, bool emit);
-  void MovToMemory(size_t reg);
-  void FlushMemBackedRegs();
 
   std::array<DynamicReg, 37> m_regs;
   std::array<X64CachedReg, 16> m_xregs;
@@ -181,8 +143,6 @@ private:
   DSPEmitterIR& m_emitter;
   bool m_is_temporary;
   bool m_is_merged;
-
-  int m_use_ctr;
 };
 
 }  // namespace DSP::JITIR::x64

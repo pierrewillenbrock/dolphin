@@ -480,6 +480,8 @@ void DSPEmitterIR::checkImmVRegs()
       }
       else if ((m_vregs[i].reqs & OpImm) && (s32)m_vregs[i].imm == m_vregs[i].imm)
       {
+        // imm32 gets sign extended to 64bit in 64bit ops
+        // result of 32bit ops is zero extended to 64bit
         m_vregs[i].oparg = Imm32(m_vregs[i].imm);
       }
       else if (m_vregs[i].reqs & OpImm64)
@@ -771,15 +773,26 @@ void DSPEmitterIR::EmitInsn(IRInsnNode* in)
     }
   }
 
+  X64Reg sr_reg;
   if (insn.needs_SR || insn.modifies_SR)
-    insn.SR = m_gpr.GetReg(DSP_REG_SR, true);
+  {
+    sr_reg = m_gpr.GetFreeXReg();
+    insn.SR = R(sr_reg);
+    if (insn.modifies_SR != 0xffff || insn.needs_SR)
+      MOV(16, insn.SR, M_SDSP_r_sr());
+  }
   else
     insn.SR = M_SDSP_r_sr();
 
   (this->*insn.emitter->func)(insn);
 
   if (insn.needs_SR || insn.modifies_SR)
-    m_gpr.PutReg(DSP_REG_SR, insn.modifies_SR);
+  {
+    if (insn.modifies_SR)
+      MOV(16, M_SDSP_r_sr(), insn.SR);
+
+    m_gpr.PutXReg(sr_reg);
+  }
 
   // and now, drop it all again. this will not be needed when
   // we drop the m_gpr completely

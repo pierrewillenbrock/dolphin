@@ -29,14 +29,20 @@ namespace x64
 {
 void DSPEmitterIR::iremit_LoadImmOp(IRInsn const& insn)
 {
-  // nothing to do here. the register allocator already put something
+  // nothing to do here. the checkImmVRegs already put something
   // sensible here.
   if (insn.output.oparg.IsImm())
     return;
 
-  // this can be optimised a bit, by using the implicit sign extension
-  // from 32 to 64 bits
-  MOV(64, insn.output.oparg, Imm64(insn.inputs[0].imm));
+  u64 imm = insn.inputs[0].imm;
+  if ((u32)imm == (u64)imm)
+    // implicit zero extend with operations in 32bit mode
+    MOV(32, insn.output.oparg, Imm32(imm));
+  else if ((s32)imm == (s64)imm)
+    // implicit sign extend with mov from 32bit imm in 64bit mode
+    MOV(64, insn.output.oparg, Imm32(imm));
+  else
+    MOV(64, insn.output.oparg, Imm64(imm));
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoadImmOp = {
@@ -88,66 +94,159 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoadGuestSROp = {
 void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
 {
   X64Reg hreg = insn.output.oparg.GetSimpleReg();
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
   int reqs = m_vregs[insn.output.vreg].reqs;
   int greg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
 
-  const OpArg acc_reg = m_gpr.GetReg(greg);
+  OpArg mem = m_gpr.RegMem(greg);
 
-  TEST(16, insn.SR, Imm16(SR_40_MODE_BIT));
-  FixupBranch not_40bit = J_CC(CC_Z, true);
-
-  MOVSX(64, 32, hreg, acc_reg);
-  CMP(64, R(hreg), acc_reg);
-  FixupBranch no_saturate = J_CC(CC_Z);
-
-  TEST(64, acc_reg, acc_reg);
-  FixupBranch negative = J_CC(CC_LE);
-
-  MOV(64, R(hreg), Imm32(0x7fff));  // this works for all extend modes
-  FixupBranch done_positive = J();
-
-  SetJumpTarget(negative);
-  switch (reqs & ExtendMask)
+  if ((insn.constant_mask_SR & SR_40_MODE_BIT) && (insn.constant_val_SR & SR_40_MODE_BIT))
   {
-  case ExtendSign16:
-    MOV(64, R(hreg), Imm32(0xffff8000));
-    break;
-  case ExtendZero16:
-  case ExtendNone:
-    MOV(64, R(hreg), Imm32(0x00008000));
-    break;
-  default:
-    _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
-    break;
+    MOV(64, R(tmp1), mem);
+
+    MOVSX(64, 32, hreg, R(tmp1));
+    CMP(64, R(hreg), R(tmp1));
+    FixupBranch no_saturate = J_CC(CC_Z);
+
+    TEST(64, R(tmp1), R(tmp1));
+    FixupBranch negative = J_CC(CC_LE);
+
+    MOV(64, R(hreg), Imm32(0x7fff));  // this works for all extend modes
+    FixupBranch done_positive = J();
+
+    SetJumpTarget(negative);
+    switch (reqs & ExtendMask)
+    {
+    case ExtendSign16:
+      MOV(64, R(hreg), Imm32(0xffff8000));
+      break;
+    case ExtendZero16:
+    case ExtendNone:
+      MOV(32, R(hreg), Imm32(0x00008000));
+      break;
+    default:
+      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      break;
+    }
+    FixupBranch done_negative = J();
+
+    SetJumpTarget(no_saturate);
+
+    // assume the cpu is smart enough to still have this in L1
+    // and this being cheaper than SAR/SHR needed to convert tmp1
+    mem.AddMemOffset(2);
+    switch (reqs & ExtendMask)
+    {
+    case ExtendSign16:
+      MOVSX(64, 16, hreg, mem);
+      break;
+    case ExtendZero16:
+      MOVZX(64, 16, hreg, mem);
+      break;
+    case ExtendNone:
+      MOV(16, R(hreg), mem);
+      break;
+    default:
+      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      break;
+    }
+
+    SetJumpTarget(done_positive);
+    SetJumpTarget(done_negative);
   }
-  FixupBranch done_negative = J();
-
-  SetJumpTarget(no_saturate);
-  SetJumpTarget(not_40bit);
-
-  MOV(64, R(hreg), acc_reg);
-  switch (reqs & ExtendMask)
+  else if ((insn.constant_mask_SR & SR_40_MODE_BIT) && !(insn.constant_val_SR & SR_40_MODE_BIT))
   {
-  case ExtendSign16:
-    SAR(64, R(hreg), Imm8(16));
-    break;
-  case ExtendZero16:
-  case ExtendNone:
-    SHR(64, R(hreg), Imm8(16));
-    break;
-  default:
-    _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
-    break;
+    // assume the cpu is smart enough to still have this in L1
+    // and this being cheaper than SAR/SHR needed to convert tmp1
+    mem.AddMemOffset(2);
+    switch (reqs & ExtendMask)
+    {
+    case ExtendSign16:
+      MOVSX(64, 16, hreg, mem);
+      break;
+    case ExtendZero16:
+      MOVZX(64, 16, hreg, mem);
+      break;
+    case ExtendNone:
+      MOV(16, R(hreg), mem);
+      break;
+    default:
+      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      break;
+    }
   }
-  SetJumpTarget(done_positive);
-  SetJumpTarget(done_negative);
-  m_gpr.PutReg(greg, false);
+  else
+  {
+    TEST(16, insn.SR, Imm16(SR_40_MODE_BIT));
+    FixupBranch not_40bit = J_CC(CC_Z, true);
+
+    MOV(64, R(tmp1), mem);
+
+    MOVSX(64, 32, hreg, R(tmp1));
+    CMP(64, R(hreg), R(tmp1));
+    FixupBranch no_saturate = J_CC(CC_Z);
+
+    TEST(64, R(tmp1), R(tmp1));
+    FixupBranch negative = J_CC(CC_LE);
+
+    MOV(64, R(hreg), Imm32(0x7fff));  // this works for all extend modes
+    FixupBranch done_positive = J();
+
+    SetJumpTarget(negative);
+    switch (reqs & ExtendMask)
+    {
+    case ExtendSign16:
+      MOV(64, R(hreg), Imm32(0xffff8000));
+      break;
+    case ExtendZero16:
+    case ExtendNone:
+      MOV(32, R(hreg), Imm32(0x00008000));
+      break;
+    default:
+      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      break;
+    }
+    FixupBranch done_negative = J();
+
+    SetJumpTarget(no_saturate);
+    SetJumpTarget(not_40bit);
+
+    // assume the cpu is smart enough to still have this in L1
+    // and this being cheaper than SAR/SHR needed to convert tmp1
+    mem.AddMemOffset(2);
+    switch (reqs & ExtendMask)
+    {
+    case ExtendSign16:
+      MOVSX(64, 16, hreg, mem);
+      break;
+    case ExtendZero16:
+      MOVZX(64, 16, hreg, mem);
+      break;
+    case ExtendNone:
+      MOV(16, R(hreg), mem);
+      break;
+    default:
+      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      break;
+    }
+
+    SetJumpTarget(done_positive);
+    SetJumpTarget(done_negative);
+  }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoadGuestACMOp = {
-    "LoadGuestACMOp", &DSPEmitterIR::iremit_LoadGuestACMOp, SR_40_MODE_BIT, 0, 0, 0, false, {},
-    {OpAny64}};
+    "LoadGuestACMOp",
+    &DSPEmitterIR::iremit_LoadGuestACMOp,
+    SR_40_MODE_BIT,
+    0,
+    0,
+    0,
+    false,
+    {},
+    {OpAny64},
+    {{OpAny64}}};
 
 void DSPEmitterIR::iremit_LoadGuestFastOp(IRInsn const& insn)
 {
@@ -156,35 +255,58 @@ void DSPEmitterIR::iremit_LoadGuestFastOp(IRInsn const& insn)
   int reqs = m_vregs[insn.output.vreg].reqs;
   int greg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
 
-  RegisterExtension extend;
-  switch (reqs & ExtendMask)
+  const OpArg mem = m_gpr.RegMem(greg);
+  switch (m_gpr.RegSize(greg))
   {
-  case ExtendSign16:
-    extend = RegisterExtension::Sign;
+  case 2:
+    switch (reqs & ExtendMask)
+    {
+    case ExtendSign16:
+      MOVSX(64, 16, hreg, mem);
+      break;
+    case ExtendZero16:
+      MOVZX(64, 16, hreg, mem);
+      break;
+    case ExtendNone:
+      MOV(16, R(hreg), mem);
+      break;
+    default:
+      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      break;
+    }
     break;
-  case ExtendZero16:
-    extend = RegisterExtension::Zero;
+  case 4:
+    switch (reqs & ExtendMask)
+    {
+    case ExtendSign32:
+      MOVSX(64, 32, hreg, mem);
+      break;
+    case ExtendZero32:  // implicit zero extend
+    case ExtendNone:
+      MOV(32, R(hreg), mem);
+      break;
+    default:
+      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      break;
+    }
     break;
-  case ExtendSign32:
-    extend = RegisterExtension::Sign;
-    break;
-  case ExtendZero32:
-    extend = RegisterExtension::Zero;
-    break;
-  case ExtendSign64:
-    extend = RegisterExtension::Sign;
-    break;
-  case ExtendZero64:
-    extend = RegisterExtension::Zero;
-    break;
-  case ExtendNone:
-    extend = RegisterExtension::None;
+  case 8:
+    switch (reqs & ExtendMask)
+    {
+    case ExtendSign64:
+    case ExtendZero64:
+    case ExtendNone:
+      MOV(64, R(hreg), mem);
+      break;
+    default:
+      _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+      break;
+    }
     break;
   default:
-    _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
-    return;
+    _assert_msg_(DSPLLE, 0, "unsupported memory size");
+    break;
   }
-  m_gpr.ReadReg(greg, hreg, extend);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoadGuestFastOp = {
@@ -195,9 +317,9 @@ void DSPEmitterIR::iremit_LoadGuestProdOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
   // s64 val   = (s8)(u8)g_dsp.r[DSP_REG_PRODH];
-  const OpArg prod_reg = m_gpr.GetReg(DSP_REG_PROD_64);
-  MOV(64, insn.output.oparg, prod_reg);
-  m_gpr.PutReg(DSP_REG_PROD_64, false);
+  const OpArg mem = m_gpr.RegMem(DSP_REG_PROD_64);
+
+  MOV(64, insn.output.oparg, mem);
 
   MOV(64, R(tmp1), insn.output.oparg);
   SHL(64, insn.output.oparg, Imm8(64 - 40));  // sign extend
@@ -216,22 +338,28 @@ void DSPEmitterIR::iremit_StoreGuestProdOp(IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
-  const OpArg prod_reg = m_gpr.GetReg(DSP_REG_PROD_64, false);
+  OpArg mem = m_gpr.RegMem(DSP_REG_PROD_64);
 
   if (insn.inputs[0].oparg.IsImm())
   {
     s64 imm = insn.inputs[0].oparg.AsImm64().Imm64() & 0x000000ffffffffffULL;
 
-    MOV(64, prod_reg, Imm64(imm));
+    if ((s32)imm == (s64)imm)
+      MOV(64, mem, Imm32(imm));
+    else
+    {
+      MOV(32, mem, Imm32(imm));
+      mem.AddMemOffset(4);
+      MOV(32, mem, Imm32(imm >> 32));
+    }
   }
   else if (insn.inputs[0].oparg.IsSimpleReg())
   {
     MOV(64, R(tmp1), Imm64(0x000000ffffffffffULL));
     AND(64, R(tmp1), insn.inputs[0].oparg);
 
-    MOV(64, prod_reg, R(tmp1));
+    MOV(64, mem, R(tmp1));
   }
-  m_gpr.PutReg(DSP_REG_PROD_64, true);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestProdOp = {
@@ -288,34 +416,33 @@ void DSPEmitterIR::iremit_StoreGuestACMOp(IRInsn const& insn)
 {
   int greg = ir_to_regcache_reg(insn.output.guest_reg);
 
-  DSPJitIRRegCache c(m_gpr);
+  OpArg mem = m_gpr.RegMem(greg);
+
   TEST(16, insn.SR, Imm16(SR_40_MODE_BIT));
   FixupBranch not_40bit = J_CC(CC_Z, true);
 
   if (insn.inputs[0].oparg.IsImm())
   {
     s16 val = insn.inputs[0].oparg.AsImm16().SImm16();
-    // using automatic 32=>64 bit sign extension by cpu
-    m_gpr.WriteReg(greg, Imm32(((s32)val) << 16));
+    MOV(64, mem, Imm32(((s32)val) << 16));
   }
   else if (insn.inputs[0].oparg.IsSimpleReg())
   {
     MOVSX(64, 16, insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[0].oparg);
     SHL(64, insn.inputs[0].oparg, Imm8(16));
-    m_gpr.WriteReg(greg, insn.inputs[0].oparg);
+    MOV(64, mem, insn.inputs[0].oparg);
   }
   else
   {
     _assert_msg_(DSPLLE, 0, "StoreGuestACMOp only handles Imm and R");
   }
 
-  m_gpr.FlushRegs(c);
   FixupBranch is_40bit = J();
   SetJumpTarget(not_40bit);
 
-  m_gpr.WriteReg(greg - DSP_REG_ACC0_64 + DSP_REG_ACM0, insn.inputs[0].oparg);
+  mem.AddMemOffset(2);
+  MOV(16, mem, insn.inputs[0].oparg);
 
-  m_gpr.FlushRegs(c);
   SetJumpTarget(is_40bit);
 }
 
@@ -334,7 +461,70 @@ void DSPEmitterIR::iremit_StoreGuestOp(IRInsn const& insn)
 {
   int greg = ir_to_regcache_reg(insn.output.guest_reg);
 
-  m_gpr.WriteReg(greg, insn.inputs[0].oparg);
+  OpArg mem = m_gpr.RegMem(greg);
+  OpArg src = insn.inputs[0].oparg;
+
+  if (src.IsImm())
+  {
+    size_t size = m_gpr.RegSize(greg);
+    if (greg == DSP_REG_ACH0 || greg == DSP_REG_ACH1)
+    {
+      src = Imm64((s64)(s16)src.AsImm64().Imm64());
+      size = 4;
+    }
+    switch (size)
+    {
+    case 2:
+      MOV(16, mem, src.AsImm16());
+      break;
+    case 4:
+      MOV(32, mem, src.AsImm32());
+      break;
+    case 8:
+    {
+      u64 v = src.AsImm64().Imm64();
+      if ((s32)v == (s64)v)
+        MOV(64, mem, src.AsImm32());
+      else
+      {
+        // two insn form
+        MOV(32, mem, Imm32(v));
+        mem.AddMemOffset(4);
+        MOV(32, mem, Imm32(v >> 32));
+      }
+      break;
+    }
+    default:
+      _assert_msg_(DSPLLE, 0, "unsupported memory size");
+      break;
+    }
+  }
+  else if (src.IsSimpleReg())
+  {
+    size_t size = m_gpr.RegSize(greg);
+    if (greg == DSP_REG_ACH0 || greg == DSP_REG_ACH1)
+    {
+      MOVSX(32, 8, src.GetSimpleReg(), src);
+      size = 4;
+    }
+    switch (size)
+    {
+    case 2:
+      MOV(16, mem, src);
+      break;
+    case 4:
+      MOV(32, mem, src);
+      break;
+    case 8:
+      MOV(64, mem, src);
+      break;
+    default:
+      _assert_msg_(DSPLLE, 0, "unsupported memory size");
+      break;
+    }
+  }
+  else
+    _assert_msg_(DSPLLE, 0, "must be imm or reg");
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::StoreGuestOp = {
