@@ -968,8 +968,8 @@ void DSPEmitterIR::Compile(u16 start_addr)
     }
   }
 
-  m_start_bb->start_node->value_SR = 0;
-  m_start_bb->start_node->const_SR = 0;
+  m_start_bb->start_node->value_SR = m_dsp_core.DSPState().r.sr & 0xff00;
+  m_start_bb->start_node->const_SR = 0xff00;
   memcpy(m_start_bb->start_node->value_regs, known_val_regs,
          sizeof(m_start_bb->start_node->value_regs));
   memcpy(m_start_bb->start_node->const_regs, known_regs,
