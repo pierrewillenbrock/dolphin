@@ -629,6 +629,7 @@ private:
   // extra moves, and then deparallelize. we'll see)
   void ir_add_op(IRInsn insn);
   void ir_commit_parallel_nodes();
+  void assignVRegs(IRInsn& insn);
 
   static int ir_to_regcache_reg(int reg);
 

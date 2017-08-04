@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <set>
 
 #include "Common/Assert.h"
 #include "Common/BitSet.h"
@@ -174,6 +175,54 @@ void DSPEmitterIR::DecodeInstruction(UDSPInstruction inst)
   // register
   // for now, just rely on firmware not relying on this...
   // needs virtual regs
+}
+
+void DSPEmitterIR::assignVRegs(IRInsn& insn)
+{
+  for (unsigned int i = 0; i < NUM_TEMPS; i++)
+  {
+    if (insn.emitter->temps[i].reqs && insn.temps[i].vreg <= 0)
+    {
+      insn.temps[i].vreg = m_vregs.size();
+      insn.temps[i].type = IROp::VREG;
+      VReg vr = {insn.emitter->temps[i].reqs, 0, false, M((void*)0)};
+      m_vregs.push_back(vr);
+    }
+  }
+
+  bool output_is_input = false;
+  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  {
+    if (insn.emitter->inputs[i].reqs && insn.inputs[i].vreg <= 0)
+    {
+      insn.inputs[i].vreg = m_vregs.size();
+      VReg vr = {insn.emitter->inputs[i].reqs, 0, false, M((void*)0)};
+      if (insn.inputs[i].type == IROp::IMM)
+      {
+        vr.imm = insn.inputs[i].imm;
+        vr.isImm = true;  // can be changed to false if reqs+imm requires
+      }
+      m_vregs.push_back(vr);
+      if (insn.emitter->inputs[i].reqs & SameAsOutput)
+      {
+        output_is_input = true;
+        insn.output.vreg = insn.inputs[i].vreg;
+
+        _assert_msg_(DSPLLE, !((insn.emitter->inputs[i].reqs ^ insn.emitter->output.reqs) & OpMask),
+                     "Op type mismatch: %x != %x", insn.emitter->inputs[i].reqs & OpMask,
+                     insn.emitter->output.reqs & OpMask);
+
+        m_vregs[insn.inputs[i].vreg].reqs |= insn.emitter->output.reqs & NoACMExtend;
+      }
+    }
+  }
+
+  if (!output_is_input && insn.emitter->output.reqs && insn.output.vreg <= 0)
+  {
+    insn.output.vreg = m_vregs.size();
+    VReg vr = {insn.emitter->output.reqs, 0, false, M((void*)0)};
+    m_vregs.push_back(vr);
+  }
 }
 
 void DSPEmitterIR::findInputOutput(IRNode* begin, IRNode* end, IRNode*& last,
@@ -480,59 +529,15 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
 
   _assert_msg_(DSPLLE, GetSpaceLeft() > 64, "code space too full");
 
-  m_vregs.clear();  // this may be moved outside the outer loop
-
-  //<<start of vreg assignment pass
-
-  for (unsigned int i = 0; i < NUM_TEMPS; i++)
-  {
-    if (insn.emitter->temps[i].reqs)
-    {
-      insn.temps[i].vreg = m_vregs.size();
-      insn.temps[i].type = IROp::VREG;
-      VReg vr = {insn.emitter->temps[i].reqs, 0, false, M((void*)0)};
-      m_vregs.push_back(vr);
-    }
-  }
-
-  bool output_is_input = false;
-  for (unsigned int i = 0; i < NUM_INPUTS; i++)
-  {
-    if (insn.emitter->inputs[i].reqs)
-    {
-      insn.inputs[i].vreg = m_vregs.size();
-      VReg vr = {insn.emitter->inputs[i].reqs, 0, false, M((void*)0)};
-      if (insn.inputs[i].type == IROp::IMM)
-      {
-        vr.imm = insn.inputs[i].imm;
-        vr.isImm = true;  // can be changed to false if reqs+imm requires
-      }
-      m_vregs.push_back(vr);
-      if (insn.emitter->inputs[i].reqs & SameAsOutput)
-      {
-        output_is_input = true;
-        insn.output.vreg = insn.inputs[i].vreg;
-      }
-    }
-  }
-
-  if (!output_is_input && insn.emitter->output.reqs)
-  {
-    insn.output.vreg = m_vregs.size();
-    VReg vr = {insn.emitter->output.reqs, 0, false, M((void*)0)};
-    m_vregs.push_back(vr);
-  }
-
-  // end of vreg assignment pass >>
-
   if (insn.needs_SR || insn.modifies_SR)
     insn.SR = m_gpr.GetReg(DSP_REG_SR, true);
   else
     insn.SR = M_SDSP_r_sr();
 
   // now, do some of the work of the host register allocator:
-  // decide what to do with imms, and allocate the vregs
-  // this happens entirely with the vregs data
+  // decide what to do with imms, and allocate the hregs
+  // this happens entirely with the vregs data(except for
+  // the actual assignment of opargs into the IROps)
   //<< start of register allocation
 
   // this is just a very simple allocator. when we do whole
@@ -540,8 +545,24 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
   // different vregs, especially to allocate the same host reg
   // to vregs that don't live at the same time
 
+  // collect the vregs touched by this instruction
+  // this "replaces" the lifetime analysis for now
+  std::unordered_set<int> live_vregs;
+  for (unsigned int i = 0; i < NUM_TEMPS; i++)
+  {
+    if (insn.temps[i].vreg > 0)
+      live_vregs.insert(insn.temps[i].vreg);
+  }
+  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  {
+    if (insn.inputs[i].vreg > 0)
+      live_vregs.insert(insn.inputs[i].vreg);
+  }
+  if (insn.output.vreg > 0)
+    live_vregs.insert(insn.output.vreg);
+
   // check if we can assign the imms
-  for (unsigned int i = 0; i < m_vregs.size(); i++)
+  for (auto i : live_vregs)
   {
     if (m_vregs[i].isImm)
     {
@@ -565,7 +586,7 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
     }
   }
   // grab all the vregs that need special hregs
-  for (unsigned int i = 0; i < m_vregs.size(); i++)
+  for (auto i : live_vregs)
   {
     if (m_vregs[i].isImm)
       continue;
@@ -576,7 +597,7 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
   }
 
   // allocate the rest
-  for (unsigned int i = 0; i < m_vregs.size(); i++)
+  for (auto i : live_vregs)
   {
     if (m_vregs[i].isImm)
       continue;
@@ -592,21 +613,23 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
   // we can already do this here
   for (unsigned int i = 0; i < NUM_TEMPS; i++)
   {
-    if (insn.temps[i].vreg >= 0)
+    if (insn.temps[i].vreg > 0)
       insn.temps[i].oparg = m_vregs[insn.temps[i].vreg].oparg;
   }
   for (unsigned int i = 0; i < NUM_INPUTS; i++)
   {
-    if (insn.inputs[i].vreg >= 0)
+    if (insn.inputs[i].vreg > 0)
       insn.inputs[i].oparg = m_vregs[insn.inputs[i].vreg].oparg;
   }
-  if (insn.output.vreg >= 0)
+  if (insn.output.vreg > 0)
     insn.output.oparg = m_vregs[insn.output.vreg].oparg;
 
   // end of register allocation >>
 
   // do the actual loading. these should just be injected
   // into the insn stream, so we can manipulate them
+  // must happen after assignVregs, but before register alloc
+  // when we go through with this
   for (unsigned int i = 0; i < NUM_INPUTS; i++)
   {
     if (insn.emitter->inputs[i].reqs)
@@ -649,10 +672,13 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
 
   // and now, drop it all again. this will not be needed when
   // we drop the m_gpr completely
-  for (unsigned int i = 0; i < m_vregs.size(); i++)
+  for (auto i : live_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())
+    {
       m_gpr.PutXReg(m_vregs[i].oparg.GetSimpleReg());
+      m_vregs[i].oparg = M((void*)0);
+    }
   }
 }
 
@@ -684,6 +710,11 @@ void DSPEmitterIR::Compile(u16 start_addr)
   m_block_size[start_addr] = 0;
 
   auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
+
+  m_vregs.clear();
+  VReg vr = {0, 0, false, M((void*)0)};
+  m_vregs.push_back(vr);  // reserve vreg 0
+
   clearNodeStorage();
 
   // create start_bb and preliminary end_bb
@@ -908,6 +939,7 @@ void DSPEmitterIR::ir_add_op(IRInsn insn)
   memset(insn.value_regs, 0, sizeof(insn.value_regs));
   memset(insn.const_regs, 0, sizeof(insn.const_regs));
   memset(insn.modified_regs, 0, sizeof(insn.modified_regs));
+  assignVRegs(insn);
 
   IRInsnNode* n = makeIRInsnNode(insn);
   m_parallel_nodes.push_back(std::make_pair(n, n));
