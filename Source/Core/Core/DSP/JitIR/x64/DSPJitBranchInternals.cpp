@@ -62,12 +62,11 @@ void DSPEmitterIR::preABICall(IRInsn const& insn, X64Reg returnreg)
   std::set<X64Reg> regs;
   if (insn.SR.IsSimpleReg())
     regs.insert(insn.SR.GetSimpleReg());
-  // going the easy route, since all the vregs
-  // are "active" at the moment.
-  for (unsigned int i = 0; i < m_vregs.size(); i++)
+  // save the registers being marked active
+  for (unsigned int i = 0; i < m_cregs.size(); i++)
   {
-    if (m_vregs[i].active && m_vregs[i].oparg.GetSimpleReg() != returnreg)
-      regs.insert(m_vregs[i].oparg.GetSimpleReg());
+    if (m_cregs[i].active && m_cregs[i].oparg.GetSimpleReg() != returnreg)
+      regs.insert(m_cregs[i].oparg.GetSimpleReg());
   }
 
   // hardcoding alignment to 16 bytes
@@ -91,12 +90,11 @@ void DSPEmitterIR::postABICall(IRInsn const& insn, X64Reg returnreg)
   std::set<X64Reg> regs;
   if (insn.SR.IsSimpleReg())
     regs.insert(insn.SR.GetSimpleReg());
-  // going the easy route, since all the vregs
-  // are "active" at the moment.
-  for (unsigned int i = 0; i < m_vregs.size(); i++)
+  // restore the registers being marked active
+  for (unsigned int i = 0; i < m_cregs.size(); i++)
   {
-    if (m_vregs[i].active && m_vregs[i].oparg.GetSimpleReg() != returnreg)
-      regs.insert(m_vregs[i].oparg.GetSimpleReg());
+    if (m_cregs[i].active && m_cregs[i].oparg.GetSimpleReg() != returnreg)
+      regs.insert(m_cregs[i].oparg.GetSimpleReg());
   }
 
   // std::set is sorted

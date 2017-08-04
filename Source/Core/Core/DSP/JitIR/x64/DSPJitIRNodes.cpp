@@ -166,6 +166,77 @@ DSPEmitterIR::IRBB* DSPEmitterIR::findAndSplitBB(IRNode* at)
   return old_bb;
 }
 
+static std::string opargToString(Gen::OpArg const& oparg)
+{
+  std::stringstream buf;
+  if (oparg.IsSimpleReg())
+  {
+    buf << "R(";
+    switch (oparg.GetSimpleReg())
+    {
+    case Gen::RAX:
+      buf << "RAX";
+      break;
+    case Gen::RBX:
+      buf << "RBX";
+      break;
+    case Gen::RCX:
+      buf << "RCX";
+      break;
+    case Gen::RDX:
+      buf << "RDX";
+      break;
+    case Gen::RSP:
+      buf << "RSP";
+      break;
+    case Gen::RBP:
+      buf << "RBP";
+      break;
+    case Gen::RSI:
+      buf << "RSI";
+      break;
+    case Gen::RDI:
+      buf << "RDI";
+      break;
+    case Gen::R8:
+      buf << "R8";
+      break;
+    case Gen::R9:
+      buf << "R9";
+      break;
+    case Gen::R10:
+      buf << "R10";
+      break;
+    case Gen::R11:
+      buf << "R11";
+      break;
+    case Gen::R12:
+      buf << "R12";
+      break;
+    case Gen::R13:
+      buf << "R13";
+      break;
+    case Gen::R14:
+      buf << "R14";
+      break;
+    case Gen::R15:
+      buf << "R15";
+      break;
+    default:
+      buf << "unknown";
+      break;
+    }
+    buf << ")";
+    return buf.str();
+  }
+  if (oparg.IsImm())
+  {
+    buf << "Imm(" << std::hex << oparg.AsImm64().Imm64() << std::dec << ")";
+    return buf.str();
+  }
+  return "complex";
+}
+
 std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
 {
   DSPEmitterIR::IRInsn const& insn = in->insn;
@@ -182,6 +253,10 @@ std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
     break;
   case DSPEmitterIR::IROp::VREG:
     buf << "v" << insn.output.vreg;
+    buf << "(" << opargToString(m_vregs[insn.output.vreg].oparg) << ")";
+    buf << " c" << insn.output.creg;
+    buf << "(" << opargToString(m_cregs[insn.output.creg].oparg) << ")";
+    buf << " o(" << opargToString(insn.output.oparg) << ")";
     break;
   default:
     break;
@@ -202,16 +277,46 @@ std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
     case DSPEmitterIR::IROp::IMM:
       buf << "#0x" << std::hex << std::setw(4) << std::setfill('0') << insn.inputs[i].imm
           << std::dec;
-      buf << "(v" << insn.inputs[i].vreg << ")";
+      buf << "(v" << insn.inputs[i].vreg;
+      buf << "(" << opargToString(m_vregs[insn.inputs[i].vreg].oparg) << ")";
+      buf << " c" << insn.inputs[i].creg;
+      buf << "(" << opargToString(m_cregs[insn.inputs[i].creg].oparg) << ")";
+      buf << " o(" << opargToString(insn.inputs[i].oparg) << "))";
       break;
     case DSPEmitterIR::IROp::VREG:
       buf << "v" << insn.inputs[i].vreg;
+      buf << "(" << opargToString(m_vregs[insn.inputs[i].vreg].oparg) << ")";
+      buf << " c" << insn.inputs[i].creg;
+      buf << "(" << opargToString(m_cregs[insn.inputs[i].creg].oparg) << ")";
+      buf << " o(" << opargToString(insn.inputs[i].oparg) << ")";
       break;
     default:
       break;
     }
   }
 
+  buf << "\\n";
+
+  buf << "temps: ";
+  for (unsigned i = 0;
+       i < DSPEmitterIR::NUM_TEMPS && insn.temps[i].type != DSPEmitterIR::IROp::INVALID; i++)
+  {
+    if (i > 0)
+      buf << ", ";
+    switch (insn.temps[i].type)
+    {
+    case DSPEmitterIR::IROp::VREG:
+      buf << "v" << insn.temps[i].vreg;
+      buf << "(" << opargToString(m_vregs[insn.temps[i].vreg].oparg) << ")";
+      buf << " c" << insn.temps[i].creg;
+      buf << "(" << opargToString(m_cregs[insn.temps[i].creg].oparg) << ")";
+      buf << " o(" << opargToString(insn.temps[i].oparg) << ")";
+      break;
+    default:
+      buf << "unhandled type";
+      break;
+    }
+  }
   buf << "\\n";
 
   buf << "later_needs_SR=0x" << std::hex << std::setw(4) << std::setfill('0') << insn.later_needs_SR
@@ -224,6 +329,12 @@ std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
   for (auto vr : in->live_vregs)
   {
     buf << " " << vr;
+  }
+  buf << "\\n live cregs:";
+
+  for (auto cr : in->live_cregs)
+  {
+    buf << " " << cr;
   }
 
   return buf.str();
@@ -314,6 +425,105 @@ void DSPEmitterIR::dumpIRNodes() const
     ERROR_LOG(DSPLLE, "%s [ label=\"%s\\n%s\" ];", name.c_str(), name.c_str(), buf2.str().c_str());
   }
 
+  for (unsigned int i = 1; i < m_cregs.size(); i++)
+  {
+    std::stringstream buf2;
+    buf2 << "C_" << i;
+    std::string name = buf2.str();
+
+    buf2.str("");
+    buf2 << "reqs:";
+    if ((m_cregs[i].reqs & OpMask) == OpAny64)
+      buf2 << " Any64";
+    else if ((m_cregs[i].reqs & OpMask) == OpAny)
+      buf2 << " Any";
+    else
+    {
+      if ((m_cregs[i].reqs & OpAnyReg) == OpAnyReg)
+        buf2 << " AnyReg";
+      else if (m_cregs[i].reqs & OpRAX)
+        buf2 << " RAX";
+      else if (m_cregs[i].reqs & OpRCX)
+        buf2 << " RCX";
+      if (m_cregs[i].reqs & OpMem)
+        buf2 << " Mem";
+      if ((m_cregs[i].reqs & OpImmAny) == OpImmAny)
+        buf2 << " ImmAny";
+      else if (m_cregs[i].reqs & OpImm)
+        buf2 << " Imm";
+      else if (m_cregs[i].reqs & OpImm64)
+        buf2 << " Imm64";
+    }
+    buf2 << "(" << std::hex << m_cregs[i].reqs << std::dec << ")";
+
+    buf2 << "\\noparg: " << opargToString(m_cregs[i].oparg);
+    if (m_cregs[i].isImm)
+      buf2 << "\\nimm: " << std::hex << m_cregs[i].imm << std::dec;
+
+    ERROR_LOG(DSPLLE, "%s [ label=\"%s\\n%s\" ];", name.c_str(), name.c_str(), buf2.str().c_str());
+
+    for (auto cr : m_cregs[i].same_hostreg_cregs)
+    {
+      buf2.str("");
+      buf2 << "C_" << cr;
+      std::string othername = buf2.str();
+      ERROR_LOG(DSPLLE, "%s -> %s [color=red];", name.c_str(), othername.c_str());
+    }
+    for (auto cr : m_cregs[i].parallel_live_cregs)
+    {
+      buf2.str("");
+      buf2 << "C_" << cr;
+      std::string othername = buf2.str();
+      ERROR_LOG(DSPLLE, "%s -> %s [color=green];", name.c_str(), othername.c_str());
+    }
+  }
+
+  for (unsigned int i = 1; i < m_vregs.size(); i++)
+  {
+    std::stringstream buf2;
+    buf2 << "V_" << i;
+    std::string name = buf2.str();
+
+    buf2.str("");
+    buf2 << "reqs:";
+    if ((m_vregs[i].reqs & OpMask) == OpAny64)
+      buf2 << " Any64";
+    else if ((m_vregs[i].reqs & OpMask) == OpAny)
+      buf2 << " Any";
+    else
+    {
+      if ((m_vregs[i].reqs & OpAnyReg) == OpAnyReg)
+        buf2 << " AnyReg";
+      else if (m_vregs[i].reqs & OpRAX)
+        buf2 << " RAX";
+      else if (m_vregs[i].reqs & OpRCX)
+        buf2 << " RCX";
+      if (m_vregs[i].reqs & OpMem)
+        buf2 << " Mem";
+      if ((m_vregs[i].reqs & OpImmAny) == OpImmAny)
+        buf2 << " ImmAny";
+      else if (m_vregs[i].reqs & OpImm)
+        buf2 << " Imm";
+      else if (m_vregs[i].reqs & OpImm64)
+        buf2 << " Imm64";
+    }
+    buf2 << "(" << std::hex << m_vregs[i].reqs << std::dec << ")";
+
+    buf2 << "\\noparg: " << opargToString(m_vregs[i].oparg);
+    if (m_vregs[i].isImm)
+      buf2 << "\\nimm: " << std::hex << m_vregs[i].imm << std::dec;
+
+    ERROR_LOG(DSPLLE, "%s [ label=\"%s\\n%s\" ];", name.c_str(), name.c_str(), buf2.str().c_str());
+
+    for (auto vr : m_vregs[i].parallel_live_vregs)
+    {
+      buf2.str("");
+      buf2 << "V_" << vr;
+      std::string othername = buf2.str();
+      ERROR_LOG(DSPLLE, "%s -> %s [color=green];", name.c_str(), othername.c_str());
+    }
+  }
+
   for (auto bb : m_bb_storage)
   {
     std::stringstream buf2;
@@ -374,6 +584,42 @@ void DSPEmitterIR::dumpIRNodes() const
   ctr++;
 }
 
+void DSPEmitterIR::merge_cregs(int creg1, int creg2)
+{
+  // find all references to creg2 and replace them with ones to creg1
+  // but first, merge requirements.
+  m_cregs[creg1].reqs &= m_cregs[creg2].reqs;
+  // merge same_hostreg_cregs and parallel_live_cregs
+  for (auto i : m_cregs[creg2].same_hostreg_cregs)
+  {
+    m_cregs[i].same_hostreg_cregs.insert(creg1);
+    for (auto j : m_cregs[creg2].same_hostreg_cregs)
+      m_cregs[i].same_hostreg_cregs.insert(j);
+  }
+  for (auto i : m_cregs[creg2].parallel_live_cregs)
+  {
+    m_cregs[i].parallel_live_cregs.insert(creg1);
+    for (auto j : m_cregs[creg2].parallel_live_cregs)
+      m_cregs[i].parallel_live_cregs.insert(j);
+  }
+  // adjust instructions
+  for (auto n : m_node_storage)
+  {
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (!in)
+      continue;
+    for (int i = 0; i < NUM_INPUTS; i++)
+      if (in->insn.inputs[i].creg == creg2)
+        in->insn.inputs[i].creg = creg1;
+    for (int i = 0; i < NUM_TEMPS; i++)
+      if (in->insn.temps[i].creg == creg2)
+        in->insn.temps[i].creg = creg1;
+    if (in->insn.output.creg == creg2)
+      in->insn.output.creg = creg1;
+  }
+  m_cregs[creg2].same_hostreg_cregs.clear();
+  m_cregs[creg2].parallel_live_cregs.clear();
+}
 }  // namespace x64
 }  // namespace JITIR
 }  // namespace DSP

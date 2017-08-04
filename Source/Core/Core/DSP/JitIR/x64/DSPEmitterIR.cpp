@@ -143,9 +143,12 @@ void DSPEmitterIR::assignVRegs(IRInsn& insn)
     if (insn.emitter->temps[i].reqs && insn.temps[i].vreg <= 0)
     {
       insn.temps[i].vreg = m_vregs.size();
+      insn.temps[i].creg = m_cregs.size();
       insn.temps[i].type = IROp::VREG;
       VReg vr = {insn.emitter->temps[i].reqs, 0, false, M((void*)0)};
       m_vregs.push_back(vr);
+      CReg cr = {insn.emitter->temps[i].reqs, 0, false, M((void*)0)};
+      m_cregs.push_back(cr);
     }
   }
 
@@ -155,13 +158,18 @@ void DSPEmitterIR::assignVRegs(IRInsn& insn)
     if (insn.emitter->inputs[i].reqs && insn.inputs[i].vreg <= 0)
     {
       insn.inputs[i].vreg = m_vregs.size();
+      insn.inputs[i].creg = m_cregs.size();
       VReg vr = {insn.emitter->inputs[i].reqs, 0, false, M((void*)0)};
+      CReg cr = {insn.emitter->inputs[i].reqs, 0, false, M((void*)0)};
       if (insn.inputs[i].type == IROp::IMM)
       {
         vr.imm = insn.inputs[i].imm;
         vr.isImm = true;  // can be changed to false if reqs+imm requires
+        cr.imm = insn.inputs[i].imm;
+        cr.isImm = true;  // can be changed to false if reqs+imm requires
       }
       m_vregs.push_back(vr);
+      m_cregs.push_back(cr);
       if (insn.emitter->inputs[i].reqs & SameAsOutput)
       {
         output_is_input = true;
@@ -172,6 +180,12 @@ void DSPEmitterIR::assignVRegs(IRInsn& insn)
                      insn.emitter->output.reqs & OpMask);
 
         m_vregs[insn.inputs[i].vreg].reqs |= insn.emitter->output.reqs & NoACMExtend;
+
+        insn.output.creg = m_cregs.size();
+        CReg cr2 = {insn.emitter->output.reqs, 0, false, M((void*)0)};
+        m_cregs.push_back(cr2);
+        m_cregs[insn.output.creg].same_hostreg_cregs.insert(insn.inputs[i].creg);
+        m_cregs[insn.inputs[i].creg].same_hostreg_cregs.insert(insn.output.creg);
       }
     }
   }
@@ -181,6 +195,9 @@ void DSPEmitterIR::assignVRegs(IRInsn& insn)
     insn.output.vreg = m_vregs.size();
     VReg vr = {insn.emitter->output.reqs, 0, false, M((void*)0)};
     m_vregs.push_back(vr);
+    insn.output.creg = m_cregs.size();
+    CReg cr = {insn.emitter->output.reqs, 0, false, M((void*)0)};
+    m_cregs.push_back(cr);
   }
 }
 
@@ -682,6 +699,14 @@ void DSPEmitterIR::dropNoOps()
       {
         if (in->insn.emitter->func == &DSPEmitterIR::iremit_NoOp)
         {
+          for (int i = 0; i < NUM_INPUTS; i++)
+          {
+            if (in->insn.emitter->inputs[i].reqs & SameAsOutput)
+            {
+              merge_cregs(in->insn.inputs[i].creg, in->insn.output.creg);
+            }
+          }
+
           IRNode* n = makeIRNode();
           for (auto n2 : in->next)
             n->addNext(n2);
@@ -706,6 +731,8 @@ void DSPEmitterIR::dropNoOps()
 void DSPEmitterIR::checkImmVRegs()
 {
   // check if we can assign the imms
+  // will probably go into the whole "swap registers to fit requirements"
+  // thingy
   for (unsigned int i = 1; i < m_vregs.size(); i++)
   {
     if (m_vregs[i].isImm)
@@ -731,6 +758,34 @@ void DSPEmitterIR::checkImmVRegs()
       }
     }
   }
+  for (unsigned int i = 1; i < m_cregs.size(); i++)
+  {
+    if (m_cregs[i].isImm)
+    {
+      if ((m_cregs[i].reqs & OpImm) && (s16)m_cregs[i].imm == m_cregs[i].imm)
+      {
+        m_cregs[i].oparg = Imm16(m_cregs[i].imm);
+      }
+      else if ((m_cregs[i].reqs & OpImm) && (s32)m_cregs[i].imm == m_cregs[i].imm)
+      {
+        // imm32 gets sign extended to 64bit in 64bit ops
+        // result of 32bit ops is zero extended to 64bit
+        m_cregs[i].oparg = Imm32(m_cregs[i].imm);
+      }
+      else if (m_cregs[i].reqs & OpImm64)
+      {
+        m_cregs[i].oparg = Imm64(m_cregs[i].imm);
+      }
+      else
+      {
+        // demote to register
+        m_cregs[i].isImm = false;
+      }
+    }
+    // don't try to use same_hostReg as that does not extend
+    // to the register _contents_. an operation can change
+    // the value but still have SameAsOutput set
+  }
 }
 
 void DSPEmitterIR::analyseVRegLifetime(IRBB* bb)
@@ -746,11 +801,13 @@ void DSPEmitterIR::analyseVRegLifetime(IRBB* bb)
     todo.erase(todo.begin());
 
     std::unordered_set<int> live_vregs = n->live_vregs;
+    std::unordered_set<int> live_cregs = n->live_cregs;
     std::unordered_set<IRNode*> nexts;
     for (auto n2 : n->next)
     {
       IRInsnNode* in2 = dynamic_cast<IRInsnNode*>(n2);
       std::unordered_set<int> l_vregs = n2->live_vregs;
+      std::unordered_set<int> l_cregs = n2->live_cregs;
       if (in2)
       {
         IRInsn& insn = in2->insn;
@@ -771,14 +828,48 @@ void DSPEmitterIR::analyseVRegLifetime(IRBB* bb)
           if (vreg > 0 && insn.inputs[i].type == IROp::VREG)
             l_vregs.insert(vreg);
         }
+        {
+          int creg = insn.output.creg;
+          if (creg > 0 && insn.output.type == IROp::VREG)
+          {
+            l_cregs.erase(creg);
+            for (auto cr : m_cregs[creg].same_hostreg_cregs)
+            {
+              l_cregs.erase(cr);
+            }
+          }
+        }
+        for (unsigned int i = 0; i < NUM_TEMPS; i++)
+        {
+          int creg = insn.temps[i].creg;
+          if (creg > 0)
+          {
+            l_cregs.erase(creg);
+            for (auto cr : m_cregs[creg].same_hostreg_cregs)
+              l_cregs.erase(cr);
+          }
+        }
+        for (unsigned int i = 0; i < NUM_INPUTS; i++)
+        {
+          int creg = insn.inputs[i].creg;
+          if (creg > 0 && insn.inputs[i].type == IROp::VREG)
+          {
+            l_cregs.insert(creg);
+            for (auto cr : m_cregs[creg].same_hostreg_cregs)
+              l_cregs.insert(cr);
+          }
+        }
       }
       for (auto vi3 : l_vregs)
         live_vregs.insert(vi3);
+      for (auto ci3 : l_cregs)
+        live_cregs.insert(ci3);
     }
 
-    if (n->live_vregs != live_vregs)
+    if (n->live_vregs != live_vregs || n->live_cregs != live_cregs)
     {
       n->live_vregs = live_vregs;
+      n->live_cregs = live_cregs;
       for (auto n2 : n->prev)
         todo.insert(n2);
     }
@@ -819,6 +910,39 @@ void DSPEmitterIR::analyseVRegLifetime()
       if (vreg > 0 && insn.output.type == IROp::VREG)
         n->live_vregs.insert(vreg);
     }
+    for (unsigned int i = 0; i < NUM_TEMPS; i++)
+    {
+      int creg = insn.temps[i].creg;
+      if (creg > 0)
+      {
+        n->live_cregs.insert(creg);
+        for (auto cr : m_cregs[creg].same_hostreg_cregs)
+        {
+          n->live_cregs.insert(cr);
+        }
+      }
+    }
+    for (unsigned int i = 0; i < NUM_INPUTS; i++)
+    {
+      int creg = insn.inputs[i].creg;
+      if (creg > 0 && insn.inputs[i].type == IROp::VREG)
+      {
+        n->live_cregs.insert(creg);
+        for (auto cr : m_cregs[creg].same_hostreg_cregs)
+        {
+          n->live_cregs.insert(cr);
+        }
+      }
+    }
+    {
+      int creg = insn.output.creg;
+      if (creg > 0 && insn.output.type == IROp::VREG)
+      {
+        n->live_cregs.insert(creg);
+        for (auto cr : m_cregs[creg].same_hostreg_cregs)
+          n->live_cregs.insert(cr);
+      }
+    }
   }
 
   // step 2: repeatedly go through all insns and fix up live depending on
@@ -835,11 +959,13 @@ void DSPEmitterIR::analyseVRegLifetime()
     todo.erase(todo.begin());
 
     std::unordered_set<int> live_vregs = bb->end_node->live_vregs;
+    std::unordered_set<int> live_cregs = bb->end_node->live_cregs;
     for (auto ni : bb->next)
     {
       IRNode* n2 = ni->start_node;
       IRInsnNode* in2 = dynamic_cast<IRInsnNode*>(n2);
       std::unordered_set<int> l_vregs = n2->live_vregs;
+      std::unordered_set<int> l_cregs = n2->live_cregs;
       if (in2)
       {
         IRInsn& insn = in2->insn;
@@ -860,14 +986,46 @@ void DSPEmitterIR::analyseVRegLifetime()
           if (vreg > 0 && insn.inputs[i].type == IROp::VREG)
             l_vregs.insert(vreg);
         }
+        {
+          int creg = insn.output.creg;
+          if (creg > 0 && insn.output.type == IROp::VREG)
+          {
+            l_cregs.erase(creg);
+            for (auto cr : m_cregs[creg].same_hostreg_cregs)
+              l_cregs.erase(cr);
+          }
+        }
+        for (unsigned int i = 0; i < NUM_TEMPS; i++)
+        {
+          int creg = insn.temps[i].creg;
+          if (creg > 0)
+          {
+            l_cregs.erase(creg);
+            for (auto cr : m_cregs[creg].same_hostreg_cregs)
+              l_cregs.erase(cr);
+          }
+        }
+        for (unsigned int i = 0; i < NUM_INPUTS; i++)
+        {
+          int creg = insn.inputs[i].creg;
+          if (creg > 0 && insn.inputs[i].type == IROp::VREG)
+          {
+            l_cregs.insert(creg);
+            for (auto cr : m_cregs[creg].same_hostreg_cregs)
+              l_cregs.insert(cr);
+          }
+        }
       }
       for (auto vi3 : l_vregs)
         live_vregs.insert(vi3);
+      for (auto ci3 : l_cregs)
+        live_cregs.insert(ci3);
     }
 
-    if (bb->end_node->live_vregs != live_vregs)
+    if (bb->end_node->live_vregs != live_vregs || bb->end_node->live_cregs != live_cregs)
     {
       bb->end_node->live_vregs = live_vregs;
+      bb->end_node->live_cregs = live_cregs;
       analyseVRegLifetime(bb);
       for (auto bb2 : bb->prev)
         todo.insert(bb2);
@@ -886,6 +1044,10 @@ void DSPEmitterIR::findLiveVRegs()
       {
         for (auto vi2 : n->live_vregs)
           m_vregs[vi1].parallel_live_vregs.insert(vi2);
+      }
+      for (auto cr : n->live_cregs)
+      {
+        m_cregs[cr].parallel_live_cregs.insert(n->live_cregs.begin(), n->live_cregs.end());
       }
     }
   }
@@ -911,46 +1073,57 @@ void DSPEmitterIR::allocHostRegs()
   // todo: refactor the allocation into one function, getting passed
   // which reqs to handle and/or from which pool to choose
 
-  std::list<int> vreg_allocation_order;
-  // allocate RAX/RCX
-  for (unsigned int i1 = 1; i1 < m_vregs.size(); i1++)
-  {
-    if (m_vregs[i1].isImm)
-      continue;
-    if ((m_vregs[i1].reqs & OpAnyReg) != OpRAX && (m_vregs[i1].reqs & OpAnyReg) != OpRCX)
-      continue;
+  std::unordered_set<int> creg_todo;
+  std::list<int> creg_allocation_order;
 
-    vreg_allocation_order.push_back(i1);
+  for (unsigned int i = 1; i < m_cregs.size(); i++)
+  {
+    if (m_cregs[i].isImm)
+      continue;
+    creg_todo.insert(i);
+  }
+
+  // allocate RAX/RCX
+  for (auto it = creg_todo.begin(); it != creg_todo.end();)
+  {
+    if ((m_cregs[*it].reqs & OpAnyReg) == OpRAX || (m_cregs[*it].reqs & OpAnyReg) == OpRCX)
+    {
+      creg_allocation_order.push_back(*it);
+      it = creg_todo.erase(it);
+    }
+    else
+      it++;
   }
 
   // allocate the rest
-  for (unsigned int i1 = 1; i1 < m_vregs.size(); i1++)
+  for (auto it = creg_todo.begin(); it != creg_todo.end();)
   {
-    if (m_vregs[i1].isImm)
-      continue;
-    if ((m_vregs[i1].reqs & OpAnyReg) == OpRAX || (m_vregs[i1].reqs & OpAnyReg) == OpRCX)
-      continue;
-
-    vreg_allocation_order.push_back(i1);
+    creg_allocation_order.push_back(*it);
+    it = creg_todo.erase(it);
   }
 
-  for (auto i : vreg_allocation_order)
+  for (auto i : creg_allocation_order)
   {
-    if (m_vregs[i].oparg.IsSimpleReg())
+    if (m_cregs[i].oparg.IsSimpleReg())
       continue;
 
     std::unordered_set<X64Reg> inuse;
 
-    for (auto k : m_vregs[i].parallel_live_vregs)
+    for (auto k : m_cregs[i].parallel_live_cregs)
     {
-      if (m_vregs[k].oparg.IsSimpleReg())
-        inuse.insert(m_vregs[k].oparg.GetSimpleReg());
+      if (m_cregs[k].oparg.IsSimpleReg())
+        inuse.insert(m_cregs[k].oparg.GetSimpleReg());
+      for (auto l : m_cregs[k].same_hostreg_cregs)
+      {
+        if (m_cregs[l].oparg.IsSimpleReg())
+          inuse.insert(m_cregs[l].oparg.GetSimpleReg());
+      }
     }
 
     X64Reg hreg = INVALID_REG;
-    if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
+    if ((m_cregs[i].reqs & OpAnyReg) == OpRAX)
       hreg = RAX;
-    else if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
+    else if ((m_cregs[i].reqs & OpAnyReg) == OpRCX)
       hreg = RCX;
     else
       hreg = findHostReg(inuse);
@@ -958,7 +1131,9 @@ void DSPEmitterIR::allocHostRegs()
     _assert_msg_(DSPLLE, hreg != INVALID_REG, "could not allocate host reg");
     _assert_msg_(DSPLLE, inuse.count(hreg) == 0, "register is already in use");
 
-    m_vregs[i].oparg = R(hreg);
+    m_cregs[i].oparg = R(hreg);
+    for (auto cr : m_cregs[i].same_hostreg_cregs)
+      m_cregs[cr].oparg = R(hreg);
   }
 }
 
@@ -966,16 +1141,16 @@ void DSPEmitterIR::updateInsnOpArgs(IRInsn& insn)
 {
   for (unsigned int i = 0; i < NUM_TEMPS; i++)
   {
-    if (insn.temps[i].vreg > 0)
-      insn.temps[i].oparg = m_vregs[insn.temps[i].vreg].oparg;
+    if (insn.temps[i].creg > 0)
+      insn.temps[i].oparg = m_cregs[insn.temps[i].creg].oparg;
   }
   for (unsigned int i = 0; i < NUM_INPUTS; i++)
   {
-    if (insn.inputs[i].vreg > 0)
-      insn.inputs[i].oparg = m_vregs[insn.inputs[i].vreg].oparg;
+    if (insn.inputs[i].creg > 0)
+      insn.inputs[i].oparg = m_cregs[insn.inputs[i].creg].oparg;
   }
-  if (insn.output.vreg > 0)
-    insn.output.oparg = m_vregs[insn.output.vreg].oparg;
+  if (insn.output.creg > 0)
+    insn.output.oparg = m_cregs[insn.output.creg].oparg;
 }
 
 void DSPEmitterIR::updateInsnOpArgs()
@@ -996,19 +1171,19 @@ void DSPEmitterIR::EmitInsn(IRInsnNode* in)
   ASSERT_MSG(DSPLLE, GetSpaceLeft() > 64, "code space too full");
 
   // mark the active vregs active(pre/postABICall)
-  for (auto i : in->live_vregs)
+  for (auto i : in->live_cregs)
   {
-    if (m_vregs[i].oparg.IsSimpleReg())
-      m_vregs[i].active = true;
+    if (m_cregs[i].oparg.IsSimpleReg())
+      m_cregs[i].active = true;
   }
 
   if (insn.needs_SR || insn.modifies_SR)
   {
     std::unordered_set<X64Reg> inuse;
-    for (auto i : in->live_vregs)
+    for (auto i : in->live_cregs)
     {
-      if (m_vregs[i].oparg.IsSimpleReg())
-        inuse.insert(m_vregs[i].oparg.GetSimpleReg());
+      if (m_cregs[i].oparg.IsSimpleReg())
+        inuse.insert(m_cregs[i].oparg.GetSimpleReg());
     }
 
     X64Reg sr_reg = findHostReg(inuse);
@@ -1026,10 +1201,10 @@ void DSPEmitterIR::EmitInsn(IRInsnNode* in)
     MOV(16, M_SDSP_r_sr(), insn.SR);
 
   // and now, drop it all again.(pre/postABICall)
-  for (auto i : in->live_vregs)
+  for (auto i : in->live_cregs)
   {
-    if (m_vregs[i].oparg.IsSimpleReg())
-      m_vregs[i].active = false;
+    if (m_cregs[i].oparg.IsSimpleReg())
+      m_cregs[i].active = false;
   }
 }
 
@@ -1074,6 +1249,9 @@ void DSPEmitterIR::Compile(u16 start_addr)
   m_vregs.clear();
   VReg vr = {0, 0, false, M((void*)0)};
   m_vregs.push_back(vr);  // reserve vreg 0
+  m_cregs.clear();
+  CReg cr = {0, 0, false, M((void*)0)};
+  m_cregs.push_back(cr);  // reserve creg 0
 
   clearNodeStorage();
 
@@ -1277,13 +1455,14 @@ void DSPEmitterIR::Compile(u16 start_addr)
   // fills insns.*.live_vregs
   analyseVRegLifetime();
 
-  // if we keep the live_, *_refed_vregs correct, we can do load/store
+  // if we keep the live_vregs correct, we can do load/store
   // removal here, and know all the time if we can afford to use another
   // host reg
 
   // fills vregs[*].parallel_live_vregs from insns.*.live_vreg
   findLiveVRegs();
   allocHostRegs();
+
   updateInsnOpArgs();
 
   // emit code
@@ -1604,5 +1783,164 @@ void DSPEmitterIR::iremit_RegFixOp(IRInsn const& insn)
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RegFixOp = {"RegFixOp",
                                                                 &DSPEmitterIR::iremit_RegFixOp};
+
+// todo: need a better way to track registers
+/*
+  state: we track registers(vregs) as host-register placeholders.
+
+  idea: track registers as constant-value entities. extra attributes:
+  same-hostreg-as(possibly a list?) needed for insns with the SameAsOutput
+  requirement.
+  alternatively, have hostreg groups. also, same-hostreg-as can be
+  collected later.
+  need to resolve conflicts between register requirements somehow.(RCX/RAX etc)
+  perhaps also have a same-value-as list?
+
+
+  NOTE: it looks like we don't actually need this, and the old vreg system
+  is simpler to manipulate
+
+ */
+
+void DSPEmitterIR::convertCRegsToVRegs()
+{
+  // for now, create our own local table from cregs, then
+  // compare with original(using a map derived from scanning insns)
+  std::vector<VReg> _vregs;
+  _vregs.clear();
+  {
+    VReg vr = {0, 0, false, M((void*)0)};
+    _vregs.push_back(vr);  // reserve vreg 0
+  }
+  std::unordered_map<unsigned, unsigned> creg2vreg;
+
+  for (unsigned i = 1; i < m_cregs.size(); i++)
+  {
+    if (creg2vreg.find(i) != creg2vreg.end())
+      continue;
+    // create a new vreg
+    VReg vr = {
+        m_cregs[i].reqs, m_cregs[i].imm, m_cregs[i].isImm, m_cregs[i].oparg,
+    };
+    unsigned vrnum = _vregs.size();
+    creg2vreg[i] = vrnum;
+    for (auto cr : m_cregs[i].same_hostreg_cregs)
+    {
+      creg2vreg[cr] = vrnum;
+      int reqs = vr.reqs & m_cregs[cr].reqs;
+      // integrate the ORed requirements
+      reqs |= (vr.reqs | m_cregs[cr].reqs) &
+              (ExtendMask | SameAsOutput | Clobbered | NoSaturate | NoACMExtend);
+      vr.reqs = reqs;
+      _assert_msg_(DSPLLE, !vr.isImm || !m_cregs[cr].isImm || vr.imm == m_cregs[cr].imm,
+                   "mismatch between cregs (%d), %d: imm", i, cr);
+      if (m_cregs[cr].isImm)
+      {
+        vr.imm = m_cregs[cr].imm;
+        vr.isImm = true;
+      }
+    }
+    _vregs.push_back(vr);
+  }
+  for (unsigned i = 1; i < m_cregs.size(); i++)
+  {
+    int myvr = creg2vreg[i];
+    for (auto cr : m_cregs[i].parallel_live_cregs)
+    {
+      _vregs[myvr].parallel_live_vregs.insert(creg2vreg[cr]);
+    }
+  }
+
+  std::unordered_map<unsigned, unsigned> vreg2realvreg;
+  // now check if this matches reality
+  for (auto n : m_node_storage)
+  {
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (!in)
+      continue;
+    for (int i = 0; i < NUM_INPUTS; i++)
+    {
+      if (in->insn.inputs[i].creg == 0)
+        continue;
+      unsigned myvr = creg2vreg[in->insn.inputs[i].creg];
+      unsigned realvr = in->insn.inputs[i].vreg;
+      if (vreg2realvreg.find(myvr) != vreg2realvreg.end())
+      {
+        _assert_msg_(DSPLLE, vreg2realvreg[myvr] == realvr,
+                     "mismatch in regenerated vreg(%d) vs real vreg(%d)", myvr, realvr);
+        continue;
+      }
+      vreg2realvreg[myvr] = realvr;
+      _assert_msg_(DSPLLE, _vregs[myvr].reqs == m_vregs[realvr].reqs,
+                   "mismatch in regenerated vreg(%d:%x) vs real vreg(%d:%x): reqs", myvr,
+                   _vregs[myvr].reqs, realvr, m_vregs[realvr].reqs);
+      _assert_msg_(DSPLLE, _vregs[myvr].isImm == m_vregs[realvr].isImm,
+                   "mismatch in regenerated vreg(%d:%d) vs real vreg(%d:%d): isImm", myvr,
+                   _vregs[myvr].isImm, realvr, m_vregs[realvr].isImm);
+      _assert_msg_(DSPLLE, _vregs[myvr].imm == m_vregs[realvr].imm,
+                   "mismatch in regenerated vreg(%d) vs real vreg(%d): imm", myvr, realvr);
+    }
+    for (int i = 0; i < NUM_TEMPS; i++)
+    {
+      if (in->insn.temps[i].creg == 0)
+        continue;
+      unsigned myvr = creg2vreg[in->insn.temps[i].creg];
+      unsigned realvr = in->insn.temps[i].vreg;
+      if (vreg2realvreg.find(myvr) != vreg2realvreg.end())
+      {
+        _assert_msg_(DSPLLE, vreg2realvreg[myvr] == realvr,
+                     "mismatch in regenerated vreg(%d) vs real vreg(%d)", myvr, realvr);
+        continue;
+      }
+      vreg2realvreg[myvr] = realvr;
+      _assert_msg_(DSPLLE, _vregs[myvr].reqs == m_vregs[realvr].reqs,
+                   "mismatch in regenerated vreg(%d:%x) vs real vreg(%d:%x): reqs", myvr,
+                   _vregs[myvr].reqs, realvr, m_vregs[realvr].reqs);
+      _assert_msg_(DSPLLE, _vregs[myvr].imm == m_vregs[realvr].imm,
+                   "mismatch in regenerated vreg(%d) vs real vreg(%d): imm", myvr, realvr);
+      _assert_msg_(DSPLLE, _vregs[myvr].isImm == m_vregs[realvr].isImm,
+                   "mismatch in regenerated vreg(%d) vs real vreg(%d): isImm", myvr, realvr);
+    }
+    {
+      if (in->insn.output.creg == 0)
+        continue;
+      unsigned myvr = creg2vreg[in->insn.output.creg];
+      unsigned realvr = in->insn.output.vreg;
+      if (vreg2realvreg.find(myvr) != vreg2realvreg.end())
+      {
+        _assert_msg_(DSPLLE, vreg2realvreg[myvr] == realvr,
+                     "mismatch in regenerated vreg(%d) vs real vreg(%d)", myvr, realvr);
+        continue;
+      }
+      vreg2realvreg[myvr] = realvr;
+      _assert_msg_(DSPLLE, _vregs[myvr].reqs == m_vregs[realvr].reqs,
+                   "mismatch in regenerated vreg(%d:%x) vs real vreg(%d:%x): reqs", myvr,
+                   _vregs[myvr].reqs, realvr, m_vregs[realvr].reqs);
+      _assert_msg_(DSPLLE, _vregs[myvr].imm == m_vregs[realvr].imm,
+                   "mismatch in regenerated vreg(%d) vs real vreg(%d): imm", myvr, realvr);
+      _assert_msg_(DSPLLE, _vregs[myvr].isImm == m_vregs[realvr].isImm,
+                   "mismatch in regenerated vreg(%d) vs real vreg(%d): isImm", myvr, realvr);
+      _assert_msg_(DSPLLE,
+                   _vregs[myvr].oparg.GetSimpleReg() == m_vregs[realvr].oparg.GetSimpleReg(),
+                   "mismatch in regenerated vreg(%d) vs real vreg(%d): oparg", myvr, realvr);
+    }
+  }
+  for (unsigned i = 0; i < _vregs.size(); i++)
+  {
+    unsigned realvr = vreg2realvreg[i];
+    for (auto vr : _vregs[i].parallel_live_vregs)
+    {
+      _assert_msg_(DSPLLE,
+                   m_vregs[realvr].parallel_live_vregs.find(vreg2realvreg[vr]) !=
+                       m_vregs[realvr].parallel_live_vregs.end(),
+                   "mismatch in regenerated vreg(%d) vs real vreg(%d): parallel_live_vregs", i,
+                   realvr);
+    }
+
+    _assert_msg_(
+        DSPLLE, m_vregs[realvr].parallel_live_vregs.size() == m_vregs[i].parallel_live_vregs.size(),
+        "mismatch in regenerated vreg(%d) vs real vreg(%d): parallel_live_vregs.size", i, realvr);
+  }
+}
 
 }  // namespace DSP::JITIR::x64
