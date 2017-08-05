@@ -647,15 +647,6 @@ void DSPEmitterIR::get_long_prod(Gen::X64Reg long_prod, Gen::X64Reg tmp1)
   ADD(64, R(long_prod), R(tmp1));
 }
 
-// Returns s64 in (long_prod)
-void DSPEmitterIR::get_long_prod_round_prodl(X64Reg long_prod, X64Reg tmp1)
-{
-  // s64 prod = dsp_get_long_prod();
-  get_long_prod(long_prod, tmp1);
-
-  round_long_acc(long_prod);
-}
-
 // For accurate emulation, this is wrong - but the real prod registers behave
 // in completely bizarre ways. Probably not meaningful to emulate them accurately.
 void DSPEmitterIR::set_long_prod(X64Reg host_sreg, X64Reg tmp1)
@@ -669,7 +660,7 @@ void DSPEmitterIR::set_long_prod(X64Reg host_sreg, X64Reg tmp1)
   m_gpr.PutReg(DSP_REG_PROD_64, true);
 }
 
-void DSPEmitterIR::round_long_acc(X64Reg long_acc)
+void DSPEmitterIR::round_long(X64Reg long_acc)
 {
   // if (prod & 0x10000) prod = (prod + 0x8000) & ~0xffff;
   // else prod = (prod + 0x7fff) & ~0xffff;

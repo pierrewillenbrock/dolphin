@@ -47,7 +47,7 @@ void DSPEmitterIR::clrl(const UDSPInstruction opc)
   OpArg accreg = m_gpr.GetReg(DSP_REG_ACC0_64 + reg);
   MOV(64, R(RAX), accreg);
 
-  round_long_acc(RAX);
+  round_long(RAX);
   //	dsp_set_long_acc(reg, acc);
 
   MOV(64, accreg, R(RAX));

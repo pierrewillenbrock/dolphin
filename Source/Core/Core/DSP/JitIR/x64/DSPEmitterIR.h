@@ -227,9 +227,8 @@ private:
   void Update_SR_Register(Gen::X64Reg val, Gen::X64Reg tmp1);
 
   void get_long_prod(Gen::X64Reg long_prod, Gen::X64Reg tmp1);
-  void get_long_prod_round_prodl(Gen::X64Reg long_prod, Gen::X64Reg tmp1);
   void set_long_prod(Gen::X64Reg host_sreg, Gen::X64Reg tmp1);
-  void round_long_acc(Gen::X64Reg long_acc);
+  void round_long(Gen::X64Reg long_acc);
 
   // Branch helpers
   void HandleLoop();
@@ -297,10 +296,9 @@ private:
   void pushExtValueFromMem2(u16 dreg, u16 sreg);
 
   // Multiplier helpers
-  void multiply();
-  void multiply_add();
-  void multiply_sub();
-  void multiply_mulx(u8 axh0, u8 axh1);
+  void multiply(Gen::X64Reg dst, Gen::X64Reg mul);
+  void multiply_uu(Gen::X64Reg dst, Gen::X64Reg mul);
+  void multiply_us(Gen::X64Reg dst, Gen::X64Reg mul);
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
 
