@@ -1,3 +1,9 @@
+# Dolphin with DSPJITIR
+
+This is a work-in-progress repository with work towards Just In Time Compilation of the DSP based on an Intermediate Representation of the DSPs instructions.
+
+As this is a work-in-progress repository, the changes are rebased on top of the main repository every now and then.
+
 # Dolphin - A GameCube and Wii Emulator
 
 [Homepage](https://dolphin-emu.org/) | [Project Site](https://github.com/dolphin-emu/dolphin) | [Buildbot](https://dolphin.ci) | [Forums](https://forums.dolphin-emu.org/) | [Wiki](https://wiki.dolphin-emu.org/) | [Issue Tracker](https://bugs.dolphin-emu.org/projects/emulator/issues) | [Coding Style](https://github.com/dolphin-emu/dolphin/blob/master/Contributing.md) | [Transifex Page](https://www.transifex.com/projects/p/dolphin-emu/)
