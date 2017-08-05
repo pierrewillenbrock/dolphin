@@ -307,173 +307,145 @@ void DSPEmitterIR::dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExten
 // Both are done while ignoring changes due to values/holes in IX
 // above the mask.
 
-void DSPEmitterIR::increment_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
+void DSPEmitterIR::increment_addr_reg(Gen::X64Reg ar, Gen::X64Reg wr, Gen::X64Reg tmp1,
                                       Gen::X64Reg tmp4)
 {
-  m_gpr.ReadReg(DSP_REG_WR0 + reg, tmp3, RegisterExtension::Zero);
-  const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
-  MOVZX(32, 16, tmp1, ar_reg);
-
   // u32 nar = ar + 1;
-  LEA(32, tmp2, MDisp(tmp1, 1));
+  MOV(32, R(tmp1), R(ar));
+  ADD(32, R(ar), Imm8(1));
 
   // if ((nar ^ ar) > ((wr | 1) << 1))
   //		nar -= wr + 1;
-  XOR(32, R(tmp1), R(tmp2));
-  LEA(32, tmp4, MRegSum(tmp3, tmp3));
+  XOR(32, R(tmp1), R(ar));
+  LEA(32, tmp4, MRegSum(wr, wr));
   OR(32, R(tmp4), Imm8(2));
   CMP(32, R(tmp1), R(tmp4));
   FixupBranch nowrap = J_CC(CC_BE);
-  SUB(16, R(tmp2), R(tmp3));
-  SUB(16, R(tmp2), Imm8(1));
+  SUB(16, R(ar), R(wr));
+  SUB(16, R(ar), Imm8(1));
   SetJumpTarget(nowrap);
   // g_dsp.r.ar[reg] = nar;
-
-  MOV(16, ar_reg, R(tmp2));
-  m_gpr.PutReg(DSP_REG_AR0 + reg);
 }
 
-void DSPEmitterIR::decrement_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
+void DSPEmitterIR::decrement_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64Reg ar_out,
                                       Gen::X64Reg tmp4)
 {
-  m_gpr.ReadReg(DSP_REG_WR0 + reg, tmp3, RegisterExtension::Zero);
-  const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
-  MOVZX(32, 16, tmp2, ar_reg);
-
   // u32 nar = ar + wr;
   // edi = nar
-  LEA(32, tmp1, MRegSum(tmp2, tmp3));
+  LEA(32, ar_out, MRegSum(ar_in, wr));
 
   // if (((nar ^ ar) & ((wr | 1) << 1)) > wr)
   //		nar -= wr + 1;
-  XOR(32, R(tmp2), R(tmp1));
-  LEA(32, tmp4, MRegSum(tmp3, tmp3));
+  XOR(32, R(ar_in), R(ar_out));
+  LEA(32, tmp4, MRegSum(wr, wr));
   OR(32, R(tmp4), Imm8(2));
-  AND(32, R(tmp2), R(tmp4));
-  CMP(32, R(tmp2), R(tmp3));
+  AND(32, R(ar_in), R(tmp4));
+  CMP(32, R(ar_in), R(wr));
   FixupBranch nowrap = J_CC(CC_BE);
-  SUB(16, R(tmp1), R(tmp3));
-  SUB(16, R(tmp1), Imm8(1));
+  SUB(16, R(ar_out), R(wr));
+  SUB(16, R(ar_out), Imm8(1));
   SetJumpTarget(nowrap);
   // g_dsp.r.ar[reg] = nar;
-
-  MOV(16, ar_reg, R(tmp1));
-  m_gpr.PutReg(DSP_REG_AR0 + reg);
 }
 
 // Increase addr register according to the correspond ix register
-void DSPEmitterIR::increase_addr_reg(int reg, int _ix_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
-                                     Gen::X64Reg tmp3, Gen::X64Reg tmp4)
+void DSPEmitterIR::increase_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64Reg ix,
+                                     Gen::X64Reg ar_out)
 {
-  m_gpr.ReadReg(DSP_REG_WR0 + reg, tmp3, RegisterExtension::Zero);
-  m_gpr.ReadReg(DSP_REG_IX0 + _ix_reg, tmp4, RegisterExtension::Sign);
-  const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
-  MOVZX(32, 16, tmp2, ar_reg);
-
   // u32 nar = ar + ix;
   // edi = nar
-  LEA(32, tmp1, MRegSum(tmp2, tmp4));
+  LEA(32, ar_out, MRegSum(ar_in, ix));
 
   // u32 dar = (nar ^ ar ^ ix) & ((wr | 1) << 1);
   // eax = dar
-  XOR(32, R(tmp2), R(tmp4));
-  XOR(32, R(tmp2), R(tmp1));
+  XOR(32, R(ar_in), R(ix));
+  XOR(32, R(ar_in), R(ar_out));
 
   // if (ix >= 0)
-  TEST(32, R(tmp4), R(tmp4));
+  TEST(32, R(ix), R(ix));
   FixupBranch negative = J_CC(CC_S);
-  LEA(32, tmp4, MRegSum(tmp3, tmp3));
-  OR(32, R(tmp4), Imm8(2));
-  AND(32, R(tmp2), R(tmp4));
+  LEA(32, ix, MRegSum(wr, wr));
+  OR(32, R(ix), Imm8(2));
+  AND(32, R(ar_in), R(ix));
 
   // if (dar > wr)
-  CMP(32, R(tmp2), R(tmp3));
+  CMP(32, R(ar_in), R(wr));
   FixupBranch done = J_CC(CC_BE);
   // nar -= wr + 1;
-  SUB(16, R(tmp1), R(tmp3));
-  SUB(16, R(tmp1), Imm8(1));
+  SUB(16, R(ar_out), R(wr));
+  SUB(16, R(ar_out), Imm8(1));
   FixupBranch done2 = J();
 
   // else
   SetJumpTarget(negative);
-  LEA(32, tmp4, MRegSum(tmp3, tmp3));
-  OR(32, R(tmp4), Imm8(2));
-  AND(32, R(tmp2), R(tmp4));
+  LEA(32, ix, MRegSum(wr, wr));
+  OR(32, R(ix), Imm8(2));
+  AND(32, R(ar_in), R(ix));
 
   // if ((((nar + wr + 1) ^ nar) & dar) <= wr)
-  LEA(32, tmp4, MComplex(tmp1, tmp3, SCALE_1, 1));
-  XOR(32, R(tmp4), R(tmp1));
-  AND(32, R(tmp4), R(tmp2));
-  CMP(32, R(tmp4), R(tmp3));
+  LEA(32, ix, MComplex(ar_out, wr, SCALE_1, 1));
+  XOR(32, R(ix), R(ar_out));
+  AND(32, R(ix), R(ar_in));
+  CMP(32, R(ix), R(wr));
   FixupBranch done3 = J_CC(CC_A);
   // nar += wr + 1;
-  LEA(32, tmp1, MComplex(tmp1, tmp3, SCALE_1, 1));
+  LEA(32, ar_out, MComplex(ar_out, wr, SCALE_1, 1));
 
   SetJumpTarget(done);
   SetJumpTarget(done2);
   SetJumpTarget(done3);
   // g_dsp.r.ar[reg] = nar;
-
-  MOV(16, ar_reg, R(tmp1));
-  m_gpr.PutReg(DSP_REG_AR0 + reg);
 }
 
 // Decrease addr register according to the correspond ix register
-void DSPEmitterIR::decrease_addr_reg(int reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3,
-                                     Gen::X64Reg tmp4)
+// ar_in must be zero extended
+void DSPEmitterIR::decrease_addr_reg(Gen::X64Reg ar_in, Gen::X64Reg wr, Gen::X64Reg ix,
+                                     Gen::X64Reg ar_out)
 {
-  m_gpr.ReadReg(DSP_REG_WR0 + reg, tmp3, RegisterExtension::Zero);
-  m_gpr.ReadReg(DSP_REG_IX0 + reg, tmp4, RegisterExtension::Sign);
-  const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
-  MOVZX(32, 16, tmp2, ar_reg);
-
-  NOT(32, R(tmp4));  // esi = ~ix
+  NOT(32, R(ix));  // esi = ~ix
 
   // u32 nar = ar - ix; (ar + ~ix + 1)
-  LEA(32, tmp1, MComplex(tmp2, tmp4, SCALE_1, 1));
+  LEA(32, ar_out, MComplex(ar_in, ix, SCALE_1, 1));
 
   // u32 dar = (nar ^ ar ^ ~ix) & ((wr | 1) << 1);
   // eax = dar
-  XOR(32, R(tmp2), R(tmp4));
-  XOR(32, R(tmp2), R(tmp1));
+  XOR(32, R(ar_in), R(ix));
+  XOR(32, R(ar_in), R(ar_out));
 
   // if ((u32)ix > 0xFFFF8000)  ==> (~ix < 0x00007FFF)
-  CMP(32, R(tmp4), Imm32(0x00007FFF));
+  CMP(32, R(ix), Imm32(0x00007FFF));
   FixupBranch positive = J_CC(CC_AE);
-  LEA(32, tmp4, MRegSum(tmp3, tmp3));
-  OR(32, R(tmp4), Imm8(2));
-  AND(32, R(tmp2), R(tmp4));
+  LEA(32, ix, MRegSum(wr, wr));
+  OR(32, R(ix), Imm8(2));
+  AND(32, R(ar_in), R(ix));
 
   // if (dar > wr)
-  CMP(32, R(tmp2), R(tmp3));
+  CMP(32, R(ar_in), R(wr));
   FixupBranch done = J_CC(CC_BE);
   // nar -= wr + 1;
-  SUB(16, R(tmp1), R(tmp3));
-  SUB(16, R(tmp1), Imm8(1));
+  SUB(16, R(ar_out), R(wr));
+  SUB(16, R(ar_out), Imm8(1));
   FixupBranch done2 = J();
 
   // else
   SetJumpTarget(positive);
-  LEA(32, tmp4, MRegSum(tmp3, tmp3));
-  OR(32, R(tmp4), Imm8(2));
-  AND(32, R(tmp2), R(tmp4));
+  LEA(32, ix, MRegSum(wr, wr));
+  OR(32, R(ix), Imm8(2));
+  AND(32, R(ar_in), R(ix));
 
   // if ((((nar + wr + 1) ^ nar) & dar) <= wr)
-  LEA(32, tmp4, MComplex(tmp1, tmp3, SCALE_1, 1));
-  XOR(32, R(tmp4), R(tmp1));
-  AND(32, R(tmp4), R(tmp2));
-  CMP(32, R(tmp4), R(tmp3));
+  LEA(32, ix, MComplex(ar_out, wr, SCALE_1, 1));
+  XOR(32, R(ix), R(ar_out));
+  AND(32, R(ix), R(ar_in));
+  CMP(32, R(ix), R(wr));
   FixupBranch done3 = J_CC(CC_A);
   // nar += wr + 1;
-  LEA(32, tmp1, MComplex(tmp1, tmp3, SCALE_1, 1));
+  LEA(32, ar_out, MComplex(ar_out, wr, SCALE_1, 1));
 
   SetJumpTarget(done);
   SetJumpTarget(done2);
   SetJumpTarget(done3);
   // return nar
-
-  MOV(16, ar_reg, R(tmp1));
-  m_gpr.PutReg(DSP_REG_AR0 + reg);
 }
 
 void DSPEmitterIR::dmem_write(X64Reg value, Gen::X64Reg destaddr, Gen::X64Reg tmp1)
