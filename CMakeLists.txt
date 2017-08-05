@@ -286,6 +286,7 @@ else()
 
   dolphin_compile_definitions(_DEBUG DEBUG_ONLY)
   check_and_add_flag(GGDB -ggdb DEBUG_ONLY)
+  check_and_add_flag(GGDB -O2 DEBUG_ONLY)
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # GNU ar: Create thin archive files.
