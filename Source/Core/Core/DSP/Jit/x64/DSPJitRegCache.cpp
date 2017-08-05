@@ -329,6 +329,7 @@ void DSPJitRegCache::FlushMemBackedRegs()
   // this should have the same effect as
   // merge(DSPJitRegCache(emitter));
 
+  int reg_flush_cnt = 0;
   for (size_t i = 0; i < m_regs.size(); i++)
   {
     ASSERT_MSG(DSPLLE, !m_regs[i].used, "register %u still in use", static_cast<u32>(i));
@@ -345,9 +346,12 @@ void DSPJitRegCache::FlushMemBackedRegs()
     }
     else if (m_regs[i].parentReg == DSP_REG_NONE)
     {
+      if (m_regs[i].loc.IsSimpleReg())
+        reg_flush_cnt++;
       MovToMemory(i);
     }
   }
+  ERROR_LOG(DSPLLE, "Flushing %d regs(of 8)", reg_flush_cnt);
 }
 
 void DSPJitRegCache::FlushRegs()
@@ -619,6 +623,8 @@ void DSPJitRegCache::MovToMemory(size_t reg)
   {
     return;
   }
+
+  ERROR_LOG(DSPLLE, "Moving %zu to memory", reg);
 
   // but first, check for any needed rotations
   if (m_regs[reg].loc.IsSimpleReg())
