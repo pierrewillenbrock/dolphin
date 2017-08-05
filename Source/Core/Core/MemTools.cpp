@@ -263,6 +263,8 @@ static void sigsegv_handler(int sig, siginfo_t* info, void* raw_context)
   if (sicode != SEGV_MAPERR && sicode != SEGV_ACCERR)
   {
     // Huh? Return.
+    if (sicode == SI_KERNEL && info->si_errno == 0)
+      signal(SIGSEGV, SIG_DFL);
     return;
   }
   uintptr_t bad_address = (uintptr_t)info->si_addr;
