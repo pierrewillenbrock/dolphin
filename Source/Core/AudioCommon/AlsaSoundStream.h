@@ -32,7 +32,7 @@ public:
 
 private:
   // maximum number of frames the buffer can hold
-  static constexpr size_t BUFFER_SIZE_MAX = 8192;
+  static constexpr size_t BUFFER_SIZE_MAX = 2048;
 
   // minimum number of frames to deliver in one transfer
   static constexpr u32 FRAME_COUNT_MIN = 256;
