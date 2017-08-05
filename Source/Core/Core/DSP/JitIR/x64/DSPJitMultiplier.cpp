@@ -173,7 +173,7 @@ void DSPEmitterIR::tstprod(const UDSPInstruction opc)
     get_long_prod(RAX, tmp1);
     m_gpr.PutXReg(tmp1);
     //		Update_SR_Register64(prod);
-    Update_SR_Register64();
+    Update_SR_Register64(RAX, RDX);
   }
 }
 
@@ -199,7 +199,7 @@ void DSPEmitterIR::movp(const UDSPInstruction opc)
   //	Update_SR_Register64(acc);
   if (FlagsNeeded())
   {
-    Update_SR_Register64();
+    Update_SR_Register64(RAX, RDX);
   }
 }
 
@@ -225,7 +225,7 @@ void DSPEmitterIR::movnp(const UDSPInstruction opc)
   //	Update_SR_Register64(acc);
   if (FlagsNeeded())
   {
-    Update_SR_Register64();
+    Update_SR_Register64(RAX, RDX);
   }
 }
 
@@ -250,7 +250,7 @@ void DSPEmitterIR::movpz(const UDSPInstruction opc)
   //	Update_SR_Register64(acc);
   if (FlagsNeeded())
   {
-    Update_SR_Register64();
+    Update_SR_Register64(RAX, RDX);
   }
 }
 
@@ -289,7 +289,7 @@ void DSPEmitterIR::addpaxz(const UDSPInstruction opc)
     MOV(64, accreg, R(RCX));
     m_gpr.PutReg(DSP_REG_ACC0_64 + dreg);
 
-    Update_SR_Register64_Carry(EAX, tmp1);
+    Update_SR_Register64_Carry(EAX, tmp1, RDX);
   }
   else
   {
@@ -385,7 +385,7 @@ void DSPEmitterIR::mulac(const UDSPInstruction opc)
   m_gpr.PutXReg(tmp1);
   if (FlagsNeeded())
   {
-    Update_SR_Register64();
+    Update_SR_Register64(RAX, RDX);
   }
 }
 
@@ -414,7 +414,7 @@ void DSPEmitterIR::mulmv(const UDSPInstruction opc)
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
-    Update_SR_Register64();
+    Update_SR_Register64(RAX, RDX);
   }
 }
 
@@ -509,7 +509,7 @@ void DSPEmitterIR::mulxac(const UDSPInstruction opc)
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
-    Update_SR_Register64(tmp1);
+    Update_SR_Register64(tmp1, RDX);
   }
   m_gpr.PutXReg(tmp3);
   m_gpr.PutXReg(tmp2);
@@ -550,7 +550,7 @@ void DSPEmitterIR::mulxmv(const UDSPInstruction opc)
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
-    Update_SR_Register64(tmp1);
+    Update_SR_Register64(tmp1, RDX);
   }
   m_gpr.PutXReg(tmp3);
   m_gpr.PutXReg(tmp2);
@@ -592,7 +592,7 @@ void DSPEmitterIR::mulxmvz(const UDSPInstruction opc)
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
-    Update_SR_Register64(tmp1);
+    Update_SR_Register64(tmp1, RDX);
   }
   m_gpr.PutXReg(tmp3);
   m_gpr.PutXReg(tmp2);
@@ -663,7 +663,7 @@ void DSPEmitterIR::mulcac(const UDSPInstruction opc)
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
-    Update_SR_Register64();
+    Update_SR_Register64(RAX, RDX);
   }
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
@@ -704,7 +704,7 @@ void DSPEmitterIR::mulcmv(const UDSPInstruction opc)
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
-    Update_SR_Register64();
+    Update_SR_Register64(RAX, RDX);
   }
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
@@ -746,7 +746,7 @@ void DSPEmitterIR::mulcmvz(const UDSPInstruction opc)
   //	Update_SR_Register64(dsp_get_long_acc(rreg));
   if (FlagsNeeded())
   {
-    Update_SR_Register64();
+    Update_SR_Register64(RAX, RDX);
   }
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);

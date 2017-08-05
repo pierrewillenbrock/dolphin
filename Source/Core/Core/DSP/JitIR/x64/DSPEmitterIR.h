@@ -224,33 +224,22 @@ private:
   void r_ifcc(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
   void r_ret(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
 
-  void Update_SR_Register(Gen::X64Reg val = Gen::EAX, Gen::X64Reg scratch = Gen::EDX);
+  void Update_SR_Register(Gen::X64Reg val, Gen::X64Reg tmp1);
 
   void get_long_prod(Gen::X64Reg long_prod, Gen::X64Reg tmp1);
   void get_long_prod_round_prodl(Gen::X64Reg long_prod, Gen::X64Reg tmp1);
   void set_long_prod(Gen::X64Reg host_sreg, Gen::X64Reg tmp1);
   void round_long_acc(Gen::X64Reg long_acc);
-  void set_long_acc(int _reg, Gen::X64Reg acc = Gen::EAX);
-  void get_acc_h(int _reg, Gen::X64Reg acc = Gen::EAX, bool sign = true);
-  void set_acc_h(int _reg, const Gen::OpArg& arg = R(Gen::EAX));
-  void get_acc_m(int _reg, Gen::X64Reg acc = Gen::EAX, bool sign = true);
-  void set_acc_m(int _reg, const Gen::OpArg& arg = R(Gen::EAX));
-  void get_acc_l(int _reg, Gen::X64Reg acc = Gen::EAX, bool sign = true);
-  void set_acc_l(int _reg, const Gen::OpArg& arg = R(Gen::EAX));
-  void get_long_acx(int _reg, Gen::X64Reg acx = Gen::EAX);
-  void get_ax_l(int _reg, Gen::X64Reg acx = Gen::EAX);
-  void get_ax_h(int _reg, Gen::X64Reg acc = Gen::EAX);
-  void get_long_acc(int _reg, Gen::X64Reg acc = Gen::EAX);
 
   // Branch helpers
   void HandleLoop();
 
   // CC helpers
-  void Update_SR_Register64(Gen::X64Reg val = Gen::EAX, Gen::X64Reg scratch = Gen::EDX);
+  void Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg tmp1);
   void Update_SR_Register64_Carry(Gen::X64Reg new_val, Gen::X64Reg old_val,
-                                  bool subtraction = false);
-  void Update_SR_Register16(Gen::X64Reg val = Gen::EAX);
-  void Update_SR_Register16_OverS32(Gen::X64Reg val = Gen::EAX);
+                                  Gen::X64Reg add_nsub_val, bool subtraction = false);
+  void Update_SR_Register16(Gen::X64Reg val);
+  void Update_SR_Register16_OverS32(Gen::X64Reg val, Gen::X64Reg acc);
 
   // Register helpers
   void setCompileSR(u16 bit);

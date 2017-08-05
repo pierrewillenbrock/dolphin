@@ -11,11 +11,12 @@ using namespace Gen;
 
 namespace DSP::JITIR::x64
 {
-// In: val: s64 _Value
-// Clobbers scratch
-void DSPEmitterIR::Update_SR_Register(Gen::X64Reg val, Gen::X64Reg scratch)
+// In: (val): s64 _Value
+// clobbers (val), (tmp1)
+// modifies SR bits 2, 3, 4, 5
+void DSPEmitterIR::Update_SR_Register(Gen::X64Reg val, Gen::X64Reg tmp1)
 {
-  ASSERT(val != scratch);
+  ASSERT(val != tmp1);
 
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   //	// 0x04
@@ -34,18 +35,18 @@ void DSPEmitterIR::Update_SR_Register(Gen::X64Reg val, Gen::X64Reg scratch)
 
   //	// 0x10
   //	if (_Value != (s32)_Value) g_dsp.r[DSP_REG_SR] |= SR_OVER_S32;
-  MOVSX(64, 32, scratch, R(val));
-  CMP(64, R(scratch), R(val));
+  MOVSX(64, 32, tmp1, R(val));
+  CMP(64, R(tmp1), R(val));
   FixupBranch noOverS32 = J_CC(CC_E);
   OR(16, sr_reg, Imm16(SR_OVER_S32));
   SetJumpTarget(noOverS32);
 
   //	// 0x20 - Checks if top bits of m are equal
   //	if (((_Value & 0xc0000000) == 0) || ((_Value & 0xc0000000) == 0xc0000000))
-  MOV(32, R(scratch), Imm32(0xc0000000));
-  AND(32, R(val), R(scratch));
+  MOV(32, R(tmp1), Imm32(0xc0000000));
+  AND(32, R(val), R(tmp1));
   FixupBranch zeroC = J_CC(CC_Z);
-  CMP(32, R(val), R(scratch));
+  CMP(32, R(val), R(tmp1));
   FixupBranch cC = J_CC(CC_NE);
   SetJumpTarget(zeroC);
   //		g_dsp.r[DSP_REG_SR] |= SR_TOP2BITS;
@@ -55,23 +56,25 @@ void DSPEmitterIR::Update_SR_Register(Gen::X64Reg val, Gen::X64Reg scratch)
   m_gpr.PutReg(DSP_REG_SR);
 }
 
-// In: val: s64 _Value
-// Clobbers scratch
-void DSPEmitterIR::Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg scratch)
+// In: (val): s64 _Value
+// clobbers (val), (tmp1)
+// modifies SR bits 0, 1, 2, 3, 4, 5, fixed bits: 0: 0, 1: 0
+void DSPEmitterIR::Update_SR_Register64(X64Reg val, X64Reg tmp1)
 {
   //	g_dsp.r[DSP_REG_SR] &= ~SR_CMP_MASK;
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   AND(16, sr_reg, Imm16(~SR_CMP_MASK));
   m_gpr.PutReg(DSP_REG_SR);
-  Update_SR_Register(val, scratch);
+  Update_SR_Register(val, tmp1);
 }
 
 // In: (new_val): value after the add/subtract
 // In: (old_val): value before the add/subtract
-// In: RDX: value that was added/negative of value that was subtracted
-// clobbers (new_val), (old_val), RDX
+// In: (add_nsub_val): value that was added/negative of value that was subtracted
+// clobbers (new_val), (old_val), add_nsub_val
 // modifies SR bits 0, 1, 2, 3, 4, 5, 7, fixed bits: none
-void DSPEmitterIR::Update_SR_Register64_Carry(X64Reg new_val, X64Reg old_val, bool subtraction)
+void DSPEmitterIR::Update_SR_Register64_Carry(X64Reg new_val, X64Reg old_val, X64Reg add_nsub_val,
+                                              bool subtraction)
 {
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   //	g_dsp.r[DSP_REG_SR] &= ~SR_CMP_MASK;
@@ -92,17 +95,18 @@ void DSPEmitterIR::Update_SR_Register64_Carry(X64Reg new_val, X64Reg old_val, bo
   //	g_dsp.r[DSP_REG_SR] |= SR_OVERFLOW_STICKY;
   // Overflow = ((acc ^ res) & (ax ^ res)) < 0
   XOR(64, R(old_val), R(new_val));
-  XOR(64, R(RDX), R(new_val));
-  TEST(64, R(old_val), R(RDX));
+  XOR(64, R(add_nsub_val), R(new_val));
+  TEST(64, R(old_val), R(add_nsub_val));
   FixupBranch noOverflow = J_CC(CC_GE);
   OR(16, sr_reg, Imm16(SR_OVERFLOW | SR_OVERFLOW_STICKY));
   SetJumpTarget(noOverflow);
 
   m_gpr.PutReg(DSP_REG_SR);
-  Update_SR_Register(new_val);
+  Update_SR_Register(new_val, add_nsub_val);
 }
 
-// In: RAX: s64 _Value
+// In: (val): s64 _Value
+// modifies SR bits 0, 1, 2, 3, 4, 5, fixed bits: 0: 0, 1: 0, 4: 0
 void DSPEmitterIR::Update_SR_Register16(X64Reg val)
 {
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
@@ -138,9 +142,9 @@ void DSPEmitterIR::Update_SR_Register16(X64Reg val)
 }
 
 // In: (val): s64 _Value
-// In: RCX: s64 new accumulator value
+// In: (acc): s64 new accumulator value
 // modifies SR bits 0, 1, 2, 3, 4, 5, fixed bits: 0: 0, 1: 0
-void DSPEmitterIR::Update_SR_Register16_OverS32(Gen::X64Reg val)
+void DSPEmitterIR::Update_SR_Register16_OverS32(Gen::X64Reg val, Gen::X64Reg acc)
 {
   Update_SR_Register16(val);
 
@@ -151,8 +155,8 @@ void DSPEmitterIR::Update_SR_Register16_OverS32(Gen::X64Reg val)
 
   //	// 0x10
   //	if (_Value != (s32)_Value) g_dsp.r[DSP_REG_SR] |= SR_OVER_S32;
-  MOVSX(64, 32, val, R(RCX));
-  CMP(64, R(val), R(RCX));
+  MOVSX(64, 32, val, R(acc));
+  CMP(64, R(val), R(acc));
   FixupBranch noOverS32 = J_CC(CC_E);
   OR(16, sr_reg, Imm16(SR_OVER_S32));
   SetJumpTarget(noOverS32);
