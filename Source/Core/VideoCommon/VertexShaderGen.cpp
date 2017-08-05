@@ -516,7 +516,14 @@ ShaderCode GenerateVertexShaderCode(APIType api_type, const ShaderHostConfig& ho
   out.Write("o.pos.z = o.pos.w * " I_PIXELCENTERCORRECTION ".w - "
             "o.pos.z * " I_PIXELCENTERCORRECTION ".z;\n");
 
-  if (!host_config.backend_clip_control)
+  // Sonic Unleashed puts its final rendering at the near or
+  // far plane of the viewing frustrum(actually box, they use
+  // orthogonal projection for that), and we end up putting it
+  // just beyond, and the rendering gets clipped away. (The
+  // primitive gets dropped)
+  out.Write("o.pos.z = o.pos.z * 1048575.0/1048576.0;\n");
+
+  if (!g_ActiveConfig.backend_info.bSupportsClipControl)
   {
     // If the graphics API doesn't support a depth range of 0..1, then we need to map z to
     // the -1..1 range. Unfortunately we have to use a substraction, which is a lossy floating-point
