@@ -523,60 +523,8 @@ void DSPEmitterIR::deparallelize(IRBB* bb)
   deparallelize(bb->start_node);
 }
 
-void DSPEmitterIR::allocHostRegs()
+void DSPEmitterIR::checkImmVRegs()
 {
-  // at this point, parallel ops are not allowed.
-  std::vector<IRNode*> first_ref;
-  std::vector<IRNode*> last_ref;
-
-  first_ref.resize(m_vregs.size());
-  last_ref.resize(m_vregs.size());
-
-  for (auto& n : first_ref)
-    n = nullptr;
-
-  for (auto& n : last_ref)
-    n = nullptr;
-
-  for (IRBB* bb = m_start_bb; !bb->next.empty(); bb = bb->nextNonBranched)
-  {
-    for (IRNode* n = bb->start_node; !n->next.empty(); n = *n->next.begin())
-    {
-      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
-      if (!in)
-        continue;
-      IRInsn& insn = in->insn;
-
-      for (unsigned int i = 0; i < NUM_TEMPS; i++)
-      {
-        int vreg = insn.temps[i].vreg;
-        if (vreg > 0)
-        {
-          if (!first_ref[vreg])
-            first_ref[vreg] = n;
-          last_ref[vreg] = n;
-        }
-      }
-      for (unsigned int i = 0; i < NUM_INPUTS; i++)
-      {
-        int vreg = insn.inputs[i].vreg;
-        if (vreg > 0 && insn.inputs[i].type == IROp::VREG)
-        {
-          if (!first_ref[vreg])
-            first_ref[vreg] = n;
-          last_ref[vreg] = n;
-        }
-      }
-      int vreg = insn.output.vreg;
-      if (vreg > 0 && insn.output.type == IROp::VREG)
-      {
-        if (!first_ref[vreg])
-          first_ref[vreg] = n;
-        last_ref[vreg] = n;
-      }
-    }
-  }
-
   // check if we can assign the imms
   for (unsigned int i = 1; i < m_vregs.size(); i++)
   {
@@ -601,75 +549,175 @@ void DSPEmitterIR::allocHostRegs()
       }
     }
   }
+}
 
-  std::unordered_set<int> live_vregs;
-
-  for (IRBB* bb = m_start_bb; !bb->next.empty(); bb = bb->nextNonBranched)
+void DSPEmitterIR::analyseVRegLifetime(IRBB* bb)
+{
+  // step 2: repeatedly go through all insns and fix up live depending on
+  // the "future" paths
+  std::unordered_set<IRNode*> todo;
+  for (auto n : bb->nodes)
+    todo.insert(n);
+  while (!todo.empty())
   {
-    for (IRNode* n = bb->start_node; !n->next.empty(); n = *n->next.begin())
+    IRNode* n = *todo.begin();
+    todo.erase(todo.begin());
+
+    std::unordered_set<int> live_vregs = n->live_vregs;
+    std::unordered_set<IRNode*> nexts;
+    for (auto n2 : n->next)
     {
-      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
-      if (!in)
-        continue;
-      IRInsn& insn = in->insn;
+      IRInsnNode* in2 = dynamic_cast<IRInsnNode*>(n2);
+      std::unordered_set<int> l_vregs = n2->live_vregs;
+      if (in2)
+      {
+        IRInsn& insn = in2->insn;
+        {
+          int vreg = insn.output.vreg;
+          if (vreg > 0 && insn.output.type == IROp::VREG)
+            l_vregs.erase(vreg);
+        }
+        for (unsigned int i = 0; i < NUM_TEMPS; i++)
+        {
+          int vreg = insn.temps[i].vreg;
+          if (vreg > 0)
+            l_vregs.erase(vreg);
+        }
+        for (unsigned int i = 0; i < NUM_INPUTS; i++)
+        {
+          int vreg = insn.inputs[i].vreg;
+          if (vreg > 0 && insn.inputs[i].type == IROp::VREG)
+            l_vregs.insert(vreg);
+        }
+      }
+      for (auto vi3 : l_vregs)
+        live_vregs.insert(vi3);
+    }
 
-      for (unsigned int i = 0; i < NUM_TEMPS; i++)
-      {
-        int vreg = insn.temps[i].vreg;
-        if (vreg > 0 && first_ref[vreg] == n)
-        {
-          live_vregs.insert(vreg);
-          insn.first_refed_vregs.insert(vreg);
-        }
-      }
-      for (unsigned int i = 0; i < NUM_INPUTS; i++)
-      {
-        int vreg = insn.inputs[i].vreg;
-        if (vreg > 0 && first_ref[vreg] == n && insn.inputs[i].type == IROp::VREG)
-        {
-          live_vregs.insert(vreg);
-          insn.first_refed_vregs.insert(vreg);
-        }
-      }
-      {
-        int vreg = insn.output.vreg;
-        if (vreg > 0 && first_ref[vreg] == n && insn.output.type == IROp::VREG)
-        {
-          live_vregs.insert(vreg);
-          insn.first_refed_vregs.insert(vreg);
-        }
-      }
+    if (n->live_vregs != live_vregs)
+    {
+      n->live_vregs = live_vregs;
+      for (auto n2 : n->prev)
+        todo.insert(n2);
+    }
+  }
+}
 
-      insn.live_vregs = live_vregs;
+void DSPEmitterIR::analyseVRegLifetime()
+{
+  // rules are:
+  // * a set of vregs is live for every IRInsn.
+  // * no vreg is live before it is written to
+  // * no vregs are live before any end-of-execution-path
+  // * a vreg is live when read
+  // * it is forbidden to have a backwards path from a vreg read to
+  //   start of code, without a corresponding write in between.
 
-      for (unsigned int i = 0; i < NUM_TEMPS; i++)
+  // step 1: mark all vregs live that are used in an insn
+  for (auto n : m_node_storage)
+  {
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (!in)
+      continue;
+    IRInsn& insn = in->insn;
+    for (unsigned int i = 0; i < NUM_TEMPS; i++)
+    {
+      int vreg = insn.temps[i].vreg;
+      if (vreg > 0)
+        n->live_vregs.insert(vreg);
+    }
+    for (unsigned int i = 0; i < NUM_INPUTS; i++)
+    {
+      int vreg = insn.inputs[i].vreg;
+      if (vreg > 0 && insn.inputs[i].type == IROp::VREG)
+        n->live_vregs.insert(vreg);
+    }
+    {
+      int vreg = insn.output.vreg;
+      if (vreg > 0 && insn.output.type == IROp::VREG)
+        n->live_vregs.insert(vreg);
+    }
+  }
+
+  // step 2: repeatedly go through all insns and fix up live depending on
+  // the "future" paths
+  std::unordered_set<IRBB*> todo;
+  for (auto bb : m_bb_storage)
+  {
+    todo.insert(bb);
+    analyseVRegLifetime(bb);
+  }
+  while (!todo.empty())
+  {
+    IRBB* bb = *todo.begin();
+    todo.erase(todo.begin());
+
+    std::unordered_set<int> live_vregs = bb->end_node->live_vregs;
+    for (auto ni : bb->next)
+    {
+      IRNode* n2 = ni->start_node;
+      IRInsnNode* in2 = dynamic_cast<IRInsnNode*>(n2);
+      std::unordered_set<int> l_vregs = n2->live_vregs;
+      if (in2)
       {
-        int vreg = insn.temps[i].vreg;
-        if (vreg > 0 && last_ref[vreg] == n)
+        IRInsn& insn = in2->insn;
         {
-          live_vregs.erase(vreg);
-          insn.last_refed_vregs.insert(vreg);
+          int vreg = insn.output.vreg;
+          if (vreg > 0 && insn.output.type == IROp::VREG)
+            l_vregs.erase(vreg);
+        }
+        for (unsigned int i = 0; i < NUM_TEMPS; i++)
+        {
+          int vreg = insn.temps[i].vreg;
+          if (vreg > 0)
+            l_vregs.erase(vreg);
+        }
+        for (unsigned int i = 0; i < NUM_INPUTS; i++)
+        {
+          int vreg = insn.inputs[i].vreg;
+          if (vreg > 0 && insn.inputs[i].type == IROp::VREG)
+            l_vregs.insert(vreg);
         }
       }
-      for (unsigned int i = 0; i < NUM_INPUTS; i++)
+      for (auto vi3 : l_vregs)
+        live_vregs.insert(vi3);
+    }
+
+    if (bb->end_node->live_vregs != live_vregs)
+    {
+      bb->end_node->live_vregs = live_vregs;
+      analyseVRegLifetime(bb);
+      for (auto bb2 : bb->prev)
+        todo.insert(bb2);
+    }
+  }
+}
+
+void DSPEmitterIR::findLiveVRegs()
+{
+  for (auto n : m_node_storage)
+  {
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (in)
+    {
+      for (auto vi1 : n->live_vregs)
       {
-        int vreg = insn.inputs[i].vreg;
-        if (vreg > 0 && last_ref[vreg] == n && insn.inputs[i].type == IROp::VREG)
-        {
-          live_vregs.erase(vreg);
-          insn.last_refed_vregs.insert(vreg);
-        }
-      }
-      {
-        int vreg = insn.output.vreg;
-        if (vreg > 0 && last_ref[vreg] == n && insn.output.type == IROp::VREG)
-        {
-          live_vregs.erase(vreg);
-          insn.last_refed_vregs.insert(vreg);
-        }
+        for (auto vi2 : n->live_vregs)
+          m_vregs[vi1].parallel_live_vregs.insert(vi2);
       }
     }
   }
+}
+
+void DSPEmitterIR::allocHostRegs()
+{
+  // at this point, parallel ops are not allowed.
+
+  // todo: refactor the allocation into one function, getting passed
+  // which reqs to handle and/or from which pool to choose
+
+  // todo: make this handle sequential lists of branches and sequential lists etc(no parallels,
+  // though)
 
   // allocate RAX/RCX
   for (unsigned int i1 = 1; i1 < m_vregs.size(); i1++)
@@ -680,19 +728,10 @@ void DSPEmitterIR::allocHostRegs()
       continue;
 
     std::set<X64Reg> inuse;
-    for (IRNode* n = first_ref[i1];; n = *n->next.begin())
+    for (auto i2 : m_vregs[i1].parallel_live_vregs)
     {
-      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
-      if (!in)
-        continue;
-      IRInsn& insn = in->insn;
-      for (auto i2 : insn.live_vregs)
-      {
-        if (m_vregs[i2].oparg.IsSimpleReg())
-          inuse.insert(m_vregs[i2].oparg.GetSimpleReg());
-      }
-      if (n == last_ref[i1])
-        break;
+      if (m_vregs[i2].oparg.IsSimpleReg())
+        inuse.insert(m_vregs[i2].oparg.GetSimpleReg());
     }
 
     for (auto hreg : inuse)
@@ -724,19 +763,10 @@ void DSPEmitterIR::allocHostRegs()
       continue;
 
     std::set<X64Reg> inuse;
-    for (IRNode* n = first_ref[i1];; n = *n->next.begin())
+    for (auto i2 : m_vregs[i1].parallel_live_vregs)
     {
-      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
-      if (!in)
-        continue;
-      IRInsn& insn = in->insn;
-      for (auto i2 : insn.live_vregs)
-      {
-        if (m_vregs[i2].oparg.IsSimpleReg())
-          inuse.insert(m_vregs[i2].oparg.GetSimpleReg());
-      }
-      if (n == last_ref[i1])
-        break;
+      if (m_vregs[i2].oparg.IsSimpleReg())
+        inuse.insert(m_vregs[i2].oparg.GetSimpleReg());
     }
 
     for (auto hreg : inuse)
@@ -751,40 +781,44 @@ void DSPEmitterIR::allocHostRegs()
     for (auto hreg : inuse)
       m_gpr.PutXReg(hreg);
   }
+}
 
-  // finally, put all the opargs back into the insn.
-  // we can already do this here
+void DSPEmitterIR::updateInsnOpArgs(IRInsn& insn)
+{
+  for (unsigned int i = 0; i < NUM_TEMPS; i++)
+  {
+    if (insn.temps[i].vreg > 0)
+      insn.temps[i].oparg = m_vregs[insn.temps[i].vreg].oparg;
+  }
+  for (unsigned int i = 0; i < NUM_INPUTS; i++)
+  {
+    if (insn.inputs[i].vreg > 0)
+      insn.inputs[i].oparg = m_vregs[insn.inputs[i].vreg].oparg;
+  }
+  if (insn.output.vreg > 0)
+    insn.output.oparg = m_vregs[insn.output.vreg].oparg;
+}
+
+void DSPEmitterIR::updateInsnOpArgs()
+{
   for (auto n : m_node_storage)
   {
     IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
-    if (!in)
-      continue;
-    IRInsn& insn = in->insn;
-
-    for (unsigned int i = 0; i < NUM_TEMPS; i++)
-    {
-      if (insn.temps[i].vreg > 0)
-        insn.temps[i].oparg = m_vregs[insn.temps[i].vreg].oparg;
-    }
-    for (unsigned int i = 0; i < NUM_INPUTS; i++)
-    {
-      if (insn.inputs[i].vreg > 0)
-        insn.inputs[i].oparg = m_vregs[insn.inputs[i].vreg].oparg;
-    }
-    if (insn.output.vreg > 0)
-      insn.output.oparg = m_vregs[insn.output.vreg].oparg;
+    if (in)
+      updateInsnOpArgs(in->insn);
   }
 }
 
-void DSPEmitterIR::EmitInsn(IRInsn& insn)
+void DSPEmitterIR::EmitInsn(IRInsnNode* in)
 {
-  _assert_msg_(DSPLLE, insn.emitter->func, "unhandled IL Op %s", insn.emitter->name);
+  IRInsn& insn = in->insn;
+  ASSERT_MSG(DSPLLE, insn.emitter->func, "unhandled IL Op %s", insn.emitter->name);
 
-  _assert_msg_(DSPLLE, GetSpaceLeft() > 64, "code space too full");
+  ASSERT_MSG(DSPLLE, GetSpaceLeft() > 64, "code space too full");
 
   // mark the active vregs active, so we can tell the m_gpr about
   // them being put, if needed(dropAllRegs)
-  for (auto i : insn.first_refed_vregs)
+  for (auto i : in->live_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())
     {
@@ -805,7 +839,7 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
 
   // and now, drop it all again. this will not be needed when
   // we drop the m_gpr completely
-  for (auto i : insn.last_refed_vregs)
+  for (auto i : in->live_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())
     {
@@ -823,7 +857,7 @@ void DSPEmitterIR::EmitBB(IRBB* bb)
     IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
 
     if (in)
-      EmitInsn(in->insn);
+      EmitInsn(in);
 
     ASSERT_MSG(DSPLLE, n->next.size() < 2, "cannot handle parallel insns in emitter");
 
@@ -932,7 +966,21 @@ void DSPEmitterIR::Compile(u16 start_addr)
   for (auto bb : m_bb_storage)
     deparallelize(bb);
 
+  checkImmVRegs();
+
+  // fills insns.*.live_vregs
+  analyseVRegLifetime();
+
+  dumpIRNodes();
+
+  // if we keep the live_, *_refed_vregs correct, we can do load/store
+  // removal here, and know all the time if we can afford to use another
+  // host reg
+
+  // fills vregs[*].parallel_live_vregs from insns.*.live_vreg
+  findLiveVRegs();
   allocHostRegs();
+  updateInsnOpArgs();
 
   dumpIRNodes();
 
@@ -1063,10 +1111,10 @@ Gen::OpArg DSPEmitterIR::M_SDSP_r_sr()
   return MDisp(R15, static_cast<int>(offsetof(SDSP, r.sr)));
 }
 
-void DSPEmitterIR::ir_add_op(IRInsn insn)
+void DSPEmitterIR::ir_finish_insn(IRInsn& insn)
 {
+  insn.original = m_dsp_core.DSPState().ReadIMEM(m_compile_pc);
   insn.addr = m_compile_pc;
-  insn.original = dsp_imem_read(m_compile_pc);
   insn.cycle_count = m_block_size[m_start_address];
   insn.needs_SR |= insn.emitter->needs_SR;
   insn.modifies_SR |= insn.emitter->modifies_SR;
@@ -1080,10 +1128,43 @@ void DSPEmitterIR::ir_add_op(IRInsn insn)
   memset(insn.const_regs, 0, sizeof(insn.const_regs));
   memset(insn.modified_regs, 0, sizeof(insn.modified_regs));
   assignVRegs(insn);
+}
 
+void DSPEmitterIR::ir_add_op(IRInsn insn)
+{
   IRInsnNode* n = makeIRInsnNode(insn);
-  m_parallel_nodes.push_back(std::make_pair(n, n));
-  m_end_bb->nodes.insert(n);
+  ir_add_irnodes(n, n);
+}
+
+void DSPEmitterIR::ir_finish_irnodes(IRNode* first, IRNode* last)
+{
+  std::unordered_set<IRNode*> nodes;
+  std::unordered_set<IRNode*> todo;
+  todo.insert(first);
+  while (!todo.empty())
+  {
+    IRNode* n = *(todo.begin());
+    todo.erase(todo.begin());
+    nodes.insert(n);
+
+    for (auto n2 : n->next)
+      todo.insert(n2);
+  }
+
+  for (auto n : nodes)
+  {
+    m_end_bb->nodes.insert(n);
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (!in)
+      continue;
+    ir_finish_insn(in->insn);
+  }
+}
+
+void DSPEmitterIR::ir_add_irnodes(IRNode* first, IRNode* last)
+{
+  ir_finish_irnodes(first, last);
+  m_parallel_nodes.push_back(std::make_pair(first, last));
 }
 
 void DSPEmitterIR::ir_commit_parallel_nodes()

@@ -114,8 +114,9 @@ void DSPEmitterIR::clearNodeStorage()
   m_end_bb = NULL;
 }
 
-std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsn const& insn) const
+std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const
 {
+  DSPEmitterIR::IRInsn const& insn = in->insn;
   std::stringstream buf;
 
   const char* name = insn.emitter->name;
@@ -168,7 +169,7 @@ std::string DSPEmitterIR::dumpIRNodeInsn(DSPEmitterIR::IRInsn const& insn) const
       << (insn.const_regs[DSP_REG_WR1] ? 1 : 0) << (insn.const_regs[DSP_REG_WR2] ? 1 : 0)
       << (insn.const_regs[DSP_REG_WR3] ? 1 : 0) << "\\n live vregs:";
 
-  for (auto vr : insn.live_vregs)
+  for (auto vr : in->live_vregs)
   {
     buf << " " << vr;
   }
@@ -199,7 +200,7 @@ void DSPEmitterIR::dumpIRNodes() const
       std::string fallthrough = buf2.str() + "_FT";
 
       ERROR_LOG(DSPLLE, "%s [ label=\"%s\\n%s\" shape=rectangle ];", name.c_str(), name.c_str(),
-                dumpIRNodeInsn(bn->insn).c_str());
+                dumpIRNodeInsn(bn).c_str());
 
       ERROR_LOG(DSPLLE, "%s -> %s [weight=40];", name.c_str(), branched.c_str());
       ERROR_LOG(DSPLLE, "%s -> %s [weight=100];", name.c_str(), fallthrough.c_str());
@@ -224,7 +225,7 @@ void DSPEmitterIR::dumpIRNodes() const
       buf2 << "N_" << ctr << in;
       std::string name = buf2.str();
       ERROR_LOG(DSPLLE, "%s [ label=\"%s\\n%s\" shape=rectangle ];", name.c_str(), name.c_str(),
-                dumpIRNodeInsn(in->insn).c_str());
+                dumpIRNodeInsn(in).c_str());
       for (auto n2 : in->next)
       {
         std::stringstream buf3;

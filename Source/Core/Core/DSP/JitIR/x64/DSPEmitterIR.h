@@ -359,10 +359,6 @@ private:
     std::unordered_map<int, u64> value_vregs;
 
     mutable Gen::FixupBranch branchTaken;
-
-    std::unordered_set<int> live_vregs;
-    std::unordered_set<int> first_refed_vregs;
-    std::unordered_set<int> last_refed_vregs;
   };
   /*
     We want some kind of graph.
@@ -433,6 +429,8 @@ private:
     std::unordered_set<IRNode*> prev;
     std::unordered_set<IRNode*> next;
     const u8* code;
+
+    std::unordered_set<int> live_vregs;
   };
   class IRInsnNode : public IRNode
   {
@@ -615,7 +613,10 @@ private:
   //(at first, because a later pass deparallelizes them, as good as
   // possible. if deparallelizing is impossible, it may need to emit
   // extra moves, and then deparallelize. we'll see)
+  void ir_finish_insn(IRInsn& insn);
+  void ir_finish_irnodes(IRNode* first, IRNode* last);
   void ir_add_op(IRInsn insn);
+  void ir_add_irnodes(IRNode* first, IRNode* last);
   void ir_commit_parallel_nodes();
   void assignVRegs(IRInsn& insn);
 
@@ -627,15 +628,21 @@ private:
   void addGuestLoadStore(IRBB* bb);
   void deparallelize(IRNode* node);
   void deparallelize(IRBB* bb);
+  void checkImmVRegs();
+  void analyseVRegLifetime(IRBB* bb);
+  void analyseVRegLifetime();
+  void findLiveVRegs();
   void allocHostRegs();
+  void updateInsnOpArgs(IRInsn& insn);
+  void updateInsnOpArgs();
 
   void EmitBB(IRBB* bb);
-  void EmitInsn(IRInsn& insn);
+  void EmitInsn(IRInsnNode* in);
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
 
   void clearNodeStorage();
-  std::string dumpIRNodeInsn(DSPEmitterIR::IRInsn const& insn) const;
+  std::string dumpIRNodeInsn(DSPEmitterIR::IRInsnNode* in) const;
   void dumpIRNodes() const;
   IRNode* makeIRNode()
   {
