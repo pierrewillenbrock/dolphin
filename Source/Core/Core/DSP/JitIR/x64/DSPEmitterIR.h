@@ -652,6 +652,10 @@ private:
   void analyseKnownRegs();
   void checkImmVRegs();
   void removeCheckExceptions();
+  void moveGuestLoadUp(IRBB* bb, IRInsnNode* node);
+  void moveGuestLoadsUp(IRBB* bb);
+  void moveGuestStoreDown(IRBB* bb, IRInsnNode* node);
+  void moveGuestStoresDown(IRBB* bb);
   void analyseVRegLifetime(IRBB* bb);
   void analyseVRegLifetime();
   void findLiveVRegs();

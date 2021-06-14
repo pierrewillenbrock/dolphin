@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <deque>
 #include <set>
 
 #include "Common/Assert.h"
@@ -831,6 +832,307 @@ void DSPEmitterIR::removeCheckExceptions()
   }
 }
 
+void DSPEmitterIR::moveGuestLoadUp(IRBB* bb, IRInsnNode* node)
+{
+  // for now, we only move the node to the start of its bb.
+
+  // assumes deparellelized bb
+
+  // for all LoadGuest*Op, inputs[0] is the original input. no
+  // vreg assigned. output is a vreg
+  std::unordered_set<int> colliding_guests;
+  colliding_guests.insert(node->insn.inputs[0].guest_reg);
+  switch (node->insn.inputs[0].guest_reg)
+  {
+  case DSP_REG_PRODL:
+  case DSP_REG_PRODM:
+  case DSP_REG_PRODH:
+  case DSP_REG_PRODM2:
+    colliding_guests.insert(IROp::DSP_REG_PROD_ALL);
+    break;
+  case DSP_REG_AXL0:
+  case DSP_REG_AXH0:
+    colliding_guests.insert(IROp::DSP_REG_AX0_ALL);
+    break;
+  case DSP_REG_AXL1:
+  case DSP_REG_AXH1:
+    colliding_guests.insert(IROp::DSP_REG_AX1_ALL);
+    break;
+  case DSP_REG_ACL0:
+  case DSP_REG_ACM0:
+  case DSP_REG_ACH0:
+    colliding_guests.insert(IROp::DSP_REG_ACC0_ALL);
+    break;
+  case DSP_REG_ACL1:
+  case DSP_REG_ACM1:
+  case DSP_REG_ACH1:
+    colliding_guests.insert(IROp::DSP_REG_ACC1_ALL);
+    break;
+  case IROp::DSP_REG_PROD_ALL:
+    colliding_guests.insert(DSP_REG_PRODL);
+    colliding_guests.insert(DSP_REG_PRODM);
+    colliding_guests.insert(DSP_REG_PRODH);
+    colliding_guests.insert(DSP_REG_PRODM2);
+    break;
+  case IROp::DSP_REG_AX0_ALL:
+    colliding_guests.insert(DSP_REG_AXL0);
+    colliding_guests.insert(DSP_REG_AXH0);
+    break;
+  case IROp::DSP_REG_AX1_ALL:
+    colliding_guests.insert(DSP_REG_AXL1);
+    colliding_guests.insert(DSP_REG_AXH1);
+    break;
+  case IROp::DSP_REG_ACC0_ALL:
+    colliding_guests.insert(DSP_REG_ACL0);
+    colliding_guests.insert(DSP_REG_ACM0);
+    colliding_guests.insert(DSP_REG_ACH0);
+    break;
+  case IROp::DSP_REG_ACC1_ALL:
+    colliding_guests.insert(DSP_REG_ACL1);
+    colliding_guests.insert(DSP_REG_ACM1);
+    colliding_guests.insert(DSP_REG_ACH1);
+    break;
+  }
+
+  IRNode* tcnode = node;
+
+  // and now, we just scan backwards.
+  while (1)
+  {
+    ASSERT_MSG(DSPLLE, tcnode->prev.size() <= 1, "too many previous nodes at this point");
+
+    if (tcnode->prev.empty())
+      break;
+
+    IRNode* n = *(tcnode->prev.begin());
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (in)
+    {
+      if (in->insn.emitter == &StoreGuestProdOp || in->insn.emitter == &StoreGuestOp ||
+          in->insn.emitter == &StoreGuestACMOp)
+      {
+        if (colliding_guests.find(in->insn.output.guest_reg) != colliding_guests.end())
+          break;
+      }
+    }
+    // iterate.
+    tcnode = n;
+  }
+  if (tcnode == node)
+    // no move possible
+    return;
+  ASSERT_MSG(DSPLLE, node->prev.size() <= 1, "too many previous nodes at this point");
+  ASSERT_MSG(DSPLLE, node->next.size() <= 1, "too many next nodes at this point");
+  // remove original node from its position
+  if (node->next.empty())
+    // was last node
+    bb->end_node = *(node->prev.begin());
+  else
+  {
+    (*node->prev.begin())->addNext(*node->next.begin());
+    (*node->next.begin())->removePrev(node);
+  }
+  (*node->prev.begin())->removeNext(node);
+
+  // insert before tcnode.
+  if (tcnode->prev.empty())
+    bb->start_node = node;
+  else
+  {
+    node->addPrev(*tcnode->prev.begin());
+    tcnode->removePrev(*tcnode->prev.begin());
+  }
+  tcnode->addPrev(node);
+}
+
+void DSPEmitterIR::moveGuestLoadsUp(IRBB* bb)
+{
+  std::deque<IRBB*> todo;
+  std::unordered_set<IRBB*> done;
+  todo.push_back(bb);
+  // bb is used for scanning through the instructions to find
+  // load/stores.
+  while (!todo.empty())
+  {
+    IRBB* bb2 = todo.front();
+    todo.pop_front();
+
+    if (done.find(bb2) != done.end())
+      continue;
+
+    done.insert(bb2);
+    for (auto n : bb2->next)
+      todo.push_back(n);
+    std::unordered_set<IRInsnNode*> inodes;
+    for (auto n : bb2->nodes)
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+      if (!in)
+        continue;
+      inodes.insert(in);
+    }
+    for (auto in : inodes)
+    {
+      if (in->insn.emitter == &LoadGuestProdOp || in->insn.emitter == &LoadGuestFastOp ||
+          in->insn.emitter == &LoadGuestACMOp)
+        moveGuestLoadUp(bb2, in);
+    }
+  }
+}
+
+void DSPEmitterIR::moveGuestStoreDown(IRBB* bb, IRInsnNode* node)
+{
+  // for now, we only move the node to the end of its bb.
+
+  // assumes deparellelized bb
+
+  // for all StoreGuest*Op, output is the original output. no
+  // vreg assigned. input[0] is a vreg
+  std::unordered_set<int> colliding_guests;
+  colliding_guests.insert(node->insn.output.guest_reg);
+  switch (node->insn.output.guest_reg)
+  {
+  case DSP_REG_PRODL:
+  case DSP_REG_PRODM:
+  case DSP_REG_PRODH:
+  case DSP_REG_PRODM2:
+    colliding_guests.insert(IROp::DSP_REG_PROD_ALL);
+    break;
+  case DSP_REG_AXL0:
+  case DSP_REG_AXH0:
+    colliding_guests.insert(IROp::DSP_REG_AX0_ALL);
+    break;
+  case DSP_REG_AXL1:
+  case DSP_REG_AXH1:
+    colliding_guests.insert(IROp::DSP_REG_AX1_ALL);
+    break;
+  case DSP_REG_ACL0:
+  case DSP_REG_ACM0:
+  case DSP_REG_ACH0:
+    colliding_guests.insert(IROp::DSP_REG_ACC0_ALL);
+    break;
+  case DSP_REG_ACL1:
+  case DSP_REG_ACM1:
+  case DSP_REG_ACH1:
+    colliding_guests.insert(IROp::DSP_REG_ACC1_ALL);
+    break;
+  case IROp::DSP_REG_PROD_ALL:
+    colliding_guests.insert(DSP_REG_PRODL);
+    colliding_guests.insert(DSP_REG_PRODM);
+    colliding_guests.insert(DSP_REG_PRODH);
+    colliding_guests.insert(DSP_REG_PRODM2);
+    break;
+  case IROp::DSP_REG_AX0_ALL:
+    colliding_guests.insert(DSP_REG_AXL0);
+    colliding_guests.insert(DSP_REG_AXH0);
+    break;
+  case IROp::DSP_REG_AX1_ALL:
+    colliding_guests.insert(DSP_REG_AXL1);
+    colliding_guests.insert(DSP_REG_AXH1);
+    break;
+  case IROp::DSP_REG_ACC0_ALL:
+    colliding_guests.insert(DSP_REG_ACL0);
+    colliding_guests.insert(DSP_REG_ACM0);
+    colliding_guests.insert(DSP_REG_ACH0);
+    break;
+  case IROp::DSP_REG_ACC1_ALL:
+    colliding_guests.insert(DSP_REG_ACL1);
+    colliding_guests.insert(DSP_REG_ACM1);
+    colliding_guests.insert(DSP_REG_ACH1);
+    break;
+  }
+
+  IRNode* tcnode = node;
+
+  // and now, we just scan forwards.
+  while (1)
+  {
+    ASSERT_MSG(DSPLLE, tcnode->prev.size() <= 1, "too many previous nodes at this point");
+
+    if (tcnode->next.empty())
+      break;
+
+    IRNode* n = *(tcnode->next.begin());
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (in)
+    {
+      if (in->insn.emitter == &StoreGuestProdOp || in->insn.emitter == &StoreGuestOp ||
+          in->insn.emitter == &StoreGuestACMOp)
+      {
+        if (colliding_guests.find(in->insn.output.guest_reg) != colliding_guests.end())
+          break;
+      }
+      if (in->insn.emitter == &LoadGuestProdOp || in->insn.emitter == &LoadGuestFastOp ||
+          in->insn.emitter == &LoadGuestACMOp)
+      {
+        if (colliding_guests.find(in->insn.inputs[0].guest_reg) != colliding_guests.end())
+          break;
+      }
+    }
+    // iterate.
+    tcnode = n;
+  }
+  if (tcnode == node)
+    // no move possible
+    return;
+  ASSERT_MSG(DSPLLE, node->prev.size() <= 1, "too many previous nodes at this point");
+  ASSERT_MSG(DSPLLE, node->next.size() <= 1, "too many next nodes at this point");
+  // remove original node from its position
+  if (node->prev.empty())
+    // was first node
+    bb->start_node = *(node->next.begin());
+  else
+  {
+    (*node->prev.begin())->addNext(*node->next.begin());
+    (*node->next.begin())->removePrev(node);
+  }
+  (*node->prev.begin())->removeNext(node);
+
+  // cannot insert after end_node
+  if (tcnode->next.empty())
+    tcnode = *(tcnode->prev.begin());
+
+  node->addNext(*tcnode->next.begin());
+  tcnode->removeNext(*tcnode->next.begin());
+  tcnode->addNext(node);
+}
+
+void DSPEmitterIR::moveGuestStoresDown(IRBB* bb)
+{
+  std::deque<IRBB*> todo;
+  std::unordered_set<IRBB*> done;
+  todo.push_back(bb);
+  // bb is used for scanning through the instructions to find
+  // load/stores.
+  while (!todo.empty())
+  {
+    IRBB* bb2 = todo.front();
+    todo.pop_front();
+
+    if (done.find(bb2) != done.end())
+      continue;
+
+    done.insert(bb2);
+    for (auto n : bb2->prev)
+      todo.push_back(n);
+    IRNode* n = bb2->end_node;
+    while (n)
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+      IRNode* nn = NULL;
+      if (!n->prev.empty())
+        nn = *n->prev.begin();
+      if (in)
+      {
+        if (in->insn.emitter == &StoreGuestProdOp || in->insn.emitter == &StoreGuestOp ||
+            in->insn.emitter == &StoreGuestACMOp)
+          moveGuestStoreDown(bb2, in);
+      }
+      n = nn;
+    }
+  }
+}
+
 void DSPEmitterIR::extractSameHostReg()
 {
   for (auto n : m_node_storage)
@@ -1474,6 +1776,18 @@ void DSPEmitterIR::Compile(u16 start_addr)
     m_addr_info[m_compile_pc].node = m_end_bb->end_node;
     m_node_addr_map[m_end_bb->end_node] = m_compile_pc;
 
+    // this is supposed to happen after
+    // any op possibly raising an exception _or_ enabling
+    // the SR_INT_ENABLE flag
+    // exceptions can be raised by external(then latency is
+    // acceptable) or internally by reading from the accelerator
+    //(which is a memory mapped register)
+    // this implements a check whenever memory is read
+    // todo: move into load/store functions, so we can actually
+    // verify if the access goes to a register
+    // todo: check if we can actually do the whole interrupt
+    // setup in gdsp_ifx_read or dsp_read_accelerator
+    // from the interpreter side, things look good. jit?
     if (analyzer.IsCheckExceptions(m_compile_pc))
     {
       IRInsn p = {&CheckExceptionsOp};
@@ -1643,6 +1957,35 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
   removeCheckExceptions();
 
+  dumpIRNodes();
+  //	moveGuestLoadsUp(start_bb);
+  //	moveGuestStoresDown(end_bb);
+  dumpIRNodes();
+  // todo: coalesce load/store pairs handling the same guest register
+  // then, move the remaining stores again(yeah, need it twice)
+  // then, coalesce store/store pairs handling the same guest register
+  //  (should be all at the same place, now)
+
+  // todo: reorder guest load/stores
+  // look through all BBs what registers are read/written
+  //(cannot move stores over reads/writes and loads over writes)
+  //* move loads as far "up" in the graph as possible
+  //* move stores as far "down" in the graph as possibe
+  // * follow both paths if a branch is encountered
+  // * insert register merges(IRNodes that convert a vreg to another one,
+  //   depending on from where the BB is entered) and required loads
+  //   if control flow merges
+  // loop handling:
+  // * passing through a loop all bbs must not touch the guest
+  // * when we track back to the same bb, loads and stores can be omitted
+  //   if the other operation(store or load) is absent
+  //
+  // to conserve registers, later we need to
+  //* move stores as far "up" in the graph as possible, but keeping
+  //  them out of loops(can be skipped if the vreg is not used)
+  //* move loads as far "down" in the graph as possible, but keeping
+  //  them out of loops(can be skipped if the vreg is not used)
+
   m_spill_count = 0;
   while (!allocateHostRegs(false))
   {
@@ -1717,7 +2060,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
   if (m_spill_count > 0)
     SUB(64, R(RSP), Imm32(((m_spill_count + 1) / 2) * 16));
 
-  // future plan: create some kind of BB-scheduler that
+  // todo: future plan: create some kind of BB-scheduler that
   // produces a somewhat optimial order of the BBs to schedule,
   // then emit BBs in that order and fix up branches on the way,
   // including using the branch inversion feature
