@@ -28,21 +28,22 @@ namespace JITIR
 namespace x64
 {
 
-void DSPEmitterIR::WriteBranchExit(u16 execd_cycles)
+static constexpr size_t DSP_IDLE_SKIP_CYCLES = 0x1000;
+
+void DSPEmitterIR::WriteBranchExit(u16 execd_cycles, bool keepGpr)
 {
-  DSPJitIRRegCache c(m_gpr);
   m_gpr.SaveRegs();
   if (m_dsp_core.DSPState().GetAnalyzer().IsIdleSkip(m_start_address))
   {
-    MOV(16, R(EAX), Imm16(0x1000));
+    MOV(16, R(EAX), Imm16(DSP_IDLE_SKIP_CYCLES));
   }
   else
   {
     MOV(16, R(EAX), Imm16(execd_cycles));
   }
   JMP(m_return_dispatcher, true);
-  m_gpr.LoadRegs(false);
-  m_gpr.FlushRegs(c, false);
+  if (keepGpr)
+    m_gpr.LoadRegs(false);
 }
 
 static void CheckExceptionsThunk(DSPCore& dsp)
@@ -119,7 +120,7 @@ void DSPEmitterIR::HandleLoop(u16 pc, u16 execd_cycles)
   FixupBranch loopUpdated = J(true);
 
   SetJumpTarget(loadStack);
-  DSPJitIRRegCache c(m_gpr);
+  DSPJitIRRegCache c1(m_gpr);
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
   dsp_reg_stack_pop(StackRegister::Call, tmp1, tmp2, RAX);
@@ -127,13 +128,15 @@ void DSPEmitterIR::HandleLoop(u16 pc, u16 execd_cycles)
   dsp_reg_stack_pop(StackRegister::LoopCounter, tmp1, tmp2, RAX);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
-  m_gpr.FlushRegs(c);
+  m_gpr.FlushRegs(c1);
 
   SetJumpTarget(loopUpdated);
   SetJumpTarget(rLoopAddrG);
   SetJumpTarget(rLoopCntG);
 
+  DSPJitIRRegCache c2(m_gpr);
   WriteBranchExit(execd_cycles);
+  m_gpr.FlushRegs(c2, false);
 
   SetJumpTarget(rLoopAddressExit);
   SetJumpTarget(rLoopCounterExit);

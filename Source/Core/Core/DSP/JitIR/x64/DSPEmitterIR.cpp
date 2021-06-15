@@ -495,12 +495,8 @@ void DSPEmitterIR::EmitBB(IRBB* bb)
 
 void DSPEmitterIR::Compile(u16 start_addr)
 {
-  // Remember the current block address for later
+  // Remember the current block address for later(WriteBlockLink and friends)
   m_start_address = start_addr;
-
-  const u8* entryPoint = AlignCode16();
-
-  m_gpr.LoadRegs();
 
   m_compile_pc = start_addr;
   m_block_size[start_addr] = 0;
@@ -543,14 +539,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     m_compile_pc += opcode->size;
 
-    if (opcode->branch)
-    {
-      if (opcode->uncond_branch)
-      {
-        // we can end the BB after this
-      }
-    }
-    else
+    if (!opcode->branch)
     {
       // this one can be parallel to the rest
       IRInsn p = {&UpdatePCOp, {IROp::Imm(m_compile_pc)}};
@@ -568,8 +557,6 @@ void DSPEmitterIR::Compile(u16 start_addr)
       ir_add_op(p);
       ir_commit_parallel_nodes();
     }
-
-    // split should go here
 
     if (opcode->branch && opcode->uncond_branch)
       break;
@@ -591,12 +578,14 @@ void DSPEmitterIR::Compile(u16 start_addr)
   m_end_bb->setNextNonBranched(new_end_bb);
   m_end_bb = new_end_bb;
 
-  // now, we can drop all UpdatePCOp again, and need to know if
-  // the last modifies_PC insn was an UpdatePCOp
   dumpIRNodes();
 
   for (auto bb : m_bb_storage)
     deparallelize(bb);
+
+  const u8* entryPoint = AlignCode16();
+
+  m_gpr.LoadRegs();
 
   for (IRBB* bb = m_start_bb; bb != m_end_bb; bb = bb->nextNonBranched)
     EmitBB(bb);
@@ -614,15 +603,8 @@ void DSPEmitterIR::Compile(u16 start_addr)
   }
 
   m_gpr.SaveRegs();
-  if (!Host::OnThread() && analyzer.IsIdleSkip(start_addr))
-  {
-    MOV(16, R(EAX), Imm16(DSP_IDLE_SKIP_CYCLES));
-  }
-  else
-  {
-    MOV(16, R(EAX), Imm16(m_block_size[start_addr]));
-  }
-  JMP(m_return_dispatcher, true);
+
+  WriteBranchExit(m_block_size[start_addr], false);
 }
 
 void DSPEmitterIR::CompileCurrentIR(DSPEmitterIR& emitter)

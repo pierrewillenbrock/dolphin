@@ -297,7 +297,7 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     m_gpr.PutXReg(tmp1);
 
     TEST(16, R(EDX), R(EDX));
-    DSPJitIRRegCache c(m_gpr);
+    DSPJitIRRegCache c1(m_gpr);
     FixupBranch cnt = J_CC(CC_Z, true);
     X64Reg tmp3 = m_gpr.GetFreeXReg();
     X64Reg tmp4 = m_gpr.GetFreeXReg();
@@ -307,13 +307,13 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     m_gpr.PutXReg(tmp4);
     m_gpr.PutXReg(tmp3);
     MOV(16, M_SDSP_pc(), Imm16(loop_start));
-    m_gpr.FlushRegs(c, true);
+    m_gpr.FlushRegs(c1, true);
     FixupBranch exit = J(true);
 
     SetJumpTarget(cnt);
     MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
     WriteBranchExit(insn.cycle_count);
-    m_gpr.FlushRegs(c, false);
+    m_gpr.FlushRegs(c1, false);
     SetJumpTarget(exit);
   }
   else if (insn.inputs[0].type == IROp::IMM)
@@ -334,7 +334,9 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     else
     {
       MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
+      DSPJitIRRegCache c(m_gpr);
       WriteBranchExit(insn.cycle_count);
+      m_gpr.FlushRegs(c, false);
     }
   }
   else
@@ -404,7 +406,7 @@ void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg
   if (insn.inputs[1].type == DSPEmitterIR::IROp::REG)
   {
     u8 reg = insn.inputs[1].guest_reg;
-    // reg can only be DSP_REG_ARx and DSP_REG_IXx now,
+    // reg can only be DSP_REG_ARx and DSP_REG_IXx,
     // no need to handle DSP_REG_STx.
     dsp_op_read_reg(reg, RAX, RegisterExtension::None, tmp1, tmp2,
                     RAX);  // RAX+RAX is broken for ST accesses
@@ -435,7 +437,9 @@ void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
   IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_jmp, tmp1, tmp2);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
+  DSPJitIRRegCache c(m_gpr);
   WriteBranchExit(insn.cycle_count);  // for jcc, this is not needed, but for ifcc
+  m_gpr.FlushRegs(c, false);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::JmpOp = {
