@@ -80,6 +80,7 @@ struct DSPOPCTemplate
   bool uncond_branch;
   bool reads_pc;
   bool updates_sr;
+  bool evaluates_sr;
 };
 
 // Opcodes

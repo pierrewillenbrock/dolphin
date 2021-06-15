@@ -126,7 +126,7 @@ void Analyzer::FindInstructionStarts(const SDSP& dsp, u16 start_addr, u16 end_ad
       last_arithmetic = addr;
     }
 
-    if (opcode->branch && !opcode->uncond_branch)
+    if (opcode->evaluates_sr)
     {
       m_code_flags[last_arithmetic] |= CODE_UPDATE_SR;
     }
