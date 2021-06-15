@@ -568,7 +568,7 @@ private:
   class IRNode
   {
   public:
-    IRNode() : code(NULL) {}
+    IRNode() : code(nullptr) {}
     virtual ~IRNode() {}
 
     void addNext(IRNode* node);
@@ -602,7 +602,11 @@ private:
   class IRBB
   {  // BasicBlocks
   public:
-    IRBB() : nextNonBranched(NULL), nextBranched(NULL), start_node(NULL), end_node(NULL) {}
+    IRBB()
+        : code(nullptr), nextNonBranched(nullptr), nextBranched(nullptr), start_node(nullptr),
+          end_node(nullptr)
+    {
+    }
 
     void setNextNonBranched(IRBB* bb)
     {
@@ -633,11 +637,13 @@ private:
       nextBranched = bb;
     }
 
+    const u8* code;
+
     std::unordered_set<IRBB*> prev;
     std::unordered_set<IRBB*> next;
     std::unordered_set<IRNode*> nodes;
     IRBB* nextNonBranched;  // used for emitting
-    IRBB* nextBranched;     // may be NULL
+    IRBB* nextBranched;     // may be nullptr
 
     IRNode* start_node;  // possibly containing parallel sections
     IRNode* end_node;    // may(mostly will) be a branch insn, and the
@@ -646,7 +652,7 @@ private:
   class AddressInfo
   {
   public:
-    AddressInfo() : node(NULL), loop_begin(0xffff) {}
+    AddressInfo() : node(nullptr), loop_begin(0xffff) {}
 
     IRNode* node;
     u16 loop_begin;
@@ -660,6 +666,15 @@ private:
     Gen::OpArg oparg;
     bool active;
     std::unordered_set<int> parallel_live_vregs;
+  };
+  struct DSPEmitterParallelSectioninfo
+  {
+    DSPEmitterParallelSectioninfo(DSPEmitterIR::IRNode* aFirst) : first(aFirst) {}
+
+    DSPEmitterIR::IRNode* first;
+    DSPEmitterIR::IRNode* last;
+    std::unordered_set<int> input_gregs;
+    std::unordered_set<int> output_gregs;
   };
 
   using DSPCompiledCode = u32 (*)();
@@ -677,8 +692,6 @@ private:
   void Compile(u16 start_addr);
 
   bool FlagsNeeded() const;
-
-  void FallBackToInterpreter(UDSPInstruction inst);
 
   void WriteBranchExit();
 
@@ -779,7 +792,12 @@ private:
   // possible. if deparallelizing is impossible, it may need to emit
   // extra moves, and then deparallelize. we'll see)
   void ir_add_op(IRInsn insn);
+  void ir_commit_parallel_nodes();
+
   static int ir_to_regcache_reg(int reg);
+
+  void deparallelize(IRNode* node);
+  void deparallelize(IRBB* bb);
 
   void EmitInstruction(UDSPInstruction inst);
 
@@ -808,6 +826,9 @@ private:
     n->insn = insn;
     return n;
   }
+  static void findInputOutput(IRNode* begin, IRNode* end, IRNode*& last,
+                              std::unordered_set<int>& input_gregs,
+                              std::unordered_set<int>& output_gregs);
 
   // ******* Emitters *******
 

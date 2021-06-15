@@ -18,8 +18,6 @@
 #include "Core/DSP/DSPCore.h"
 #include "Core/DSP/DSPHost.h"
 #include "Core/DSP/DSPTables.h"
-#include "Core/DSP/Interpreter/DSPIntTables.h"
-#include "Core/DSP/Interpreter/DSPInterpreter.h"
 #include "Core/DSP/JitIR/x64/DSPJitTables.h"
 
 using namespace Gen;
@@ -148,102 +146,393 @@ int DSPEmitterIR::ir_to_regcache_reg(int reg)
   case 31:
     return reg;
   default:
-    _assert_msg_(DSPLLE, 0, "cannot convert il reg %d to regcache", reg);
+    ASSERT_MSG(DSPLLE, 0, "cannot convert il reg %d to regcache", reg);
     return -1;
   }
 }
 
-static void FallbackThunk(Interpreter::Interpreter& interpreter, UDSPInstruction inst)
+void DSPEmitterIR::findInputOutput(IRNode* begin, IRNode* end, IRNode*& last,
+                                   std::unordered_set<int>& input_gregs,
+                                   std::unordered_set<int>& output_gregs)
 {
-  (interpreter.*Interpreter::GetOp(inst))(inst);
+  last = begin;
+  for (IRNode* n = begin; n != end; n = *n->next.begin())
+  {
+    last = n;
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+    if (in)
+    {
+      for (int i = 0; i < NUM_INPUTS; i++)
+      {
+        if (in->insn.inputs[i].type == IROp::REG)
+        {
+          switch (in->insn.inputs[i].guest_reg)
+          {
+          case IROp::DSP_REG_ACC0_ALL:
+            input_gregs.insert(DSP_REG_ACH0);
+            input_gregs.insert(DSP_REG_ACM0);
+            input_gregs.insert(DSP_REG_ACL0);
+            break;
+          case IROp::DSP_REG_ACC1_ALL:
+            input_gregs.insert(DSP_REG_ACH1);
+            input_gregs.insert(DSP_REG_ACM1);
+            input_gregs.insert(DSP_REG_ACL1);
+            break;
+          case IROp::DSP_REG_AX0_ALL:
+            input_gregs.insert(DSP_REG_AXH0);
+            input_gregs.insert(DSP_REG_AXL0);
+            break;
+          case IROp::DSP_REG_AX1_ALL:
+            input_gregs.insert(DSP_REG_AXH1);
+            input_gregs.insert(DSP_REG_AXL1);
+            break;
+          case IROp::DSP_REG_PROD_ALL:
+            input_gregs.insert(DSP_REG_PRODL);
+            input_gregs.insert(DSP_REG_PRODM);
+            input_gregs.insert(DSP_REG_PRODH);
+            input_gregs.insert(DSP_REG_PRODM2);
+            break;
+          default:
+            input_gregs.insert(in->insn.inputs[i].guest_reg);
+          }
+        }
+      }
+      if (in->insn.output.type == IROp::REG)
+      {
+        switch (in->insn.output.guest_reg)
+        {
+        case IROp::DSP_REG_ACC0_ALL:
+          output_gregs.insert(DSP_REG_ACH0);
+          output_gregs.insert(DSP_REG_ACM0);
+          output_gregs.insert(DSP_REG_ACL0);
+          break;
+        case IROp::DSP_REG_ACC1_ALL:
+          output_gregs.insert(DSP_REG_ACH1);
+          output_gregs.insert(DSP_REG_ACM1);
+          output_gregs.insert(DSP_REG_ACL1);
+          break;
+        case IROp::DSP_REG_AX0_ALL:
+          output_gregs.insert(DSP_REG_AXH0);
+          output_gregs.insert(DSP_REG_AXL0);
+          break;
+        case IROp::DSP_REG_AX1_ALL:
+          output_gregs.insert(DSP_REG_AXH1);
+          output_gregs.insert(DSP_REG_AXL1);
+          break;
+        case IROp::DSP_REG_PROD_ALL:
+          output_gregs.insert(DSP_REG_PRODL);
+          output_gregs.insert(DSP_REG_PRODM);
+          output_gregs.insert(DSP_REG_PRODH);
+          output_gregs.insert(DSP_REG_PRODM2);
+          break;
+        default:
+          output_gregs.insert(in->insn.output.guest_reg);
+          break;
+        }
+      }
+    }
+  }
 }
 
-void DSPEmitterIR::FallBackToInterpreter(UDSPInstruction inst)
+void DSPEmitterIR::deparallelize(IRNode* node)
 {
-  const DSPOPCTemplate* const op_template = GetOpTemplate(inst);
+  // skip all single ended nodes
 
-  if (op_template->reads_pc)
+  while (node->next.size() <= 1)
   {
-    // Increment PC - we shouldn't need to do this for every instruction. only for branches and end
-    // of block.
-    // Fallbacks to interpreter need this for fetching immediate values
-
-    MOV(16, M_SDSP_pc(), Imm16(m_compile_pc + 1));
+    if (node->next.size() == 0)
+      return;
+    node = *node->next.begin();
   }
 
-  // Fall back to interpreter
-  const auto interpreter_function = Interpreter::GetOp(inst);
+  IRNode* parallel_begin = node;
+  // now, find the end of this parallel section.
+  // we assume there are no branches in here, all the parallel
+  // execution paths end in the same node, and don't contain
+  // parallel sections of their own.
 
-  m_gpr.PushRegs();
-  ASSERT_MSG(DSPLLE, interpreter_function != nullptr, "No function for %04x", inst);
-  ABI_CallFunctionPC(FallbackThunk, &m_dsp_core.GetInterpreter(), inst);
-  m_gpr.PopRegs();
+  IRInsnNode* in1 = dynamic_cast<IRInsnNode*>(parallel_begin);
+  ASSERT_MSG(DSPLLE, !in1, "found insn in begin node of parallel section");
+  // so, find the end node of this section by traversing one branch.
+  IRNode* n1 = *parallel_begin->next.begin();
+  while (n1->prev.size() <= 1)
+  {
+    ASSERT_MSG(DSPLLE, n1->prev.size() == 1, "found invalid node connection");
+    ASSERT_MSG(DSPLLE, n1->next.size() == 1, "found parallel section inside another");
+    IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n1);
+    ASSERT_MSG(DSPLLE, !bn, "found branch node in parallel section");
+    n1 = *n1->next.begin();
+  }
+
+  IRNode* parallel_end = n1;
+  IRInsnNode* in2 = dynamic_cast<IRInsnNode*>(parallel_end);
+  ASSERT_MSG(DSPLLE, !in2, "found insn in end node of parallel section");
+
+  // now check the rest of the paths
+
+  for (IRNode* n2 : parallel_begin->next)
+  {
+    while (n2->prev.size() <= 1)
+    {
+      ASSERT_MSG(DSPLLE, n2->prev.size() == 1, "found invalid node connection");
+      ASSERT_MSG(DSPLLE, n2->next.size() == 1, "found parallel section inside another");
+      IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n2);
+      ASSERT_MSG(DSPLLE, !bn, "found branch node in parallel section");
+      n2 = *n2->next.begin();
+    }
+    ASSERT_MSG(DSPLLE, n2 == parallel_end, "found multiple end points in parallel section");
+  }
+
+  ASSERT_MSG(DSPLLE, parallel_begin->next.size() == parallel_end->prev.size(),
+               "parallel section begin and end don't match in out/in edge count");
+
+  // try to figure out a sequence of IRInsns so no insn reads
+  // the results of a previous one.
+  //(we just assume here that no sane code reads and writes to
+  // the same address in the same instruction, with two different
+  // operations. this may be wrong.)
+  // in general, this should be possible.
+  // if not, we need to split the insn in a load/move or move/store
+  // pair with a virtual register in between
+  // also, we need to keep opcodes modifying high SR bits at the
+  // end.
+
+  // this is a bit of a hack, correct would be to resolve all
+  // insns to
+  // op-with-result-to-virtual-reg,move-result-to-real-reg pairs
+  // and then, in a later pass, reshuffel if possible, assuming
+  // memory _can be_ the same
+  // that should probably all happen on a virtual reg level,
+  // that only later on get resolved to real(host) reg level
+
+  // we are not that far that we can actually _do_ virtual regs
+
+  std::list<DSPEmitterParallelSectioninfo> sections;
+  for (auto n : parallel_begin->next)
+  {
+    sections.push_back(DSPEmitterParallelSectioninfo(n));
+    findInputOutput(sections.back().first, parallel_end, sections.back().last,
+                    sections.back().input_gregs, sections.back().output_gregs);
+  }
+
+  std::list<DSPEmitterParallelSectioninfo> sorted_sections;
+
+  bool fail = false;
+  while (!fail && !sections.empty())
+  {
+    auto its1 = sections.begin();
+    for (; its1 != sections.end(); its1++)
+    {
+      bool good = true;
+      if (!its1->output_gregs.empty())
+      {
+        for (auto its2 = sections.begin(); its2 != sections.end(); its2++)
+        {
+          if (its1 == its2)
+            continue;
+          for (auto ogreg : its1->output_gregs)
+          {
+            for (auto igreg : its2->input_gregs)
+            {
+              if (ogreg == igreg)
+                good = false;
+            }
+          }
+        }
+      }
+      // check for writes to SR, because those must be last
+
+      bool SRWrite = false;
+      for (IRNode* n = its1->first; n != parallel_end; n = *n->next.begin())
+      {
+        IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+        if (in)
+        {
+          if (in->insn.emitter == &SBSetOp || in->insn.emitter == &SBClrOp)
+            SRWrite = true;
+        }
+      }
+
+      for (auto greg : its1->output_gregs)
+      {
+        if (greg == DSP_REG_SR)
+          SRWrite = true;
+      }
+
+      if (SRWrite && sections.size() != 1)
+        good = false;
+      if (good)
+        break;
+    }
+    if (its1 == sections.end())
+    {
+      fail = true;
+      break;
+    }
+    sorted_sections.push_back(*its1);
+    sections.erase(its1);
+  }
+
+  if (!fail)
+  {
+    // got a valid order, apply.
+    IRNode* n3 = parallel_begin;
+    for (auto s : sorted_sections)
+    {
+      parallel_begin->removeNext(s.first);
+      n3->addNext(s.first);
+      parallel_end->removePrev(s.last);
+      n3 = s.last;
+    }
+    parallel_end->addPrev(n3);
+    deparallelize(parallel_end);
+    return;
+  }
+
+  WARN_LOG(DSPLLE, "Failed to deparallelize using the simple method, trying to separate the loads");
+  dumpIRNodes();
+
+  ASSERT_MSG(DSPLLE, 0, "not-yet-implemented section");
+  exit(1);
+#if 0
+
+	IRInsnNode *in = dynamic_cast<IRInsnNode *>(node);
+	IRBranchNode *bn = dynamic_cast<IRBranchNode *>(node);
+
+
+	//the simple method failed. try pulling the guest loads out,
+	//and then retry deparallelize
+	//in reality, this just does not happen, so consider this untested.
+	std::list<ILList> olist = irlist.lists;;
+	std::list<IRInsn> nilist;
+	for(auto itl = olist.begin(); itl != olist.end(); itl++)
+	{
+		for(auto iti = itl->insns.begin(); iti != itl->insns.end();)
+		{
+			bool has_input_greg = false;
+			for(unsigned int i = 0; i < NUM_INPUTS; i++)
+			{
+				if (iti->inputs[i].type == IROp::REG)
+					has_input_greg = true;
+			}
+			if (has_input_greg)
+			{
+				nilist.push_back(*iti);
+				iti = itl->insns.erase(iti);
+			}
+			else
+				iti++;
+		}
+	}
+
+	if(nilist.empty())
+	{
+		PanicAlertT("Could not deparallelize! insn emit will fail!");
+		dumpIRList(irlist);
+		return;
+	}
+
+	ILList ni;
+	ni.insns = nilist;
+	ILList nl;
+	nl.lists = olist;
+	irlist.lists.clear();
+	irlist.lists.push_back(ni);
+	irlist.lists.push_back(nl);
+	irlist.type = ILList::Sequential;
+	deparallelize(irlist);
+#endif
 }
 
-static void FallbackExtThunk(Interpreter::Interpreter& interpreter, UDSPInstruction inst)
+void DSPEmitterIR::deparallelize(IRBB* bb)
 {
-  (interpreter.*Interpreter::GetExtOp(inst))(inst);
-}
-
-static void ApplyWriteBackLogThunk(Interpreter::Interpreter& interpreter)
-{
-  interpreter.ApplyWriteBackLog();
+  deparallelize(bb->start_node);
 }
 
 void DSPEmitterIR::EmitInstruction(UDSPInstruction inst)
 {
-  const DSPOPCTemplate* const op_template = GetOpTemplate(inst);
-  bool ext_is_jit = false;
+  clearNodeStorage();
+
+  // create start_bb and preliminary end_bb
+  m_start_bb = new IRBB();
+  m_bb_storage.push_back(m_start_bb);
+  IRNode* start_bb_node = makeIRNode();
+  m_start_bb->start_node = m_start_bb->end_node = start_bb_node;
+  m_start_bb->nodes.insert(start_bb_node);
+
+  m_end_bb = new IRBB();
+  m_bb_storage.push_back(m_end_bb);
+  IRNode* end_bb_node = makeIRNode();
+  m_end_bb->start_node = m_end_bb->end_node = end_bb_node;
+  m_end_bb->nodes.insert(end_bb_node);
+
+  m_start_bb->next.insert(m_end_bb);
+  m_start_bb->nextNonBranched = m_end_bb;
+  m_end_bb->prev.insert(m_start_bb);
+
+  m_parallel_nodes.clear();
+
+  const auto jit_decode_function = GetOp(inst);
+  const DSPOPCTemplate* tinst = GetOpTemplate(inst);
 
   // Call extended
-  if (op_template->extended)
+  if (tinst->extended)
   {
-    const auto jit_decode_function = GetExtOp(inst);
-
-    if (jit_decode_function)
-    {
-      (this->*jit_decode_function)(inst);
-      ext_is_jit = true;
-    }
-    else
-    {
-      // Fall back to interpreter
-      m_gpr.PushRegs();
-      ABI_CallFunctionPC(FallbackExtThunk, &m_dsp_core.GetInterpreter(), inst);
-      m_gpr.PopRegs();
-      INFO_LOG_FMT(DSPLLE, "Instruction not JITed(ext part): {:04x}", inst);
-      ext_is_jit = false;
-    }
+    const auto jit_ext_decode_function = GetExtOp(inst);
+    (this->*jit_ext_decode_function)(inst);
   }
 
-  // Main instruction
-  const auto jit_decode_function = GetOp(inst);
-  if (jit_decode_function)
+  (this->*jit_decode_function)(inst);
+
+  ir_commit_parallel_nodes();
+
+  // add final end_bb
+  IRBB* new_end_bb = new IRBB();
+  m_bb_storage.push_back(new_end_bb);
+  IRNode* new_end_bb_node = makeIRNode();
+  new_end_bb->start_node = new_end_bb->end_node = new_end_bb_node;
+  new_end_bb->nodes.insert(new_end_bb_node);
+
+  m_end_bb->next.insert(new_end_bb);
+  m_end_bb->nextNonBranched = new_end_bb;
+  new_end_bb->prev.insert(m_end_bb);
+
+  m_end_bb = new_end_bb;
+
+  // todo: need to convert concurrent memory reads on the same data bus
+  //(determined by high 6 bits) to one "normal" and one special Mov16
+  // that takes the other address as second input and checks it for
+  // use of same data bus, and if so, reverts to using the data from the
+  // first.
+  // todo: need to OR outputs together if they are going to the same
+  // register
+  // for now, just rely on firmware not relying on this...
+
+  dumpIRNodes();
+
+  for (auto bb : m_bb_storage)
+    deparallelize(bb);
+
+  for (IRBB* bb = m_start_bb; bb != m_end_bb; bb = bb->nextNonBranched)
   {
-    (this->*jit_decode_function)(inst);
-  }
-  else
-  {
-    FallBackToInterpreter(inst);
-    INFO_LOG_FMT(DSPLLE, "Instruction not JITed(main part): {:04x}", inst);
+    IRNode* n = bb->start_node;
+    while (1)
+    {
+      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+
+      if (in)
+        (this->*(in->insn.emitter->func))(in->insn);
+
+      ASSERT_MSG(DSPLLE, n->next.size() < 2, "cannot handle parallel insns in emitter");
+
+      if (n->next.empty())
+        break;
+
+      n = *(n->next.begin());
+    }
   }
 
-  // Backlog
-  if (op_template->extended)
-  {
-    if (!ext_is_jit)
-    {
-      // need to call the online cleanup function because
-      // the writeBackLog gets populated at runtime
-      m_gpr.PushRegs();
-      ABI_CallFunctionP(ApplyWriteBackLogThunk, &m_dsp_core.GetInterpreter());
-      m_gpr.PopRegs();
-    }
-    else
-    {
-      popExtValueToReg();
-    }
-  }
+  clearNodeStorage();
 }
 
 void DSPEmitterIR::Compile(u16 start_addr)
@@ -267,6 +556,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
 
     const UDSPInstruction inst = m_dsp_core.DSPState().ReadIMEM(m_compile_pc);
     const DSPOPCTemplate* opcode = GetOpTemplate(inst);
+    const auto jit_decode_function = GetOp(inst);
 
     EmitInstruction(inst);
 
@@ -322,9 +612,7 @@ void DSPEmitterIR::Compile(u16 start_addr)
       {
         break;
       }
-
-      const auto jit_decode_function = GetOp(inst);
-      if (!jit_decode_function)
+      else if (!jit_decode_function)
       {
         // look at g_dsp.pc if we actually branched
         MOV(16, R(AX), M_SDSP_pc());
@@ -484,6 +772,44 @@ Gen::OpArg DSPEmitterIR::M_SDSP_reg_stack_ptrs(size_t index)
 
 void DSPEmitterIR::ir_add_op(IRInsn insn)
 {
+  insn.addr = m_compile_pc;
+  insn.original = dsp_imem_read(m_compile_pc);
+  insn.later_needs_SR = 0;
+  insn.modified_SR = 0;
+  insn.const_SR = 0;
+  insn.value_SR = 0;
+  memset(insn.value_regs, 0, sizeof(insn.value_regs));
+  memset(insn.const_regs, 0, sizeof(insn.const_regs));
+  memset(insn.modified_regs, 0, sizeof(insn.modified_regs));
+
+  IRInsnNode* n = makeIRInsnNode(insn);
+  m_parallel_nodes.push_back(std::make_pair(n, n));
+  m_end_bb->nodes.insert(n);
+}
+
+void DSPEmitterIR::ir_commit_parallel_nodes()
+{
+  if (m_parallel_nodes.empty())
+    return;
+  // need to make sure there is always a "normal" IRNode at the
+  // begin and end of parallel sections. at least for now.
+  IRNode* new_end = makeIRNode();
+  m_end_bb->nodes.insert(new_end);
+  if (m_parallel_nodes.size() == 1)
+  {
+    m_end_bb->end_node->addNext(m_parallel_nodes[0].first);
+    m_parallel_nodes[0].second->addNext(new_end);
+  }
+  else
+  {
+    for (auto pnp : m_parallel_nodes)
+    {
+      m_end_bb->end_node->addNext(pnp.first);
+      new_end->addPrev(pnp.second);
+    }
+  }
+  m_end_bb->end_node = new_end;
+  m_parallel_nodes.clear();
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::InvalidOp = {"InvalidOp", NULL};
