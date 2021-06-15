@@ -100,13 +100,6 @@ static Gen::OpArg GetRegisterPointer(size_t reg)
 
 DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter) : m_emitter(emitter)
 {
-  for (X64CachedReg& xreg : m_xregs)
-  {
-    xreg.guest_reg = DSP_REG_STATIC;
-  }
-
-  ResetXRegs();
-
   for (size_t i = 0; i < m_regs.size(); i++)
   {
     m_regs[i].mem = GetRegisterPointer(i);
@@ -134,98 +127,6 @@ DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter) : m_emitter(emitter)
   {
     m_regs[i + DSP_REG_AX0_32].size = 4;
   }
-}
-
-X64Reg DSPJitIRRegCache::SpillXReg()
-{
-  return INVALID_REG;
-}
-
-X64Reg DSPJitIRRegCache::FindFreeXReg() const
-{
-  for (X64Reg x : s_allocation_order)
-  {
-    if (m_xregs[x].guest_reg == DSP_REG_NONE)
-    {
-      return x;
-    }
-  }
-
-  return INVALID_REG;
-}
-
-X64Reg DSPJitIRRegCache::FindSpillFreeXReg()
-{
-  X64Reg reg = FindFreeXReg();
-  if (reg == INVALID_REG)
-  {
-    reg = SpillXReg();
-  }
-  return reg;
-}
-
-X64Reg DSPJitIRRegCache::GetFreeXReg()
-{
-  X64Reg reg = FindSpillFreeXReg();
-
-  ASSERT_MSG(DSPLLE, reg != INVALID_REG, "could not find register");
-  if (reg == INVALID_REG)
-  {
-    m_emitter.INT3();
-  }
-
-  m_xregs[reg].guest_reg = DSP_REG_USED;
-  return reg;
-}
-
-void DSPJitIRRegCache::GetXReg(X64Reg reg)
-{
-  if (m_xregs[reg].guest_reg == DSP_REG_STATIC)
-  {
-    ERROR_LOG_FMT(DSPLLE, "Trying to get statically used XReg {}", reg);
-    return;
-  }
-
-  ASSERT_MSG(DSPLLE, m_xregs[reg].guest_reg == DSP_REG_NONE, "register already in use");
-  m_xregs[reg].guest_reg = DSP_REG_USED;
-}
-
-void DSPJitIRRegCache::PutXReg(X64Reg reg)
-{
-  if (m_xregs[reg].guest_reg == DSP_REG_STATIC)
-  {
-    ERROR_LOG_FMT(DSPLLE, "Trying to put statically used XReg {}", reg);
-    return;
-  }
-
-  ASSERT_MSG(DSPLLE, m_xregs[reg].guest_reg == DSP_REG_USED, "PutXReg without get(Free)XReg");
-
-  m_xregs[reg].guest_reg = DSP_REG_NONE;
-}
-
-void DSPJitIRRegCache::ResetXRegs()
-{
-  m_xregs[RAX].guest_reg = DSP_REG_NONE;
-  m_xregs[RCX].guest_reg = DSP_REG_NONE;
-  m_xregs[RDX].guest_reg = DSP_REG_NONE;
-
-  m_xregs[RBX].guest_reg = DSP_REG_NONE;
-
-  m_xregs[RSP].guest_reg = DSP_REG_STATIC;  // stack pointer
-
-  m_xregs[RBP].guest_reg = DSP_REG_NONE;
-
-  m_xregs[RSI].guest_reg = DSP_REG_NONE;
-  m_xregs[RDI].guest_reg = DSP_REG_NONE;
-
-  m_xregs[R8].guest_reg = DSP_REG_NONE;
-  m_xregs[R9].guest_reg = DSP_REG_NONE;
-  m_xregs[R10].guest_reg = DSP_REG_NONE;
-  m_xregs[R11].guest_reg = DSP_REG_NONE;
-  m_xregs[R12].guest_reg = DSP_REG_NONE;
-  m_xregs[R13].guest_reg = DSP_REG_NONE;
-  m_xregs[R14].guest_reg = DSP_REG_NONE;
-  m_xregs[R15].guest_reg = DSP_REG_STATIC;
 }
 
 }  // namespace DSP::JITIR::x64

@@ -21,6 +21,19 @@
 #include "Core/DSP/DSPTables.h"
 #include "Core/DSP/JitIR/x64/DSPJitTables.h"
 
+namespace std
+{
+template <>
+struct hash<Gen::X64Reg>
+{
+  size_t operator()(const Gen::X64Reg& r) const
+  {
+    std::hash<int> hi;
+    return hi((int)r);
+  }
+};
+}
+
 using namespace Gen;
 
 namespace DSP::JITIR::x64
@@ -28,6 +41,11 @@ namespace DSP::JITIR::x64
 constexpr size_t COMPILED_CODE_SIZE = 2097152;
 constexpr size_t MAX_BLOCK_SIZE = 250;
 constexpr u16 DSP_IDLE_SKIP_CYCLES = 0x1000;
+
+// Ordered in order of prefered use.
+// All of these are actually available (note absence of R15 and RSP)
+constexpr std::array<X64Reg, 14> s_allocation_order = {
+    {R8, R9, R10, R11, R12, R13, R14, RSI, RDI, RBX, RCX, RDX, RAX, RBP}};
 
 DSPEmitterIR::DSPEmitterIR(DSPCore& dsp)
     : m_blocks(MAX_BLOCKS), m_block_size(MAX_BLOCKS), m_dsp_core{dsp}
@@ -655,16 +673,27 @@ void DSPEmitterIR::findLiveVRegs()
   }
 }
 
+static X64Reg findHostReg(std::unordered_set<X64Reg> inuse)
+{
+  for (X64Reg x : s_allocation_order)
+  {
+    if (inuse.count(x) == 0)
+    {
+      return x;
+    }
+  }
+
+  ASSERT_MSG(DSPLLE, 0, "could not allocate register");
+
+  return INVALID_REG;
+}
+
 void DSPEmitterIR::allocHostRegs()
 {
-  // at this point, parallel ops are not allowed.
-
   // todo: refactor the allocation into one function, getting passed
   // which reqs to handle and/or from which pool to choose
 
-  // todo: make this handle sequential lists of branches and sequential lists etc(no parallels,
-  // though)
-
+  std::list<int> vreg_allocation_order;
   // allocate RAX/RCX
   for (unsigned int i1 = 1; i1 < m_vregs.size(); i1++)
   {
@@ -673,28 +702,7 @@ void DSPEmitterIR::allocHostRegs()
     if ((m_vregs[i1].reqs & OpAnyReg) != OpRAX && (m_vregs[i1].reqs & OpAnyReg) != OpRCX)
       continue;
 
-    std::set<X64Reg> inuse;
-    for (auto i2 : m_vregs[i1].parallel_live_vregs)
-    {
-      if (m_vregs[i2].oparg.IsSimpleReg())
-        inuse.insert(m_vregs[i2].oparg.GetSimpleReg());
-    }
-
-    for (auto hreg : inuse)
-      m_gpr.GetXReg(hreg);
-
-    {
-      X64Reg hreg = INVALID_REG;
-      if ((m_vregs[i1].reqs & OpAnyReg) == OpRAX)
-        hreg = RAX;
-      if ((m_vregs[i1].reqs & OpAnyReg) == OpRCX)
-        hreg = RCX;
-
-      m_gpr.GetXReg(hreg);
-      m_vregs[i1].oparg = R(hreg);
-    }
-
-    m_gpr.ResetXRegs();
+    vreg_allocation_order.push_back(i1);
   }
 
   // allocate the rest
@@ -702,25 +710,37 @@ void DSPEmitterIR::allocHostRegs()
   {
     if (m_vregs[i1].isImm)
       continue;
-    if (m_vregs[i1].oparg.IsSimpleReg())
+    if ((m_vregs[i1].reqs & OpAnyReg) == OpRAX || (m_vregs[i1].reqs & OpAnyReg) == OpRCX)
       continue;
 
-    std::set<X64Reg> inuse;
-    for (auto i2 : m_vregs[i1].parallel_live_vregs)
+    vreg_allocation_order.push_back(i1);
+  }
+
+  for (auto i : vreg_allocation_order)
+  {
+    if (m_vregs[i].oparg.IsSimpleReg())
+      continue;
+
+    std::unordered_set<X64Reg> inuse;
+
+    for (auto k : m_vregs[i].parallel_live_vregs)
     {
-      if (m_vregs[i2].oparg.IsSimpleReg())
-        inuse.insert(m_vregs[i2].oparg.GetSimpleReg());
+      if (m_vregs[k].oparg.IsSimpleReg())
+        inuse.insert(m_vregs[k].oparg.GetSimpleReg());
     }
 
-    for (auto hreg : inuse)
-      m_gpr.GetXReg(hreg);
+    X64Reg hreg = INVALID_REG;
+    if ((m_vregs[i].reqs & OpAnyReg) == OpRAX)
+      hreg = RAX;
+    else if ((m_vregs[i].reqs & OpAnyReg) == OpRCX)
+      hreg = RCX;
+    else
+      hreg = findHostReg(inuse);
 
-    {
-      X64Reg hreg = m_gpr.GetFreeXReg();
-      m_vregs[i1].oparg = R(hreg);
-    }
+    _assert_msg_(DSPLLE, hreg != INVALID_REG, "could not allocate host reg");
+    _assert_msg_(DSPLLE, inuse.count(hreg) == 0, "register is already in use");
 
-    m_gpr.ResetXRegs();
+    m_vregs[i].oparg = R(hreg);
   }
 }
 
@@ -765,19 +785,16 @@ void DSPEmitterIR::EmitInsn(IRInsnNode* in)
       m_vregs[i].active = true;
   }
 
-  X64Reg sr_reg;
   if (insn.needs_SR || insn.modifies_SR)
   {
+    std::unordered_set<X64Reg> inuse;
     for (auto i : in->live_vregs)
     {
       if (m_vregs[i].oparg.IsSimpleReg())
-        m_gpr.GetXReg(m_vregs[i].oparg.GetSimpleReg());
+        inuse.insert(m_vregs[i].oparg.GetSimpleReg());
     }
 
-    sr_reg = m_gpr.GetFreeXReg();
-
-    m_gpr.ResetXRegs();
-
+    X64Reg sr_reg = findHostReg(inuse);
     insn.SR = R(sr_reg);
   }
   else

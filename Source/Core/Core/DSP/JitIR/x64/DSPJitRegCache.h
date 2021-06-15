@@ -51,24 +51,13 @@ public:
   Gen::OpArg RegMem(int reg) { return m_regs[reg].mem; }
 
 private:
-  struct X64CachedReg
-  {
-    size_t guest_reg;  // Including DSPJitRegSpecial
-  };
-
   struct DynamicReg
   {
     Gen::OpArg mem;
     size_t size;
   };
 
-  // Find a free host reg
-  Gen::X64Reg FindFreeXReg() const;
-  Gen::X64Reg SpillXReg();
-  Gen::X64Reg FindSpillFreeXReg();
-
   std::array<DynamicReg, 37> m_regs;
-  std::array<X64CachedReg, 16> m_xregs;
 
   DSPEmitterIR& m_emitter;
 };
