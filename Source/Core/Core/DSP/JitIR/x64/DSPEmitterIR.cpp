@@ -110,11 +110,11 @@ void DSPEmitterIR::ClearIRAMandDSPJITCodespaceReset()
   m_dsp_core.DSPState().reset_dspjit_codespace = false;
 }
 
-bool DSPEmitterIR::FlagsNeeded(u16 address) const
+bool DSPEmitterIR::FlagsNeeded(IRInsn const& insn) const
 {
   const auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
 
-  return !analyzer.IsStartOfInstruction(address) || analyzer.IsUpdateSR(address);
+  return !analyzer.IsStartOfInstruction(insn.addr) || analyzer.IsUpdateSR(insn.addr);
 }
 
 int DSPEmitterIR::ir_to_regcache_reg(int reg)

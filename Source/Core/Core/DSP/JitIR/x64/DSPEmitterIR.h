@@ -533,7 +533,7 @@ private:
   void CompileStaticHelpers();
   void Compile(u16 start_addr);
 
-  bool FlagsNeeded(u16 address) const;
+  bool FlagsNeeded(IRInsn const& insn) const;
 
   void WriteBranchExit(u16 execd_cycles, bool keepGpr = true);
   void dropAllRegs(IRInsn const& insn);
@@ -547,19 +547,22 @@ private:
   void irr_jmp(IRInsn const& insn);
   void irr_call(IRInsn const& insn);
 
-  void Update_SR_Register(Gen::X64Reg val, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
+  void Update_SR_Register(IRInsn const& insn, Gen::OpArg const& val, Gen::OpArg const& sr_reg,
+                          Gen::X64Reg tmp1);
 
   void round_long(Gen::X64Reg long_reg);
   static Gen::OpArg regMem(int reg);
   static size_t regSize(int reg);
 
   // CC helpers
-  void Update_SR_Register64(Gen::X64Reg val, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
-  void Update_SR_Register64_Carry(Gen::X64Reg new_val, Gen::X64Reg old_val,
-                                  Gen::X64Reg add_nsub_val, Gen::OpArg const& sr_reg,
-                                  bool subtraction = false);
-  void Update_SR_Register16(Gen::X64Reg val, Gen::OpArg const& sr_reg);
-  void Update_SR_Register16_OverS32(Gen::X64Reg val, Gen::X64Reg acc, Gen::OpArg const& sr_reg);
+  void Update_SR_Register64(IRInsn const& insn, Gen::OpArg const& val, Gen::OpArg const& sr_reg,
+                            Gen::X64Reg tmp1);
+  void Update_SR_Register64_Carry(IRInsn const& insn, Gen::OpArg const& new_val,
+                                  Gen::OpArg const& old_val, Gen::OpArg const& add_nsub_val,
+                                  Gen::OpArg const& sr_reg, bool subtraction = false);
+  void Update_SR_Register16(IRInsn const& insn, Gen::OpArg const& val, Gen::OpArg const& sr_reg);
+  void Update_SR_Register16_OverS32(IRInsn const& insn, Gen::OpArg const& val,
+                                    Gen::OpArg const& acc, Gen::OpArg const& sr_reg);
 
   // Register helpers
   void setCompileSR(u16 bit, Gen::OpArg const& sr_reg);

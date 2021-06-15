@@ -620,10 +620,7 @@ void DSPEmitterIR::iremit_TstPOp(IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register64(insn.inputs[0].oparg.GetSimpleReg(), insn.SR, tmp1);
-  }
+  Update_SR_Register64(insn, insn.inputs[0].oparg, insn.SR, tmp1);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::TstPOp = {
@@ -635,12 +632,12 @@ void DSPEmitterIR::iremit_MovPOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  // yes, all the work is done in the emitter itself.
-  if (FlagsNeeded(insn.addr))
+  // yes, all the work is done in the main emitter itself.
+  if (FlagsNeeded(insn))
   {
     // except for this, of course.
     MOV(64, R(tmp1), insn.inputs[0].oparg);
-    Update_SR_Register64(tmp1, insn.SR, tmp2);
+    Update_SR_Register64(insn, R(tmp1), insn.SR, tmp2);
   }
 }
 
@@ -657,10 +654,10 @@ void DSPEmitterIR::iremit_MovNPOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   NEG(64, insn.inputs[0].oparg);
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp1), insn.inputs[0].oparg);
-    Update_SR_Register64(tmp1, insn.SR, tmp2);
+    Update_SR_Register64(insn, R(tmp1), insn.SR, tmp2);
   }
 }
 
@@ -678,10 +675,10 @@ void DSPEmitterIR::iremit_MovPZOp(IRInsn const& insn)
 
   round_long(insn.inputs[0].oparg.GetSimpleReg());
 
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp1), insn.inputs[0].oparg);
-    Update_SR_Register64(tmp1, insn.SR, tmp2);
+    Update_SR_Register64(insn, R(tmp1), insn.SR, tmp2);
   }
 }
 
@@ -704,11 +701,7 @@ void DSPEmitterIR::iremit_AddPAxZOp(IRInsn const& insn)
   ADD(64, R(tmp2), R(tmp1));
 
   MOV(64, insn.output.oparg, R(tmp2));
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register64_Carry(tmp2, insn.inputs[1].oparg.GetSimpleReg(),
-                               insn.inputs[0].oparg.GetSimpleReg(), insn.SR);
-  }
+  Update_SR_Register64_Carry(insn, R(tmp2), insn.inputs[1].oparg, insn.inputs[0].oparg, insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AddPAxZOp = {

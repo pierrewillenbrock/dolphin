@@ -829,10 +829,10 @@ void DSPEmitterIR::iremit_MovToAccOp(IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp1), insn.output.oparg);
-    Update_SR_Register64(tmp1, insn.SR, tmp2);
+    Update_SR_Register64(insn, R(tmp1), insn.SR, tmp2);
   }
 }
 
@@ -849,10 +849,10 @@ void DSPEmitterIR::iremit_MovROp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   SHL(64, insn.inputs[0].oparg, Imm8(16));
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp1), insn.output.oparg);
-    Update_SR_Register64(tmp1, insn.SR, tmp2);
+    Update_SR_Register64(insn, R(tmp1), insn.SR, tmp2);
   }
 }
 
@@ -868,7 +868,7 @@ void DSPEmitterIR::iremit_Mov40Op(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     if (insn.output.oparg.IsImm())
     {
@@ -879,7 +879,7 @@ void DSPEmitterIR::iremit_Mov40Op(IRInsn const& insn)
     }
     else
       MOV(64, R(tmp1), insn.output.oparg);
-    Update_SR_Register64(tmp1, insn.SR, tmp2);
+    Update_SR_Register64(insn, R(tmp1), insn.SR, tmp2);
   }
 }
 
@@ -896,10 +896,10 @@ void DSPEmitterIR::iremit_RoundOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   round_long(insn.inputs[0].oparg.GetSimpleReg());
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp1), insn.output.oparg);
-    Update_SR_Register64(tmp1, insn.SR, tmp2);
+    Update_SR_Register64(insn, R(tmp1), insn.SR, tmp2);
   }
 }
 
@@ -912,7 +912,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RoundOp = {
 
 void DSPEmitterIR::iremit_AndCFOp(IRInsn const& insn)
 {
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     OpArg const& sr_reg = insn.SR;
     AND(16, insn.inputs[0].oparg, insn.inputs[1].oparg.AsImm16());
@@ -935,7 +935,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AndCFOp = {
 
 void DSPEmitterIR::iremit_AndFOp(IRInsn const& insn)
 {
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     OpArg const& sr_reg = insn.SR;
     TEST(16, insn.inputs[0].oparg, insn.inputs[1].oparg.AsImm16());
@@ -957,11 +957,8 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AndFOp = {
 
 void DSPEmitterIR::iremit_Tst40Op(IRInsn const& insn)
 {
-  if (FlagsNeeded(insn.addr))
-  {
-    X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
-    Update_SR_Register64(insn.inputs[0].oparg.GetSimpleReg(), insn.SR, tmp1);
-  }
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  Update_SR_Register64(insn, insn.inputs[0].oparg, insn.SR, tmp1);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Tst40Op = {
@@ -970,10 +967,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Tst40Op = {
 
 void DSPEmitterIR::iremit_Tst16Op(IRInsn const& insn)
 {
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register16(insn.inputs[0].oparg.GetSimpleReg(), insn.SR);
-  }
+  Update_SR_Register16(insn, insn.inputs[0].oparg, insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Tst16Op = {
@@ -982,15 +976,15 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Tst16Op = {
 
 void DSPEmitterIR::iremit_Cmp40Op(IRInsn const& insn)
 {
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
     MOV(64, R(tmp1), insn.inputs[0].oparg);
     SUB(64, R(tmp1), insn.inputs[1].oparg);
     NEG(64, insn.inputs[1].oparg);
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(),
-                               insn.inputs[1].oparg.GetSimpleReg(), insn.SR, true);
+    Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, insn.inputs[1].oparg, insn.SR,
+                               true);
   }
 }
 
@@ -1003,7 +997,7 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Cmp40Op = {
 
 void DSPEmitterIR::iremit_Cmp16Op(IRInsn const& insn)
 {
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
     X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
@@ -1020,7 +1014,7 @@ void DSPEmitterIR::iremit_Cmp16Op(IRInsn const& insn)
     MOV(64, R(tmp1), insn.inputs[0].oparg);
     SUB(64, R(tmp1), R(tmp2));
     NEG(64, R(tmp2));
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(), tmp2, insn.SR, true);
+    Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, R(tmp2), insn.SR, true);
   }
 }
 
@@ -1045,13 +1039,13 @@ void DSPEmitterIR::iremit_XorOp(IRInsn const& insn)
     SHL(64, R(tmp1), Imm8(16));
   }
   XOR(64, insn.inputs[0].oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp2), insn.output.oparg);
     MOV(64, R(tmp1), R(tmp2));
     SHR(64, R(tmp1), Imm8(16));
     MOVSX(64, 16, tmp1, R(tmp1));
-    Update_SR_Register16_OverS32(tmp1, tmp2, insn.SR);
+    Update_SR_Register16_OverS32(insn, R(tmp1), R(tmp2), insn.SR);
   }
 }
 
@@ -1083,13 +1077,13 @@ void DSPEmitterIR::iremit_AndOp(IRInsn const& insn)
     OR(64, R(tmp1), Imm32(0x0000ffff));
   }
   AND(64, insn.inputs[0].oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp2), insn.output.oparg);
     MOV(64, R(tmp1), R(tmp2));
     SHR(64, R(tmp1), Imm8(16));
     MOVSX(64, 16, tmp1, R(tmp1));
-    Update_SR_Register16_OverS32(tmp1, tmp2, insn.SR);
+    Update_SR_Register16_OverS32(insn, R(tmp1), R(tmp2), insn.SR);
   }
 }
 
@@ -1114,13 +1108,13 @@ void DSPEmitterIR::iremit_OrOp(IRInsn const& insn)
     SHL(64, R(tmp1), Imm8(16));
   }
   OR(64, insn.inputs[0].oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp2), insn.output.oparg);
     MOV(64, R(tmp1), R(tmp2));
     SHR(64, R(tmp1), Imm8(16));
     MOVSX(64, 16, tmp1, R(tmp1));
-    Update_SR_Register16_OverS32(tmp1, tmp2, insn.SR);
+    Update_SR_Register16_OverS32(insn, R(tmp1), R(tmp2), insn.SR);
   }
 }
 
@@ -1137,13 +1131,13 @@ void DSPEmitterIR::iremit_NotOp(IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   NOT(16, insn.inputs[0].oparg);
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp2), insn.output.oparg);
     MOV(64, R(tmp1), R(tmp2));
     SHR(64, R(tmp1), Imm8(16));
     MOVSX(64, 16, tmp1, R(tmp1));
-    Update_SR_Register16_OverS32(tmp1, tmp2, insn.SR);
+    Update_SR_Register16_OverS32(insn, R(tmp1), R(tmp2), insn.SR);
   }
 }
 
@@ -1171,10 +1165,7 @@ void DSPEmitterIR::iremit_Add16Op(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   ADD(64, R(tmp1), R(tmp2));
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(), tmp2, insn.SR);
-  }
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, R(tmp2), insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Add16Op = {
@@ -1191,11 +1182,7 @@ void DSPEmitterIR::iremit_Add32Op(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   ADD(64, R(tmp1), insn.inputs[1].oparg);
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(),
-                               insn.inputs[1].oparg.GetSimpleReg(), insn.SR);
-  }
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, insn.inputs[1].oparg, insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Add32Op = {
@@ -1212,11 +1199,7 @@ void DSPEmitterIR::iremit_Add40Op(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   ADD(64, R(tmp1), insn.inputs[1].oparg);
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(),
-                               insn.inputs[1].oparg.GetSimpleReg(), insn.SR);
-  }
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, insn.inputs[1].oparg, insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Add40Op = {
@@ -1233,11 +1216,7 @@ void DSPEmitterIR::iremit_AddPOp(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   ADD(64, R(tmp1), insn.inputs[1].oparg);
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(),
-                               insn.inputs[1].oparg.GetSimpleReg(), insn.SR);
-  }
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, insn.inputs[1].oparg, insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AddPOp = {
@@ -1254,11 +1233,7 @@ void DSPEmitterIR::iremit_AddUOp(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   ADD(64, R(tmp1), insn.inputs[1].oparg);
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(),
-                               insn.inputs[1].oparg.GetSimpleReg(), insn.SR);
-  }
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, insn.inputs[1].oparg, insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AddUOp = {
@@ -1285,11 +1260,12 @@ void DSPEmitterIR::iremit_Sub16Op(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   SUB(64, R(tmp1), R(tmp2));
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     NEG(64, R(tmp2));
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(), tmp2, insn.SR, true);
   }
+  // Update_SR_Register64_Carry checks FlagsNeeded as well
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, R(tmp2), insn.SR, true);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Sub16Op = {
@@ -1306,12 +1282,13 @@ void DSPEmitterIR::iremit_Sub32Op(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   SUB(64, R(tmp1), insn.inputs[1].oparg);
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     NEG(64, insn.inputs[1].oparg);
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(),
-                               insn.inputs[1].oparg.GetSimpleReg(), insn.SR, true);
   }
+  // Update_SR_Register64_Carry checks FlagsNeeded as well
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, insn.inputs[1].oparg, insn.SR,
+                             true);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Sub32Op = {
@@ -1328,12 +1305,13 @@ void DSPEmitterIR::iremit_Sub40Op(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   SUB(64, R(tmp1), insn.inputs[1].oparg);
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     NEG(64, insn.inputs[1].oparg);
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(),
-                               insn.inputs[1].oparg.GetSimpleReg(), insn.SR, true);
   }
+  // Update_SR_Register64_Carry checks FlagsNeeded as well
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, insn.inputs[1].oparg, insn.SR,
+                             true);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Sub40Op = {
@@ -1350,12 +1328,13 @@ void DSPEmitterIR::iremit_SubPOp(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   SUB(64, R(tmp1), insn.inputs[1].oparg);
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     NEG(64, insn.inputs[1].oparg);
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(),
-                               insn.inputs[1].oparg.GetSimpleReg(), insn.SR, true);
   }
+  // Update_SR_Register64_Carry checks FlagsNeeded as well
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, insn.inputs[1].oparg, insn.SR,
+                             true);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SubPOp = {
@@ -1372,12 +1351,13 @@ void DSPEmitterIR::iremit_SubUOp(IRInsn const& insn)
   MOV(64, R(tmp1), insn.inputs[0].oparg);
   SUB(64, R(tmp1), insn.inputs[1].oparg);
   MOV(64, insn.output.oparg, R(tmp1));
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     NEG(64, insn.inputs[1].oparg);
-    Update_SR_Register64_Carry(tmp1, insn.inputs[0].oparg.GetSimpleReg(),
-                               insn.inputs[1].oparg.GetSimpleReg(), insn.SR, true);
   }
+  // Update_SR_Register64_Carry checks FlagsNeeded as well
+  Update_SR_Register64_Carry(insn, R(tmp1), insn.inputs[0].oparg, insn.inputs[1].oparg, insn.SR,
+                             true);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SubUOp = {
@@ -1392,10 +1372,7 @@ void DSPEmitterIR::iremit_NegOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
   NEG(64, insn.inputs[0].oparg);
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register64(insn.output.oparg.GetSimpleReg(), insn.SR, tmp1);
-  }
+  Update_SR_Register64(insn, insn.output.oparg, insn.SR, tmp1);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::NegOp = {
@@ -1410,10 +1387,7 @@ void DSPEmitterIR::iremit_AbsOp(IRInsn const& insn)
   FixupBranch GreaterThanOrEqual = J_CC(CC_GE);
   NEG(64, insn.inputs[0].oparg);
   SetJumpTarget(GreaterThanOrEqual);
-  if (FlagsNeeded(insn.addr))
-  {
-    Update_SR_Register64(insn.output.oparg.GetSimpleReg(), insn.SR, tmp1);
-  }
+  Update_SR_Register64(insn, insn.output.oparg, insn.SR, tmp1);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AbsOp = {
@@ -1454,10 +1428,10 @@ void DSPEmitterIR::iremit_LslOp(IRInsn const& insn)
     SHL(64, insn.inputs[0].oparg, R(CL));
     SetJumpTarget(exit);
   }
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp1), insn.output.oparg);
-    Update_SR_Register64(tmp1, insn.SR, RCX);
+    Update_SR_Register64(insn, R(tmp1), insn.SR, RCX);
   }
 }
 
@@ -1502,10 +1476,10 @@ void DSPEmitterIR::iremit_AslOp(IRInsn const& insn)
     SHL(64, insn.inputs[0].oparg, R(CL));
     SetJumpTarget(exit);
   }
-  if (FlagsNeeded(insn.addr))
+  if (FlagsNeeded(insn))
   {
     MOV(64, R(tmp1), insn.output.oparg);
-    Update_SR_Register64(tmp1, insn.SR, RCX);
+    Update_SR_Register64(insn, R(tmp1), insn.SR, RCX);
   }
 }
 
