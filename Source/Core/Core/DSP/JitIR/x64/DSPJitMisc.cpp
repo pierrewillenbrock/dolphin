@@ -139,44 +139,40 @@ void DSPEmitterIR::iremit_AddAOp(IRInsn const& insn)
 {
   // inputs: 1. value, 2. mask, 3. increment
   // output: value
-  // for now, just assume input value and mask
-  // and output value match.
-  u8 reg = insn.inputs[0].guest_reg;
-  u8 ix_reg = insn.inputs[2].guest_reg & 0x3;
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  _assert_msg_(DSPLLE, insn.inputs[1].guest_reg == insn.inputs[0].guest_reg + DSP_REG_WR0,
-               "AddAOp register mismatch");
-  if (insn.inputs[2].type == IROp::REG)
+  OpArg const& ar = insn.inputs[0].oparg;
+  OpArg const& wr = insn.inputs[1].oparg;
+  OpArg const& ix = insn.inputs[2].oparg;
+
+  if (ix.IsImm() && ix.AsImm16().Imm16() == 1)
   {
-    m_gpr.ReadReg(DSP_REG_WR0 + reg, RDX, RegisterExtension::Zero);
-    m_gpr.ReadReg(DSP_REG_IX0 + ix_reg, RCX, RegisterExtension::Sign);
-    const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
-    MOVZX(32, 16, RAX, ar_reg);
-
-    increase_addr_reg(RAX, RDX, RCX, tmp1);
-
-    MOV(32, ar_reg, R(tmp1));
-    m_gpr.PutReg(DSP_REG_AR0 + reg);
-  }
-  else if (insn.inputs[2].type == IROp::IMM && insn.inputs[2].imm == 1)
-  {
-    m_gpr.ReadReg(DSP_REG_WR0 + reg, RDX, RegisterExtension::Zero);
-    const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
-    MOVZX(32, 16, RAX, ar_reg);
-
-    increment_addr_reg(RAX, RDX, tmp1, RCX);
-
-    MOV(32, ar_reg, R(RAX));
-    m_gpr.PutReg(DSP_REG_AR0 + reg);
+    increment_addr_reg(ar.GetSimpleReg(), wr.GetSimpleReg(), tmp1, tmp2);
   }
   else
-    _assert_msg_(DSPLLE, 0, "unhandled AddAOp variant");
+  {
+    if (ix.IsImm())
+      MOV(32, R(tmp1), Imm32(ix.AsImm16().SImm16()));
+    else
+      MOVSX(32, 16, tmp1, ix);
+    increase_addr_reg(ar.GetSimpleReg(), wr.GetSimpleReg(), tmp1, tmp2);
+
+    MOV(16, ar, R(tmp2));
+  }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AddAOp = {
-    "AddAOp",    &DSPEmitterIR::iremit_AddAOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+    "AddAOp",
+    &DSPEmitterIR::iremit_AddAOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAnyReg | SameAsOutput | ExtendZero16}, {OpAnyReg | Clobbered | ExtendZero16}, {OpAny64}},
+    {OpAnyReg},
+    {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_SubAOp(IRInsn const& insn)
 {
@@ -185,62 +181,46 @@ void DSPEmitterIR::iremit_SubAOp(IRInsn const& insn)
   // for now, just assume input value and mask
   // and output value match.
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
-  u8 reg = insn.inputs[0].guest_reg;
 
-  _assert_msg_(DSPLLE,
-               insn.inputs[1].guest_reg == insn.inputs[0].guest_reg + DSP_REG_WR0 &&
-                   (insn.inputs[2].type != IROp::REG ||
-                    insn.inputs[2].guest_reg == insn.inputs[0].guest_reg + DSP_REG_IX0),
-               "SubAOp register mismatch");
-  if (insn.inputs[2].type == IROp::REG)
+  if (insn.inputs[2].oparg.IsImm() && insn.inputs[2].oparg.AsImm16().Imm16() == 1)
   {
-    m_gpr.ReadReg(DSP_REG_WR0 + reg, RDX, RegisterExtension::Zero);
-    m_gpr.ReadReg(DSP_REG_IX0 + reg, RCX, RegisterExtension::Sign);
-    const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
-    MOVZX(32, 16, RAX, ar_reg);
-
-    decrease_addr_reg(RAX, RDX, RCX, tmp1);
-
-    MOV(32, ar_reg, R(tmp1));
-    m_gpr.PutReg(DSP_REG_AR0 + reg);
-  }
-  else if (insn.inputs[2].type == IROp::IMM && insn.inputs[2].imm == 1)
-  {
-    m_gpr.ReadReg(DSP_REG_WR0 + reg, RDX, RegisterExtension::Zero);
-    const OpArg ar_reg = m_gpr.GetReg(DSP_REG_AR0 + reg);
-    MOVZX(32, 16, RAX, ar_reg);
-
-    decrement_addr_reg(RAX, RDX, tmp1, RCX);
-
-    MOV(32, ar_reg, R(tmp1));
-    m_gpr.PutReg(DSP_REG_AR0 + reg);
+    decrement_addr_reg(insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[1].oparg.GetSimpleReg(),
+                       insn.output.oparg.GetSimpleReg(), tmp1);
   }
   else
-    _assert_msg_(DSPLLE, 0, "unhandled AddAOp variant");
+  {
+    MOVSX(32, 16, tmp1, insn.inputs[2].oparg);
+    decrease_addr_reg(insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[1].oparg.GetSimpleReg(),
+                      tmp1, insn.output.oparg.GetSimpleReg());
+  }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SubAOp = {
-    "SubAOp",    &DSPEmitterIR::iremit_SubAOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
+    "SubAOp",
+    &DSPEmitterIR::iremit_SubAOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAnyReg | Clobbered | ExtendZero16}, {OpAnyReg | Clobbered | ExtendZero16}, {OpAny64}},
+    {OpAnyReg},
     {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_SBSetOp(IRInsn const& insn)
 {
-  setCompileSR(1 << insn.inputs[0].imm, insn.SR);
+  setCompileSR(1 << insn.inputs[0].oparg.AsImm16().Imm16(), insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SBSetOp = {
-    "SBSetOp", &DSPEmitterIR::iremit_SBSetOp, 0x0000, 0x0000, 0x0000,
-    0x0000,  // parser needs to fill these
-};
+    "SBSetOp", &DSPEmitterIR::iremit_SBSetOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {{OpImmAny}}};
 
 void DSPEmitterIR::iremit_SBClrOp(IRInsn const& insn)
 {
-  clrCompileSR(1 << insn.inputs[0].imm, insn.SR);
+  clrCompileSR(1 << insn.inputs[0].oparg.AsImm16().Imm16(), insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SBClrOp = {
-    "SBClrOp", &DSPEmitterIR::iremit_SBClrOp, 0x0000, 0x0000, 0x0000,
-    0x0000,  // parser needs to fill these
-};
+    "SBClrOp", &DSPEmitterIR::iremit_SBClrOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {{OpImmAny}}};
 
 }  // namespace DSP::JITIR::x64

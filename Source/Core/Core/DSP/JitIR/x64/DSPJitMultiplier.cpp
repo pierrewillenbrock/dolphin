@@ -613,258 +613,230 @@ void DSPEmitterIR::ir_msub(const UDSPInstruction opc)
 
 void DSPEmitterIR::iremit_ClrPOp(IRInsn const& insn)
 {
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);  // PROD
-  MOV(64, R(RAX), Imm64(0x001000fffff00000ULL));
-  m_gpr.WriteReg(out_reg, R(RAX));
+  MOV(64, insn.output.oparg, Imm64(0x001000fffff00000ULL));
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::ClrPOp = {
-    "ClrPOp", &DSPEmitterIR::iremit_ClrPOp, 0x0000, 0x0000, 0x0000, 0x0000};
+    "ClrPOp", &DSPEmitterIR::iremit_ClrPOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {OpAnyReg},
+    {}};
 
 void DSPEmitterIR::iremit_TstPOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);  // PROD
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
-  _assert_msg_(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for TstPOp");
-  get_long_prod(RAX, tmp1);
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, insn.SR, RDX);
+    Update_SR_Register64(insn.inputs[0].oparg.GetSimpleReg(), insn.SR, tmp1);
   }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::TstPOp = {
-    "TstPOp",    &DSPEmitterIR::iremit_TstPOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+    "TstPOp", &DSPEmitterIR::iremit_TstPOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000,
+    false,    {{OpAnyReg | Clobbered}},     {},     {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_MovPOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);  // PROD
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  _assert_msg_(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for MovPOp");
-  get_long_prod(RAX, tmp1);
-
-  m_gpr.WriteReg(out_reg, R(RAX));
+  // yes, all the work is done in the emitter itself.
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, insn.SR, RDX);
+    // except for this, of course.
+    MOV(64, R(tmp1), insn.inputs[0].oparg);
+    Update_SR_Register64(tmp1, insn.SR, tmp2);
   }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MovPOp = {
-    "MovPOp",    &DSPEmitterIR::iremit_MovPOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+    "MovPOp", &DSPEmitterIR::iremit_MovPOp,
+    0x0000,   SR_CMP_MASK,
+    0x0003,   0x0000,
+    false,    {{OpAny | SameAsOutput}},
+    {OpAny},  {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_MovNPOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);  // PROD
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  _assert_msg_(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for MovNPOp");
-  get_long_prod(RAX, tmp1);
-  NEG(64, R(RAX));
-  m_gpr.WriteReg(out_reg, R(RAX));
+  NEG(64, insn.inputs[0].oparg);
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, insn.SR, RDX);
+    MOV(64, R(tmp1), insn.inputs[0].oparg);
+    Update_SR_Register64(tmp1, insn.SR, tmp2);
   }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MovNPOp = {
-    "MovNPOp",   &DSPEmitterIR::iremit_MovNPOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+    "MovNPOp", &DSPEmitterIR::iremit_MovNPOp,
+    0x0000,    SR_CMP_MASK,
+    0x0003,    0x0000,
+    false,     {{OpAny | Clobbered | SameAsOutput}},
+    {OpAny},   {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_MovPZOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);  // PROD
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  _assert_msg_(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for MovPZOp");
-  get_long_prod(RAX, tmp1);
-  round_long(RAX);
+  round_long(insn.inputs[0].oparg.GetSimpleReg());
 
-  m_gpr.WriteReg(out_reg, R(RAX));
   if (FlagsNeeded(insn.addr))
   {
-    Update_SR_Register64(RAX, insn.SR, RDX);
+    MOV(64, R(tmp1), insn.inputs[0].oparg);
+    Update_SR_Register64(tmp1, insn.SR, tmp2);
   }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MovPZOp = {
-    "MovPZOp",   &DSPEmitterIR::iremit_MovPZOp, 0x0000, SR_CMP_MASK, 0x0003, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+    "MovPZOp",  &DSPEmitterIR::iremit_MovPZOp,
+    0x0000,     SR_CMP_MASK,
+    0x0003,     0x0000,
+    false,      {{OpAnyReg | Clobbered | SameAsOutput}},
+    {OpAnyReg}, {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_AddPAxZOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);  // PROD
-  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  m_gpr.ReadReg(in_reg1, tmp1, RegisterExtension::Sign);
-  MOV(64, R(RDX), R(tmp1));
-  AND(64, R(RDX), Imm32(~0xffff));
-  ASSERT_MSG(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for AddPAxZOp");
-  get_long_prod(RAX, tmp2);
-  round_long(RAX);
-  ADD(64, R(RAX), R(RDX));
+  MOV(64, R(tmp2), insn.inputs[0].oparg);
+  round_long(tmp2);
+  MOV(64, R(tmp1), insn.inputs[1].oparg);
+  AND(64, R(tmp1), Imm32(~0xffff));
+  ADD(64, R(tmp2), R(tmp1));
 
-  m_gpr.WriteReg(out_reg, R(RAX));
+  MOV(64, insn.output.oparg, R(tmp2));
   if (FlagsNeeded(insn.addr))
   {
-    get_long_prod(RDX, tmp2);
-    Update_SR_Register64_Carry(EAX, tmp1, RDX, insn.SR);
+    Update_SR_Register64_Carry(tmp2, insn.inputs[1].oparg.GetSimpleReg(),
+                               insn.inputs[0].oparg.GetSimpleReg(), insn.SR);
   }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AddPAxZOp = {
-    "AddPAxZOp", &DSPEmitterIR::iremit_AddPAxZOp,
-    0x0000,      SR_CMP_MASK | SR_OVERFLOW_STICKY,
-    0x0000,      0x0000,
-    false,       {},
-    {},          {{OpAnyReg}, {OpAnyReg}}};
+    "AddPAxZOp",
+    &DSPEmitterIR::iremit_AddPAxZOp,
+    0x0000,
+    SR_CMP_MASK | SR_OVERFLOW_STICKY,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAnyReg | Clobbered}, {OpAnyReg | ExtendSign32 | Clobbered | NoSaturate}},
+    {OpAny | NoACMExtend},
+    {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_MulOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
-  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);  // PROD
-  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
-
-  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::Sign);
-  m_gpr.ReadReg(in_reg1, RCX, RegisterExtension::Sign);
-  multiply(RAX, RCX, insn.SR);
-  _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MulOp");
-  set_long_prod(RAX, tmp1);
+  multiply(insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[1].oparg.GetSimpleReg(), insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulOp = {
-    "MulOp",     &DSPEmitterIR::iremit_MulOp, SR_MUL_MODIFY, 0x0000, 0x0000, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+    "MulOp",
+    &DSPEmitterIR::iremit_MulOp,
+    SR_MUL_MODIFY,
+    0x0000,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAnyReg | ExtendSign16 | Clobbered | SameAsOutput | NoSaturate},
+     {OpAnyReg | ExtendSign16 | Clobbered | NoSaturate}},
+    {OpAnyReg},
+    {}};
 
 void DSPEmitterIR::iremit_MulUUOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
-  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);  // PROD
-  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
-
-  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::None);
-  m_gpr.ReadReg(in_reg1, RCX, RegisterExtension::None);
-  multiply_uu(RAX, RCX, insn.SR);
-  _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MulUUOp");
-  set_long_prod(RAX, tmp1);
+  multiply_uu(insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[1].oparg.GetSimpleReg(), insn.SR);
 }
 
-struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulUUOp = {"MulUUOp",
-                                                               &DSPEmitterIR::iremit_MulUUOp,
-                                                               SR_MUL_MODIFY | SR_MUL_UNSIGNED,
-                                                               0x0000,
-                                                               0x0000,
-                                                               0x0000,
-                                                               false,
-                                                               {},
-                                                               {},
-                                                               {{OpAnyReg}}};
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulUUOp = {
+    "MulUUOp",
+    &DSPEmitterIR::iremit_MulUUOp,
+    SR_MUL_MODIFY | SR_MUL_UNSIGNED,
+    0x0000,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAnyReg | ExtendNone | Clobbered | SameAsOutput | NoSaturate},
+     {OpAnyReg | ExtendNone | Clobbered | NoSaturate}},
+    {OpAnyReg},
+    {}};
 
 void DSPEmitterIR::iremit_MulSUOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
-  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);  // PROD
-  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
-
-  m_gpr.ReadReg(in_reg0, RAX, RegisterExtension::None);
-  m_gpr.ReadReg(in_reg1, RCX, RegisterExtension::Sign);
-  multiply_us(RAX, RCX, insn.SR);
-  _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MulSUOp");
-  set_long_prod(RAX, tmp1);
+  multiply_us(insn.inputs[0].oparg.GetSimpleReg(), insn.inputs[1].oparg.GetSimpleReg(), insn.SR);
 }
 
-struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulSUOp = {"MulSUOp",
-                                                               &DSPEmitterIR::iremit_MulSUOp,
-                                                               SR_MUL_MODIFY | SR_MUL_UNSIGNED,
-                                                               0x0000,
-                                                               0x0000,
-                                                               0x0000,
-                                                               false,
-                                                               {},
-                                                               {},
-                                                               {{OpAnyReg}}};
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulSUOp = {
+    "MulSUOp",
+    &DSPEmitterIR::iremit_MulSUOp,
+    SR_MUL_MODIFY | SR_MUL_UNSIGNED,
+    0x0000,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAnyReg | ExtendNone | Clobbered | SameAsOutput | NoSaturate},
+     {OpAnyReg | ExtendSign16 | Clobbered | NoSaturate}},
+    {OpAnyReg},
+    {}};
 
 void DSPEmitterIR::iremit_MulUSOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
-  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);  // PROD
-  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
-
-  m_gpr.ReadReg(in_reg1, RAX, RegisterExtension::None);
-  m_gpr.ReadReg(in_reg0, RCX, RegisterExtension::Sign);
-  multiply_us(RAX, RCX, insn.SR);
-  _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MulUSOp");
-  set_long_prod(RAX, tmp1);
+  multiply_us(insn.inputs[1].oparg.GetSimpleReg(), insn.inputs[0].oparg.GetSimpleReg(), insn.SR);
 }
 
-struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulUSOp = {"MulUSOp",
-                                                               &DSPEmitterIR::iremit_MulUSOp,
-                                                               SR_MUL_MODIFY | SR_MUL_UNSIGNED,
-                                                               0x0000,
-                                                               0x0000,
-                                                               0x0000,
-                                                               false,
-                                                               {},
-                                                               {},
-                                                               {{OpAnyReg}}};
+struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MulUSOp = {
+    "MulUSOp",
+    &DSPEmitterIR::iremit_MulUSOp,
+    SR_MUL_MODIFY | SR_MUL_UNSIGNED,
+    0x0000,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAnyReg | ExtendSign16 | Clobbered | NoSaturate},
+     {OpAnyReg | ExtendNone | Clobbered | SameAsOutput | NoSaturate}},
+    {OpAnyReg},
+    {}};
 
 void DSPEmitterIR::iremit_MAddOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);  // PROD
-  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-  int in_reg2 = ir_to_regcache_reg(insn.inputs[2].guest_reg);
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);  // PROD
-  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
-
-  m_gpr.ReadReg(in_reg1, RAX, RegisterExtension::Sign);
-  m_gpr.ReadReg(in_reg2, RCX, RegisterExtension::Sign);
-  multiply(RAX, RCX, insn.SR);
-  _assert_msg_(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for MAddOp");
-  get_long_prod(RCX, tmp1);
-  ADD(64, R(RAX), R(RCX));
-  _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MAddOp");
-  set_long_prod(RAX, tmp1);
+  multiply(insn.inputs[1].oparg.GetSimpleReg(), insn.inputs[2].oparg.GetSimpleReg(), insn.SR);
+  ADD(64, insn.inputs[0].oparg, insn.inputs[1].oparg);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MAddOp = {
-    "MAddOp",    &DSPEmitterIR::iremit_MAddOp, SR_MUL_MODIFY, 0x0000, 0x0000, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+    "MAddOp",
+    &DSPEmitterIR::iremit_MAddOp,
+    SR_MUL_MODIFY,
+    0x0000,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAny | Clobbered | SameAsOutput},
+     {OpAnyReg | ExtendSign16 | Clobbered | NoSaturate},
+     {OpAnyReg | ExtendSign16 | Clobbered | NoSaturate}},
+    {OpAny},
+    {}};
 
 void DSPEmitterIR::iremit_MSubOp(IRInsn const& insn)
 {
-  int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);  // PROD
-  int in_reg1 = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-  int in_reg2 = ir_to_regcache_reg(insn.inputs[2].guest_reg);
-  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);  // PROD
-  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
-
-  m_gpr.ReadReg(in_reg1, RAX, RegisterExtension::Sign);
-  m_gpr.ReadReg(in_reg2, RCX, RegisterExtension::Sign);
-  multiply(RAX, RCX, insn.SR);
-  _assert_msg_(DSPLLE, in_reg0 == DSP_REG_PROD_64, "in_reg0 must be PROD for MSubOp");
-  get_long_prod(RCX, tmp1);
-  SUB(64, R(RAX), R(RCX));
-  _assert_msg_(DSPLLE, out_reg == DSP_REG_PROD_64, "out_reg must be PROD for MSubOp");
-  set_long_prod(RAX, tmp1);
+  multiply(insn.inputs[1].oparg.GetSimpleReg(), insn.inputs[2].oparg.GetSimpleReg(), insn.SR);
+  SUB(64, insn.inputs[0].oparg, insn.inputs[1].oparg);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::MSubOp = {
-    "MSubOp",    &DSPEmitterIR::iremit_MSubOp, SR_MUL_MODIFY, 0x0000, 0x0000, 0x0000, false, {}, {},
-    {{OpAnyReg}}};
+    "MSubOp",
+    &DSPEmitterIR::iremit_MSubOp,
+    SR_MUL_MODIFY,
+    0x0000,
+    0x0000,
+    0x0000,
+    false,
+    {{OpAny | Clobbered | SameAsOutput},
+     {OpAnyReg | ExtendSign16 | Clobbered | NoSaturate},
+     {OpAnyReg | ExtendSign16 | Clobbered | NoSaturate}},
+    {OpAny},
+    {}};
 
 }  // namespace DSP::JITIR::x64

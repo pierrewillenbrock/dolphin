@@ -102,7 +102,7 @@ void DSPEmitterIR::dropAllRegs(IRInsn const& insn)
   }
 }
 
-// LOOP handling: Loop stack is used to control execution of repeated blocks of
+// LOOP handling: Loop stack is used to control execution of repeated m_blocks of
 // instructions. Whenever there is value on stack $st2 and current PC is equal
 // value at $st2, then value at stack $st3 is decremented. If value is not zero
 // then PC is modified with value from call stack $st0. Otherwise values from
@@ -110,51 +110,48 @@ void DSPEmitterIR::dropAllRegs(IRInsn const& insn)
 // continues at next opcode.
 void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
 {
-  u16 pc = insn.inputs[0].imm;
+  u16 pc = insn.inputs[0].oparg.AsImm16().Imm16();
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+  X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
 
   MOV(16, M_SDSP_pc(), Imm16(pc));
 
-  MOVZX(32, 16, EAX, M_SDSP_r_st(2));
-  TEST(32, R(EAX), R(EAX));
+  MOVZX(32, 16, tmp1, M_SDSP_r_st(2));
+  TEST(32, R(tmp1), R(tmp1));
   FixupBranch rLoopAddressExit = J_CC(CC_LE, true);
 
-  MOVZX(32, 16, EAX, M_SDSP_r_st(3));
-  TEST(32, R(EAX), R(EAX));
+  MOVZX(32, 16, tmp1, M_SDSP_r_st(3));
+  TEST(32, R(tmp1), R(tmp1));
   FixupBranch rLoopCounterExit = J_CC(CC_LE, true);
 
-  MOVZX(32, 16, EAX, M_SDSP_r_st(2));
-  MOVZX(32, 16, ECX, M_SDSP_r_st(3));
+  MOVZX(32, 16, tmp1, M_SDSP_r_st(2));
+  MOVZX(32, 16, tmp2, M_SDSP_r_st(3));
 
-  TEST(32, R(RCX), R(RCX));
+  TEST(32, R(tmp2), R(tmp2));
   FixupBranch rLoopCntG = J_CC(CC_E, true);
-  CMP(16, R(RAX), Imm16(pc - 1));
+  CMP(16, R(tmp1), Imm16(pc - 1));
   FixupBranch rLoopAddrG = J_CC(CC_NE, true);
 
   SUB(16, M_SDSP_r_st(3), Imm16(1));
   CMP(16, M_SDSP_r_st(3), Imm16(0));
 
   FixupBranch loadStack = J_CC(CC_LE, true);
-  MOVZX(32, 16, ECX, M_SDSP_r_st(0));
-  MOV(16, M_SDSP_pc(), R(RCX));
+  MOVZX(32, 16, tmp1, M_SDSP_r_st(0));
+  MOV(16, M_SDSP_pc(), R(tmp1));
   FixupBranch loopUpdated = J(true);
 
   SetJumpTarget(loadStack);
-  DSPJitIRRegCache c1(m_gpr);
-  dsp_reg_stack_pop(StackRegister::Call, tmp1, tmp2, RAX);
-  dsp_reg_stack_pop(StackRegister::LoopAddress, tmp1, tmp2, RAX);
-  dsp_reg_stack_pop(StackRegister::LoopCounter, tmp1, tmp2, RAX);
-  m_gpr.FlushRegs(c1);
+  dsp_reg_stack_pop(StackRegister::Call, tmp1, tmp2, tmp3);
+  dsp_reg_stack_pop(StackRegister::LoopAddress, tmp1, tmp2, tmp3);
+  dsp_reg_stack_pop(StackRegister::LoopCounter, tmp1, tmp2, tmp3);
 
   SetJumpTarget(loopUpdated);
   SetJumpTarget(rLoopAddrG);
   SetJumpTarget(rLoopCntG);
 
   DSPJitIRRegCache c2(m_gpr);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
-  m_gpr.PutReg(DSP_REG_SR);
+  dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
   m_gpr.FlushRegs(c2, false);
 
@@ -170,21 +167,22 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopOp = {
     0x0000,
     0x0000,
     true,
+    {{OpImmAny}},
     {},
-    {},
-    {{OpAnyReg}, {OpAnyReg}}};
+    {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_UpdatePCOp(IRInsn const& insn)
 {
-  MOV(16, M_SDSP_pc(), Imm16(insn.inputs[0].imm));
+  MOV(16, M_SDSP_pc(), insn.inputs[0].oparg.AsImm16());
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::UpdatePCOp = {
-    "UpdatePCOp", &DSPEmitterIR::iremit_UpdatePCOp, 0x0000, 0x0000, 0x0000, 0x0000, true};
+    "UpdatePCOp", &DSPEmitterIR::iremit_UpdatePCOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
+    {{OpImmAny}}};
 
 void DSPEmitterIR::iremit_CheckExceptionsOp(IRInsn const& insn)
 {
-  checkExceptions(insn.cycle_count, insn.inputs[0].imm, insn.SR);
+  checkExceptions(insn.cycle_count, insn.inputs[0].oparg.AsImm16().Imm16(), insn.SR);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsOp = {

@@ -543,10 +543,55 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
           get_long_prod(hreg, tmp1);
           m_gpr.PutXReg(tmp1);
         }
-        else
+        else if (insn.inputs[i].guest_reg == DSP_REG_SR)
+        {
+          MOV(16, R(hreg), insn.SR);
+        }
+        else if (((insn.inputs[i].guest_reg != DSP_REG_ACM0 &&
+                   insn.inputs[i].guest_reg != DSP_REG_ACM1) ||
+                  (insn.emitter->inputs[i].reqs & NoSaturate)) &&
+                 insn.inputs[i].guest_reg != DSP_REG_ST0 &&
+                 insn.inputs[i].guest_reg != DSP_REG_ST1 &&
+                 insn.inputs[i].guest_reg != DSP_REG_ST2 && insn.inputs[i].guest_reg != DSP_REG_ST3)
         {
           int greg = ir_to_regcache_reg(insn.inputs[i].guest_reg);
 
+          RegisterExtension extend;
+
+          switch (insn.emitter->inputs[i].reqs & ExtendMask)
+          {
+          case ExtendSign16:
+            extend = RegisterExtension::Sign;
+            break;
+          case ExtendZero16:
+            extend = RegisterExtension::Zero;
+            break;
+          case ExtendSign32:
+            extend = RegisterExtension::Sign;
+            break;
+          case ExtendZero32:
+            extend = RegisterExtension::Zero;
+            break;
+          case ExtendSign64:
+            extend = RegisterExtension::Sign;
+            break;
+          case ExtendZero64:
+            extend = RegisterExtension::Zero;
+            break;
+          case ExtendNone:
+            extend = RegisterExtension::None;
+            break;
+          default:
+            _assert_msg_(DSPLLE, 0, "unrecognized extend requirement");
+            extend = RegisterExtension::None;
+            break;
+          }
+
+          m_gpr.ReadReg(greg, hreg, extend);
+        }
+        else
+        {
+          int greg = ir_to_regcache_reg(insn.inputs[i].guest_reg);
           RegisterExtension extend;
 
           switch (insn.emitter->inputs[i].reqs & ExtendMask)
@@ -566,7 +611,13 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
             break;
           }
 
-          m_gpr.ReadReg(greg, hreg, extend);
+          X64Reg tmp1 = m_gpr.GetFreeXReg();
+          X64Reg tmp2 = m_gpr.GetFreeXReg();
+          X64Reg tmp3 = m_gpr.GetFreeXReg();
+          dsp_op_read_reg(greg, hreg, extend, insn.SR, tmp1, tmp2, tmp3);
+          m_gpr.PutXReg(tmp3);
+          m_gpr.PutXReg(tmp2);
+          m_gpr.PutXReg(tmp1);
         }
         insn.inputs[i].oparg = R(hreg);
       }
@@ -621,6 +672,10 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
         m_gpr.PutXReg(tmp3);
         m_gpr.PutXReg(tmp2);
         m_gpr.PutXReg(tmp1);
+      }
+      else if (greg == DSP_REG_SR)
+      {
+        MOV(16, insn.SR, R(hreg));
       }
       else
       {

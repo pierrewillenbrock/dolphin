@@ -44,51 +44,51 @@ void DSPEmitterIR::IRReJitConditional(
     return;
   }
 
-  MOV(16, R(EAX), sr_reg);
+  MOV(16, R(tmp2), sr_reg);
 
   switch (cond)
   {
   case 0x0:  // GE - Greater Equal
   case 0x1:  // L - Less
-    LEA(16, tmp1, MScaled(EAX, SCALE_4, 0));
-    XOR(16, R(EAX), R(tmp1));
-    TEST(16, R(EAX), Imm16(8));
+    LEA(16, tmp1, MScaled(tmp2, SCALE_4, 0));
+    XOR(16, R(tmp2), R(tmp1));
+    TEST(16, R(tmp2), Imm16(8));
     break;
   case 0x2:  // G - Greater
   case 0x3:  // LE - Less Equal
-    LEA(16, tmp1, MScaled(EAX, SCALE_4, 0));
-    XOR(16, R(EAX), R(tmp1));
-    ADD(16, R(EAX), R(EAX));
-    OR(16, R(EAX), R(tmp1));
-    TEST(16, R(EAX), Imm16(0x10));
+    LEA(16, tmp1, MScaled(tmp2, SCALE_4, 0));
+    XOR(16, R(tmp2), R(tmp1));
+    ADD(16, R(tmp2), R(tmp2));
+    OR(16, R(tmp2), R(tmp1));
+    TEST(16, R(tmp2), Imm16(0x10));
     break;
   case 0x4:  // NZ - Not Zero
   case 0x5:  // Z - Zero
-    TEST(16, R(EAX), Imm16(SR_ARITH_ZERO));
+    TEST(16, R(tmp2), Imm16(SR_ARITH_ZERO));
     break;
   case 0x6:  // NC - Not carry
   case 0x7:  // C - Carry
-    TEST(16, R(EAX), Imm16(SR_CARRY));
+    TEST(16, R(tmp2), Imm16(SR_CARRY));
     break;
   case 0x8:  // ? - Not over s32
   case 0x9:  // ? - Over s32
-    TEST(16, R(EAX), Imm16(SR_OVER_S32));
+    TEST(16, R(tmp2), Imm16(SR_OVER_S32));
     break;
   case 0xa:  // ?
   case 0xb:  // ?
-    LEA(16, tmp1, MRegSum(EAX, EAX));
-    OR(16, R(EAX), R(tmp1));
+    LEA(16, tmp1, MRegSum(tmp2, tmp2));
+    OR(16, R(tmp2), R(tmp1));
     SHL(16, R(tmp1), Imm8(3));
-    NOT(16, R(EAX));
-    OR(16, R(EAX), R(tmp1));
-    TEST(16, R(EAX), Imm16(0x20));
+    NOT(16, R(tmp2));
+    OR(16, R(tmp2), R(tmp1));
+    TEST(16, R(tmp2), Imm16(0x20));
     break;
   case 0xc:  // LNZ  - Logic Not Zero
   case 0xd:  // LZ - Logic Zero
-    TEST(16, R(EAX), Imm16(SR_LOGIC_ZERO));
+    TEST(16, R(tmp2), Imm16(SR_LOGIC_ZERO));
     break;
   case 0xe:  // 0 - Overflow
-    TEST(16, R(EAX), Imm16(SR_OVERFLOW));
+    TEST(16, R(tmp2), Imm16(SR_OVERFLOW));
     break;
   }
   bool equal = (cond == 0xe) || (cond & 1);
@@ -334,40 +334,18 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
   const auto& state = m_dsp_core.DSPState();
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+  X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
 
-  u16 loop_start = insn.inputs[1].imm;
-  u16 loop_end = insn.inputs[2].imm;
-  if (insn.inputs[0].type == IROp::REG)
+  u16 loop_start = insn.inputs[1].oparg.AsImm16().Imm16();
+  u16 loop_end = insn.inputs[2].oparg.AsImm16().Imm16();
+  if (insn.inputs[0].oparg.IsImm())
   {
-    int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
-
-    dsp_op_read_reg_dont_saturate(in_reg0, RDX, RegisterExtension::Zero, tmp1, tmp2, RAX);
-
-    TEST(16, R(EDX), R(EDX));
-    DSPJitIRRegCache c1(m_gpr);
-    FixupBranch cnt = J_CC(CC_Z, true);
-    dsp_reg_store_stack(StackRegister::LoopCounter, EDX, tmp1, tmp2, RAX);
-    dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp1, tmp2, RAX);
-    dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp1, tmp2, RAX);
-    MOV(16, M_SDSP_pc(), Imm16(loop_start));
-    m_gpr.FlushRegs(c1, true);
-    FixupBranch exit = J(true);
-
-    SetJumpTarget(cnt);
-    MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
-    dropAllRegs(insn);
-    WriteBranchExit(insn.cycle_count);
-    m_gpr.FlushRegs(c1, false);
-    SetJumpTarget(exit);
-  }
-  else if (insn.inputs[0].type == IROp::IMM)
-  {
-    u16 cnt = insn.inputs[0].imm;
+    u16 cnt = insn.inputs[0].oparg.AsImm16().Imm16();
     if (cnt)
     {
-      dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp1, tmp2, RAX);
-      dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp1, tmp2, RAX);
-      dsp_reg_store_stack_imm(StackRegister::LoopCounter, cnt, tmp1, tmp2, RAX);
+      dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp1, tmp2, tmp3);
+      dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp1, tmp2, tmp3);
+      dsp_reg_store_stack_imm(StackRegister::LoopCounter, cnt, tmp1, tmp2, tmp3);
 
       MOV(16, M_SDSP_pc(), Imm16(loop_start));
     }
@@ -382,13 +360,31 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
   }
   else
   {
-    ASSERT_MSG(DSPLLE, 0, "unhandled LoopOp variant");
+    TEST(16, insn.inputs[0].oparg, insn.inputs[0].oparg);
+    FixupBranch cnt = J_CC(CC_Z, true);
+    dsp_reg_store_stack(StackRegister::LoopCounter, insn.inputs[0].oparg.GetSimpleReg(), tmp1, tmp2,
+                        tmp3);
+    dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp1, tmp2, tmp3);
+    dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp1, tmp2, tmp3);
+    MOV(16, M_SDSP_pc(), Imm16(loop_start));
+    FixupBranch exit = J(true);
+
+    SetJumpTarget(cnt);
+    MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(dsp_imem_read(loop_end))->size));
+    DSPJitIRRegCache c1(m_gpr);
+    dropAllRegs(insn);
+    WriteBranchExit(insn.cycle_count);
+    m_gpr.FlushRegs(c1, false);
+    SetJumpTarget(exit);
   }
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoopOp = {
-    "LoopOp", &DSPEmitterIR::iremit_LoopOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {},
-    {},       {{OpAnyReg}, {OpAnyReg}}};
+    "LoopOp", &DSPEmitterIR::iremit_LoopOp,
+    0x0000,   0x0000,
+    0x0000,   0x0000,
+    true,     {{OpAnyReg | OpImm | ExtendZero16 | Clobbered}, {OpImmAny}, {OpImmAny}},
+    {},       {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_HaltOp(IRInsn const& insn)
 {
@@ -403,9 +399,10 @@ void DSPEmitterIR::irr_ret(DSPEmitterIR::IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
-
-  dsp_reg_load_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
-  MOV(16, M_SDSP_pc(), R(DX));
+  X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
+  X64Reg tmp4 = insn.temps[3].oparg.GetSimpleReg();
+  dsp_reg_load_stack(StackRegister::Call, tmp4, tmp1, tmp2, tmp3);
+  MOV(16, M_SDSP_pc(), R(tmp4));
   DSPJitIRRegCache c(m_gpr);
   dropAllRegs(insn);
   WriteBranchExit(insn.cycle_count);
@@ -417,23 +414,29 @@ void DSPEmitterIR::iremit_RetOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  MOV(16, M_SDSP_pc(), Imm16(insn.inputs[1].imm));
-  IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_ret, insn.SR, false, tmp1, tmp2);
+  MOV(16, M_SDSP_pc(), insn.inputs[1].oparg.AsImm16());
+  uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
+  IRReJitConditional(cc, insn, &DSPEmitterIR::irr_ret, insn.SR, false, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RetOp = {
-    "RetOp", &DSPEmitterIR::iremit_RetOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {},
-    {},      {{OpAnyReg}, {OpAnyReg}}};
+    "RetOp", &DSPEmitterIR::iremit_RetOp,
+    0x0000,  0x0000,
+    0x0000,  0x0000,
+    true,    {{OpImmAny}, {OpImmAny}},
+    {},      {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+  X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
+  X64Reg tmp4 = insn.temps[3].oparg.GetSimpleReg();
 
-  dsp_reg_load_stack(StackRegister::Data, RDX, tmp1, tmp2, RAX);
-  MOV(16, insn.SR, R(RDX));
-  dsp_reg_load_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
-  MOV(16, M_SDSP_pc(), R(DX));
+  dsp_reg_load_stack(StackRegister::Data, tmp4, tmp1, tmp2, tmp3);
+  MOV(16, insn.SR, R(tmp4));
+  dsp_reg_load_stack(StackRegister::Call, tmp4, tmp1, tmp2, tmp3);
+  MOV(16, M_SDSP_pc(), R(tmp4));
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RtiOp = {
@@ -441,32 +444,17 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RtiOp = {
     0x0000,  0xffff,
     0x0000,  0x0000,  // restores SR from stack 1
     true,    {},
-    {},      {{OpAnyReg}, {OpAnyReg}}};
+    {},      {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
-// if ACM inputs[1]: needs SR bits: SR_40_MODE_BIT
 void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn)
 {
-  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
-  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
-
-  if (insn.inputs[1].type == DSPEmitterIR::IROp::REG)
+  if (insn.inputs[1].oparg.IsImm())
   {
-    u8 reg = insn.inputs[1].guest_reg;
-    // reg can only be DSP_REG_ARx and DSP_REG_IXx,
-    // no need to handle DSP_REG_STx.
-    dsp_op_read_reg(reg, RAX, RegisterExtension::None, insn.SR, tmp1, tmp2,
-                    RAX);  // RAX+RAX is broken for ST accesses
-    MOV(16, M_SDSP_pc(), R(EAX));
-  }
-  else if (insn.inputs[1].type == DSPEmitterIR::IROp::IMM)
-  {
-    u16 dest = insn.inputs[1].imm;
-
-    MOV(16, M_SDSP_pc(), Imm16(dest));
+    MOV(16, M_SDSP_pc(), insn.inputs[1].oparg.AsImm16());
   }
   else
   {
-    ASSERT_MSG(DSPLLE, 0, "unhandled JmpOp variant");
+    MOV(16, M_SDSP_pc(), insn.inputs[1].oparg);
   }
   DSPJitIRRegCache c(m_gpr);
   dropAllRegs(insn);
@@ -479,38 +467,33 @@ void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  MOV(16, M_SDSP_pc(), Imm16(insn.inputs[2].imm));
-  IRReJitConditional(insn.inputs[0].imm & 0xf, insn, &DSPEmitterIR::irr_jmp, insn.SR,
-                     insn.inputs[0].imm & 0x80, tmp1, tmp2);
+  MOV(16, M_SDSP_pc(), insn.inputs[2].oparg.AsImm16());
+  uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
+  IRReJitConditional(cc & 0xf, insn, &DSPEmitterIR::irr_jmp, insn.SR, cc & 0x80, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::JmpOp = {
-    "JmpOp", &DSPEmitterIR::iremit_JmpOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {},
+    "JmpOp", &DSPEmitterIR::iremit_JmpOp,
+    0x0000,  0x0000,
+    0x0000,  0x0000,
+    true,    {{OpImmAny}, {OpAnyReg | OpImmAny}, {OpImmAny}},
     {},      {{OpAnyReg}, {OpAnyReg}}};
 
-// if ACM inputs[1]: needs SR bits: SR_40_MODE_BIT
 void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+  X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
 
-  dsp_reg_store_stack_imm(StackRegister::Call, insn.inputs[2].imm, tmp1, tmp2, RAX);
-  if (insn.inputs[1].type == DSPEmitterIR::IROp::REG)
+  dsp_reg_store_stack_imm(StackRegister::Call, insn.inputs[2].oparg.AsImm16().Imm16(), tmp1, tmp2,
+                          tmp3);
+  if (insn.inputs[1].oparg.IsImm())
   {
-    u8 reg = insn.inputs[1].guest_reg;
-    dsp_op_read_reg(reg, RAX, RegisterExtension::None, insn.SR, tmp1, tmp2,
-                    RAX);  // RAX+RAX is broken for ST accesses
-    MOV(16, M_SDSP_pc(), R(EAX));
-  }
-  else if (insn.inputs[1].type == DSPEmitterIR::IROp::IMM)
-  {
-    u16 dest = insn.inputs[1].imm;
-
-    MOV(16, M_SDSP_pc(), Imm16(dest));
+    MOV(16, M_SDSP_pc(), insn.inputs[1].oparg.AsImm16());
   }
   else
   {
-    ASSERT_MSG(DSPLLE, 0, "unhandled CallOp variant");
+    MOV(16, M_SDSP_pc(), insn.inputs[1].oparg);
   }
   DSPJitIRRegCache c(m_gpr);
   dropAllRegs(insn);
@@ -523,12 +506,16 @@ void DSPEmitterIR::iremit_CallOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  MOV(16, M_SDSP_pc(), Imm16(insn.inputs[2].imm));
-  IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_call, insn.SR, false, tmp1, tmp2);
+  MOV(16, M_SDSP_pc(), insn.inputs[2].oparg.AsImm16());
+  uint8_t cc = insn.inputs[0].oparg.AsImm8().Imm8();
+  IRReJitConditional(cc, insn, &DSPEmitterIR::irr_call, insn.SR, false, tmp1, tmp2);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CallOp = {
-    "CallOp", &DSPEmitterIR::iremit_CallOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {},
-    {},       {{OpAnyReg}, {OpAnyReg}}};
+    "CallOp", &DSPEmitterIR::iremit_CallOp,
+    0x0000,   0x0000,
+    0x0000,   0x0000,
+    true,     {{OpImmAny}, {OpAnyReg | OpImmAny}, {OpImmAny}},
+    {},       {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
 }  // namespace DSP::JITIR::x64
