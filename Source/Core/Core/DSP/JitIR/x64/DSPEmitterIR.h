@@ -632,10 +632,11 @@ private:
 
   static int ir_to_regcache_reg(int reg);
 
+  void DecodeInstruction(UDSPInstruction inst);
   void deparallelize(IRNode* node);
   void deparallelize(IRBB* bb);
 
-  void EmitInstruction(UDSPInstruction inst);
+  void EmitBB(IRBB* bb);
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
 

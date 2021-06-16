@@ -146,9 +146,34 @@ int DSPEmitterIR::ir_to_regcache_reg(int reg)
   case 31:
     return reg;
   default:
-    ASSERT_MSG(DSPLLE, 0, "cannot convert il reg %d to regcache", reg);
+    _assert_msg_(DSPLLE, 0, "cannot convert il reg %d to regcache", reg);
     return -1;
   }
+}
+
+void DSPEmitterIR::DecodeInstruction(UDSPInstruction inst)
+{
+  const auto jit_decode_function = GetOp(inst);
+  const DSPOPCTemplate* tinst = GetOpTemplate(inst);
+
+  // Call extended
+  if (tinst->extended)
+  {
+    const auto jit_ext_decode_function = GetExtOp(inst);
+    (this->*jit_ext_decode_function)(inst);
+  }
+
+  (this->*jit_decode_function)(inst);
+
+  // todo: need to convert concurrent memory reads on the same data bus
+  //(determined by high 6 bits) to one "normal" and one special Load16
+  // that takes the other address as second input and checks it for
+  // use of same data bus, and if so, reverts to using the data from the
+  // first.
+  // todo: need to OR outputs together if they are going to the same
+  // register
+  // for now, just rely on firmware not relying on this...
+  // needs virtual regs
 }
 
 void DSPEmitterIR::findInputOutput(IRNode* begin, IRNode* end, IRNode*& last,
@@ -252,15 +277,15 @@ void DSPEmitterIR::deparallelize(IRNode* node)
   // parallel sections of their own.
 
   IRInsnNode* in1 = dynamic_cast<IRInsnNode*>(parallel_begin);
-  ASSERT_MSG(DSPLLE, !in1, "found insn in begin node of parallel section");
+  _assert_msg_(DSPLLE, !in1, "found insn in begin node of parallel section");
   // so, find the end node of this section by traversing one branch.
   IRNode* n1 = *parallel_begin->next.begin();
   while (n1->prev.size() <= 1)
   {
-    ASSERT_MSG(DSPLLE, n1->prev.size() == 1, "found invalid node connection");
-    ASSERT_MSG(DSPLLE, n1->next.size() == 1, "found parallel section inside another");
+    _assert_msg_(DSPLLE, n1->prev.size() == 1, "found invalid node connection");
+    _assert_msg_(DSPLLE, n1->next.size() == 1, "found parallel section inside another");
     IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n1);
-    ASSERT_MSG(DSPLLE, !bn, "found branch node in parallel section");
+    _assert_msg_(DSPLLE, !bn, "found branch node in parallel section");
     n1 = *n1->next.begin();
   }
 
@@ -274,16 +299,16 @@ void DSPEmitterIR::deparallelize(IRNode* node)
   {
     while (n2->prev.size() <= 1)
     {
-      ASSERT_MSG(DSPLLE, n2->prev.size() == 1, "found invalid node connection");
-      ASSERT_MSG(DSPLLE, n2->next.size() == 1, "found parallel section inside another");
+      _assert_msg_(DSPLLE, n2->prev.size() == 1, "found invalid node connection");
+      _assert_msg_(DSPLLE, n2->next.size() == 1, "found parallel section inside another");
       IRBranchNode* bn = dynamic_cast<IRBranchNode*>(n2);
-      ASSERT_MSG(DSPLLE, !bn, "found branch node in parallel section");
+      _assert_msg_(DSPLLE, !bn, "found branch node in parallel section");
       n2 = *n2->next.begin();
     }
-    ASSERT_MSG(DSPLLE, n2 == parallel_end, "found multiple end points in parallel section");
+    _assert_msg_(DSPLLE, n2 == parallel_end, "found multiple end points in parallel section");
   }
 
-  ASSERT_MSG(DSPLLE, parallel_begin->next.size() == parallel_end->prev.size(),
+  _assert_msg_(DSPLLE, parallel_begin->next.size() == parallel_end->prev.size(),
                "parallel section begin and end don't match in out/in edge count");
 
   // try to figure out a sequence of IRInsns so no insn reads
@@ -449,90 +474,23 @@ void DSPEmitterIR::deparallelize(IRBB* bb)
   deparallelize(bb->start_node);
 }
 
-void DSPEmitterIR::EmitInstruction(UDSPInstruction inst)
+void DSPEmitterIR::EmitBB(IRBB* bb)
 {
-  clearNodeStorage();
-
-  // create start_bb and preliminary end_bb
-  m_start_bb = new IRBB();
-  m_bb_storage.push_back(m_start_bb);
-  IRNode* start_bb_node = makeIRNode();
-  m_start_bb->start_node = m_start_bb->end_node = start_bb_node;
-  m_start_bb->nodes.insert(start_bb_node);
-
-  m_end_bb = new IRBB();
-  m_bb_storage.push_back(m_end_bb);
-  IRNode* end_bb_node = makeIRNode();
-  m_end_bb->start_node = m_end_bb->end_node = end_bb_node;
-  m_end_bb->nodes.insert(end_bb_node);
-
-  m_start_bb->next.insert(m_end_bb);
-  m_start_bb->nextNonBranched = m_end_bb;
-  m_end_bb->prev.insert(m_start_bb);
-
-  m_parallel_nodes.clear();
-
-  const auto jit_decode_function = GetOp(inst);
-  const DSPOPCTemplate* tinst = GetOpTemplate(inst);
-
-  // Call extended
-  if (tinst->extended)
+  IRNode* n = bb->start_node;
+  while (1)
   {
-    const auto jit_ext_decode_function = GetExtOp(inst);
-    (this->*jit_ext_decode_function)(inst);
+    IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
+
+    if (in)
+      (this->*(in->insn.emitter->func))(in->insn);
+
+    ASSERT_MSG(DSPLLE, n->next.size() < 2, "cannot handle parallel insns in emitter");
+
+    if (n->next.empty())
+      break;
+
+    n = *(n->next.begin());
   }
-
-  (this->*jit_decode_function)(inst);
-
-  ir_commit_parallel_nodes();
-
-  // add final end_bb
-  IRBB* new_end_bb = new IRBB();
-  m_bb_storage.push_back(new_end_bb);
-  IRNode* new_end_bb_node = makeIRNode();
-  new_end_bb->start_node = new_end_bb->end_node = new_end_bb_node;
-  new_end_bb->nodes.insert(new_end_bb_node);
-
-  m_end_bb->next.insert(new_end_bb);
-  m_end_bb->nextNonBranched = new_end_bb;
-  new_end_bb->prev.insert(m_end_bb);
-
-  m_end_bb = new_end_bb;
-
-  // todo: need to convert concurrent memory reads on the same data bus
-  //(determined by high 6 bits) to one "normal" and one special Mov16
-  // that takes the other address as second input and checks it for
-  // use of same data bus, and if so, reverts to using the data from the
-  // first.
-  // todo: need to OR outputs together if they are going to the same
-  // register
-  // for now, just rely on firmware not relying on this...
-
-  dumpIRNodes();
-
-  for (auto bb : m_bb_storage)
-    deparallelize(bb);
-
-  for (IRBB* bb = m_start_bb; bb != m_end_bb; bb = bb->nextNonBranched)
-  {
-    IRNode* n = bb->start_node;
-    while (1)
-    {
-      IRInsnNode* in = dynamic_cast<IRInsnNode*>(n);
-
-      if (in)
-        (this->*(in->insn.emitter->func))(in->insn);
-
-      ASSERT_MSG(DSPLLE, n->next.size() < 2, "cannot handle parallel insns in emitter");
-
-      if (n->next.empty())
-        break;
-
-      n = *(n->next.begin());
-    }
-  }
-
-  clearNodeStorage();
 }
 
 void DSPEmitterIR::Compile(u16 start_addr)
@@ -551,6 +509,27 @@ void DSPEmitterIR::Compile(u16 start_addr)
   auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
   while (m_compile_pc < start_addr + MAX_BLOCK_SIZE)
   {
+    clearNodeStorage();
+
+    // create start_bb and preliminary end_bb
+    m_start_bb = new IRBB();
+    m_bb_storage.push_back(m_start_bb);
+    IRNode* start_bb_node = makeIRNode();
+    m_start_bb->start_node = m_start_bb->end_node = start_bb_node;
+    m_start_bb->nodes.insert(start_bb_node);
+
+    m_end_bb = new IRBB();
+    m_bb_storage.push_back(m_end_bb);
+    IRNode* end_bb_node = makeIRNode();
+    m_end_bb->start_node = m_end_bb->end_node = end_bb_node;
+    m_end_bb->nodes.insert(end_bb_node);
+
+    m_start_bb->next.insert(m_end_bb);
+    m_start_bb->nextNonBranched = m_end_bb;
+    m_end_bb->prev.insert(m_start_bb);
+
+    m_parallel_nodes.clear();
+
     if (analyzer.IsCheckExceptions(m_compile_pc))
       checkExceptions(m_block_size[start_addr]);
 
@@ -558,9 +537,33 @@ void DSPEmitterIR::Compile(u16 start_addr)
     const DSPOPCTemplate* opcode = GetOpTemplate(inst);
     const auto jit_decode_function = GetOp(inst);
 
-    EmitInstruction(inst);
-
+    DecodeInstruction(inst);
     m_block_size[start_addr]++;
+
+    ir_commit_parallel_nodes();
+
+    // add final end_bb
+    IRBB* new_end_bb = new IRBB();
+    m_bb_storage.push_back(new_end_bb);
+    IRNode* new_end_bb_node = makeIRNode();
+    new_end_bb->start_node = new_end_bb->end_node = new_end_bb_node;
+    new_end_bb->nodes.insert(new_end_bb_node);
+
+    m_end_bb->next.insert(new_end_bb);
+    m_end_bb->nextNonBranched = new_end_bb;
+    new_end_bb->prev.insert(m_end_bb);
+
+    m_end_bb = new_end_bb;
+    dumpIRNodes();
+
+    for (auto bb : m_bb_storage)
+      deparallelize(bb);
+
+    for (IRBB* bb = m_start_bb; bb != m_end_bb; bb = bb->nextNonBranched)
+      EmitBB(bb);
+
+    clearNodeStorage();
+
     m_compile_pc += opcode->size;
 
     fixup_pc = true;
