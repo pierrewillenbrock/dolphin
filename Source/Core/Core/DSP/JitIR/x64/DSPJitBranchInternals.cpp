@@ -91,8 +91,12 @@ void DSPEmitterIR::checkExceptions(u32 retval, u16 pc)
 // then PC is modified with value from call stack $st0. Otherwise values from
 // call stack $st0 and both loop stacks $st2 and $st3 are popped and execution
 // continues at next opcode.
-void DSPEmitterIR::HandleLoop(u16 pc, u16 execd_cycles)
+void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
 {
+  u16 pc = insn.inputs[0].imm;
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+
   MOV(16, M_SDSP_pc(), Imm16(pc));
 
   MOVZX(32, 16, EAX, M_SDSP_r_st(2));
@@ -121,13 +125,9 @@ void DSPEmitterIR::HandleLoop(u16 pc, u16 execd_cycles)
 
   SetJumpTarget(loadStack);
   DSPJitIRRegCache c1(m_gpr);
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
   dsp_reg_stack_pop(StackRegister::Call, tmp1, tmp2, RAX);
   dsp_reg_stack_pop(StackRegister::LoopAddress, tmp1, tmp2, RAX);
   dsp_reg_stack_pop(StackRegister::LoopCounter, tmp1, tmp2, RAX);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
   m_gpr.FlushRegs(c1);
 
   SetJumpTarget(loopUpdated);
@@ -135,20 +135,26 @@ void DSPEmitterIR::HandleLoop(u16 pc, u16 execd_cycles)
   SetJumpTarget(rLoopCntG);
 
   DSPJitIRRegCache c2(m_gpr);
-  WriteBranchExit(execd_cycles);
+  m_gpr.PutXReg(tmp2);
+  m_gpr.PutXReg(tmp1);
+  WriteBranchExit(insn.cycle_count);
   m_gpr.FlushRegs(c2, false);
 
   SetJumpTarget(rLoopAddressExit);
   SetJumpTarget(rLoopCounterExit);
 }
 
-void DSPEmitterIR::iremit_HandleLoopOp(IRInsn const& insn)
-{
-  HandleLoop(insn.inputs[0].imm, insn.cycle_count);
-}
-
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::HandleLoopOp = {
-    "HandleLoopOp", &DSPEmitterIR::iremit_HandleLoopOp, 0x0000, 0x0000, 0x0000, 0x0000, true};
+    "HandleLoopOp",
+    &DSPEmitterIR::iremit_HandleLoopOp,
+    0x0000,
+    0x0000,
+    0x0000,
+    0x0000,
+    true,
+    {},
+    {},
+    {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_UpdatePCOp(IRInsn const& insn)
 {
@@ -170,7 +176,8 @@ struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CheckExceptionsOp = {
     0x0000,
     0x0000,
     0x0000,
-    true};
+    true,
+    {{OpImmAny}}};
 
 }  // namespace x64
 }  // namespace JITIR

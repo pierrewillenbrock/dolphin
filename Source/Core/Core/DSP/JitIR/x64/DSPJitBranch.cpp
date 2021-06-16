@@ -74,7 +74,7 @@ void DSPEmitterIR::IRReJitConditional(
   DSPJitIRRegCache c1(m_gpr);
   FixupBranch skip_code =
       cond == 0xe ? J_CC(CC_E, true) : J_CC((CCFlags)(CC_NE - (cond & 1)), true);
-  (this->*conditional_fn)(insn, tmp1, tmp2);
+  (this->*conditional_fn)(insn, tmp1, tmp2);  // actually, this is guaranteed to not return
   m_gpr.FlushRegs(c1);
   SetJumpTarget(skip_code);
 }
@@ -284,34 +284,31 @@ void DSPEmitterIR::ir_bloopi(const UDSPInstruction opc)
 void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
 {
   const auto& state = m_dsp_core.DSPState();
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+
   u16 loop_start = insn.inputs[1].imm;
   u16 loop_end = insn.inputs[2].imm;
   if (insn.inputs[0].type == IROp::REG)
   {
     int in_reg0 = ir_to_regcache_reg(insn.inputs[0].guest_reg);
 
-    X64Reg tmp1 = m_gpr.GetFreeXReg();
-    X64Reg tmp2 = m_gpr.GetFreeXReg();
     dsp_op_read_reg_dont_saturate(in_reg0, RDX, RegisterExtension::Zero, tmp1, tmp2, RAX);
-    m_gpr.PutXReg(tmp2);
-    m_gpr.PutXReg(tmp1);
 
     TEST(16, R(EDX), R(EDX));
     DSPJitIRRegCache c1(m_gpr);
     FixupBranch cnt = J_CC(CC_Z, true);
-    X64Reg tmp3 = m_gpr.GetFreeXReg();
-    X64Reg tmp4 = m_gpr.GetFreeXReg();
-    dsp_reg_store_stack(StackRegister::LoopCounter, EDX, tmp3, tmp4, RAX);
-    dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp3, tmp4, RAX);
-    dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp3, tmp4, RAX);
-    m_gpr.PutXReg(tmp4);
-    m_gpr.PutXReg(tmp3);
+    dsp_reg_store_stack(StackRegister::LoopCounter, EDX, tmp1, tmp2, RAX);
+    dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp1, tmp2, RAX);
+    dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp1, tmp2, RAX);
     MOV(16, M_SDSP_pc(), Imm16(loop_start));
     m_gpr.FlushRegs(c1, true);
     FixupBranch exit = J(true);
 
     SetJumpTarget(cnt);
     MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
+    m_gpr.PutXReg(tmp2);
+    m_gpr.PutXReg(tmp1);
     WriteBranchExit(insn.cycle_count);
     m_gpr.FlushRegs(c1, false);
     SetJumpTarget(exit);
@@ -321,13 +318,9 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     u16 cnt = insn.inputs[0].imm;
     if (cnt)
     {
-      X64Reg tmp5 = m_gpr.GetFreeXReg();
-      X64Reg tmp6 = m_gpr.GetFreeXReg();
-      dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp5, tmp6, RAX);
-      dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp5, tmp6, RAX);
-      dsp_reg_store_stack_imm(StackRegister::LoopCounter, cnt, tmp5, tmp6, RAX);
-      m_gpr.PutXReg(tmp6);
-      m_gpr.PutXReg(tmp5);
+      dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp1, tmp2, RAX);
+      dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp1, tmp2, RAX);
+      dsp_reg_store_stack_imm(StackRegister::LoopCounter, cnt, tmp1, tmp2, RAX);
 
       MOV(16, M_SDSP_pc(), Imm16(loop_start));
     }
@@ -335,6 +328,8 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     {
       MOV(16, M_SDSP_pc(), Imm16(loop_end + GetOpTemplate(state.ReadIMEM(loop_end))->size));
       DSPJitIRRegCache c(m_gpr);
+      m_gpr.PutXReg(tmp2);
+      m_gpr.PutXReg(tmp1);
       WriteBranchExit(insn.cycle_count);
       m_gpr.FlushRegs(c, false);
     }
@@ -346,8 +341,8 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::LoopOp = {
-    "LoopOp", &DSPEmitterIR::iremit_LoopOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
-};
+    "LoopOp", &DSPEmitterIR::iremit_LoopOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {},
+    {},       {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_HaltOp(IRInsn const& insn)
 {
@@ -371,35 +366,34 @@ void DSPEmitterIR::irr_ret(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg
 
 void DSPEmitterIR::iremit_RetOp(IRInsn const& insn)
 {
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+
   MOV(16, M_SDSP_pc(), Imm16(insn.inputs[1].imm));
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
   IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_ret, tmp1, tmp2);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RetOp = {
-    "RetOp", &DSPEmitterIR::iremit_RetOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
-};
+    "RetOp", &DSPEmitterIR::iremit_RetOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {},
+    {},      {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_RtiOp(IRInsn const& insn)
 {
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+
   dsp_reg_load_stack(StackRegister::Data, RDX, tmp1, tmp2, RAX);
   m_gpr.WriteReg(DSP_REG_SR, R(RDX));
   dsp_reg_load_stack(StackRegister::Call, RDX, tmp1, tmp2, RAX);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
   MOV(16, M_SDSP_pc(), R(DX));
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::RtiOp = {
-    "RtiOp", &DSPEmitterIR::iremit_RtiOp, 0x0000, 0xffff, 0x0000,
-    0x0000,  // restores SR from stack 1
-    true,
-};
+    "RtiOp", &DSPEmitterIR::iremit_RtiOp,
+    0x0000,  0xffff,
+    0x0000,  0x0000,  // restores SR from stack 1
+    true,    {},
+    {},      {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg tmp2)
 {
@@ -431,20 +425,21 @@ void DSPEmitterIR::irr_jmp(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg
 
 void DSPEmitterIR::iremit_JmpOp(IRInsn const& insn)
 {
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+
   MOV(16, M_SDSP_pc(), Imm16(insn.inputs[2].imm));
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
   IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_jmp, tmp1, tmp2);
+  DSPJitIRRegCache c(m_gpr);
   m_gpr.PutXReg(tmp2);
   m_gpr.PutXReg(tmp1);
-  DSPJitIRRegCache c(m_gpr);
   WriteBranchExit(insn.cycle_count);  // for jcc, this is not needed, but for ifcc
   m_gpr.FlushRegs(c, false);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::JmpOp = {
-    "JmpOp", &DSPEmitterIR::iremit_JmpOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
-};
+    "JmpOp", &DSPEmitterIR::iremit_JmpOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {},
+    {},      {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Reg tmp2)
 {
@@ -475,16 +470,15 @@ void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn, X64Reg tmp1, X64Re
 
 void DSPEmitterIR::iremit_CallOp(IRInsn const& insn)
 {
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+
   MOV(16, M_SDSP_pc(), Imm16(insn.inputs[2].imm));
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
   IRReJitConditional(insn.inputs[0].imm, insn, &DSPEmitterIR::irr_call, tmp1, tmp2);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::CallOp = {
-    "CallOp", &DSPEmitterIR::iremit_CallOp, 0x0000, 0x0000, 0x0000, 0x0000, true,
-};
+    "CallOp", &DSPEmitterIR::iremit_CallOp, 0x0000, 0x0000, 0x0000, 0x0000, true, {},
+    {},       {{OpAnyReg}, {OpAnyReg}}};
 
 }  // namespace DSP::JITIR::x64

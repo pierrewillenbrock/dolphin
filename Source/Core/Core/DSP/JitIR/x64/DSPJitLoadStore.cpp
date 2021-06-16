@@ -323,26 +323,21 @@ void DSPEmitterIR::ir_ilrrn(const UDSPInstruction opc)
 
 void DSPEmitterIR::iremit_Mov16Op(IRInsn const& insn)
 {
-  if (insn.inputs[0].type == IROp::REG && insn.output.type == IROp::REG)
+  _assert_msg_(DSPLLE, insn.output.type == IROp::REG, "unhandled Mov16Op variant");
+  int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+
+  if (insn.inputs[0].type == IROp::REG)
   {
-    int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
-    X64Reg tmp1 = m_gpr.GetFreeXReg();
-    X64Reg tmp2 = m_gpr.GetFreeXReg();
     dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, RDX, RAX, tmp2);
     dsp_op_write_reg(out_reg, tmp1, RDX, RAX, tmp2);
-    m_gpr.PutXReg(tmp2);
-    m_gpr.PutXReg(tmp1);
     dsp_conditional_extend_accum(out_reg, RAX);
   }
   else if (insn.inputs[0].type == IROp::IMM)
   {
-    int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
-    X64Reg tmp1 = m_gpr.GetFreeXReg();
-    X64Reg tmp2 = m_gpr.GetFreeXReg();
     dsp_op_write_reg_imm(out_reg, insn.inputs[0].imm, tmp1, RAX, tmp2);
-    m_gpr.PutXReg(tmp2);
-    m_gpr.PutXReg(tmp1);
     dsp_conditional_extend_accum_imm(out_reg, insn.inputs[0].imm);
   }
   else
@@ -352,22 +347,21 @@ void DSPEmitterIR::iremit_Mov16Op(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Mov16Op = {
-    "Mov16Op", &DSPEmitterIR::iremit_Mov16Op, 0x0000, 0x0000, 0x0000, 0x0000,
-};
+    "Mov16Op", &DSPEmitterIR::iremit_Mov16Op, 0x0000, 0x0000, 0x0000, 0x0000, false, {},
+    {},        {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_Load16Op(IRInsn const& insn)
 {
+  _assert_msg_(DSPLLE, insn.output.type == IROp::REG, "unhandled Load16Op variant");
   // input: address.
   int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
   if (insn.inputs[0].type == IROp::IMM)
   {
     dmem_read_imm(insn.inputs[0].imm, RAX);
-    X64Reg tmp1 = m_gpr.GetFreeXReg();
-    X64Reg tmp2 = m_gpr.GetFreeXReg();
     dsp_op_write_reg(out_reg, RAX, tmp1, tmp2, RAX);  // RAX+RAX is broken for ST accesses
-    m_gpr.PutXReg(tmp2);
-    m_gpr.PutXReg(tmp1);
     dsp_conditional_extend_accum(out_reg, RAX);
   }
   else if (insn.inputs[0].type == IROp::REG)
@@ -375,11 +369,7 @@ void DSPEmitterIR::iremit_Load16Op(IRInsn const& insn)
     int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     m_gpr.ReadReg(in_reg, RDX, RegisterExtension::Zero);
     dmem_read(RDX, RAX);
-    X64Reg tmp1 = m_gpr.GetFreeXReg();
-    X64Reg tmp2 = m_gpr.GetFreeXReg();
     dsp_op_write_reg(out_reg, RAX, tmp1, tmp2, RAX);  // RAX+RAX is broken for ST accesses
-    m_gpr.PutXReg(tmp2);
-    m_gpr.PutXReg(tmp1);
     dsp_conditional_extend_accum(out_reg, RAX);
   }
   else
@@ -389,66 +379,53 @@ void DSPEmitterIR::iremit_Load16Op(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Load16Op = {
-    "Load16Op", &DSPEmitterIR::iremit_Load16Op, 0x0000, 0x0000, 0x0000, 0x0000,
-};
+    "Load16Op", &DSPEmitterIR::iremit_Load16Op, 0x0000, 0x0000, 0x0000, 0x0000, false, {},
+    {},         {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_ILoad16Op(IRInsn const& insn)
 {
+  _assert_msg_(DSPLLE, insn.inputs[0].type == IROp::REG && insn.output.type == IROp::REG,
+               "unhandled ILoad16Op variant");
   // input: address.
   int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
   int in_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
   m_gpr.ReadReg(in_reg, tmp1, RegisterExtension::Zero);
   imem_read(tmp1, RAX);
   dsp_op_write_reg(out_reg, RAX, tmp1, tmp2, RAX);  // RAX+RAX is broken for ST accesses
   dsp_conditional_extend_accum(out_reg, RAX);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::ILoad16Op = {
-    "ILoad16Op", &DSPEmitterIR::iremit_ILoad16Op, 0x0000, 0x0000, 0x0000, 0x0000,
-};
+    "ILoad16Op", &DSPEmitterIR::iremit_ILoad16Op, 0x0000, 0x0000, 0x0000, 0x0000, false, {},
+    {},          {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_Store16Op(IRInsn const& insn)
 {
   // inputs: 0: address, 1: value
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+  X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
   if (insn.inputs[0].type == IROp::IMM && insn.inputs[1].type == IROp::REG)
   {
     int in_reg = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-    X64Reg tmp1 = m_gpr.GetFreeXReg();
-    X64Reg tmp2 = m_gpr.GetFreeXReg();
-    X64Reg tmp3 = m_gpr.GetFreeXReg();
     dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, tmp2, tmp3, RAX);
     dmem_write_imm(insn.inputs[0].imm, tmp1, tmp2);
-    m_gpr.PutXReg(tmp3);
-    m_gpr.PutXReg(tmp2);
-    m_gpr.PutXReg(tmp1);
   }
   else if (insn.inputs[0].type == IROp::IMM && insn.inputs[1].type == IROp::IMM)
   {
-    X64Reg tmp1 = m_gpr.GetFreeXReg();
-    X64Reg tmp2 = m_gpr.GetFreeXReg();
     MOV(16, R(tmp1), Imm16(insn.inputs[1].imm));
     dmem_write_imm(insn.inputs[0].imm, tmp1, tmp2);
-    m_gpr.PutXReg(tmp2);
-    m_gpr.PutXReg(tmp1);
   }
   else if (insn.inputs[0].type == IROp::REG && insn.inputs[1].type == IROp::REG)
   {
     int out_reg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
     int in_reg = ir_to_regcache_reg(insn.inputs[1].guest_reg);
-    X64Reg tmp1 = m_gpr.GetFreeXReg();
-    X64Reg tmp2 = m_gpr.GetFreeXReg();
-    X64Reg tmp3 = m_gpr.GetFreeXReg();
     dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, tmp2, tmp3, RAX);
     m_gpr.ReadReg(out_reg, RAX, RegisterExtension::Zero);
     dmem_write(tmp1, RAX, RCX);
-    m_gpr.PutXReg(tmp3);
-    m_gpr.PutXReg(tmp2);
-    m_gpr.PutXReg(tmp1);
   }
   else
   {
@@ -457,16 +434,16 @@ void DSPEmitterIR::iremit_Store16Op(IRInsn const& insn)
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Store16Op = {
-    "Store16Op", &DSPEmitterIR::iremit_Store16Op, 0x0000, 0x0000, 0x0000, 0x0000,
-};
+    "Store16Op", &DSPEmitterIR::iremit_Store16Op,     0x0000, 0x0000, 0x0000, 0x0000, false, {},
+    {},          {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_Load16SOp(IRInsn const& insn)
 {
   // input: 0: address, 1: CR
   int out_reg = ir_to_regcache_reg(insn.output.guest_reg);
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
 
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
   m_gpr.ReadReg(DSP_REG_CR, RAX, RegisterExtension::Zero);
   MOV(8, R(AH), R(AL));
   MOV(8, R(AL), Imm8(insn.inputs[0].imm));
@@ -476,36 +453,31 @@ void DSPEmitterIR::iremit_Load16SOp(IRInsn const& insn)
   dmem_read(tmp1, RAX);
 
   dsp_op_write_reg(out_reg, RAX, tmp1, tmp2, RAX);  // RAX+RAX is broken for ST accesses
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
   dsp_conditional_extend_accum(out_reg, RAX);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Load16SOp = {
-    "Load16SOp", &DSPEmitterIR::iremit_Load16SOp, 0x0000, 0x0000, 0x0000, 0x0000,
-};
+    "Load16SOp", &DSPEmitterIR::iremit_Load16SOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {},
+    {},          {{OpAnyReg}, {OpAnyReg}}};
 
 void DSPEmitterIR::iremit_Store16SOp(IRInsn const& insn)
 {
   // inputs: 0: address, 1: CR, 2: value
   int in_reg = ir_to_regcache_reg(insn.inputs[2].guest_reg);
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
-  X64Reg tmp3 = m_gpr.GetFreeXReg();
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
+  X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
+  X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
+
   dsp_op_read_reg(in_reg, tmp1, RegisterExtension::None, tmp2, tmp3, RAX);
 
   m_gpr.ReadReg(DSP_REG_CR, RAX, RegisterExtension::Zero);
   MOV(8, R(AH), R(AL));
   MOV(8, R(AL), Imm8(insn.inputs[0].imm));
   dmem_write(tmp1, RAX, RCX);
-
-  m_gpr.PutXReg(tmp3);
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::Store16SOp = {
-    "Store16SOp", &DSPEmitterIR::iremit_Store16SOp, 0x0000, 0x0000, 0x0000, 0x0000,
-};
+    "Store16SOp", &DSPEmitterIR::iremit_Store16SOp,    0x0000, 0x0000, 0x0000, 0x0000, false, {},
+    {},           {{OpAnyReg}, {OpAnyReg}, {OpAnyReg}}};
 
 }  // namespace DSP::JITIR::x64

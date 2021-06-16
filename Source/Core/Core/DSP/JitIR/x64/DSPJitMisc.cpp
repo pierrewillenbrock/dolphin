@@ -145,13 +145,12 @@ void DSPEmitterIR::iremit_AddAOp(IRInsn const& insn)
   // output: value
   // for now, just assume input value and mask
   // and output value match.
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
-  X64Reg tmp2 = m_gpr.GetFreeXReg();
   u8 reg = insn.inputs[0].guest_reg;
   u8 ix_reg = insn.inputs[2].guest_reg & 0x3;
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
-  ASSERT_MSG(DSPLLE, insn.inputs[1].guest_reg == insn.inputs[0].guest_reg + DSP_REG_WR0,
-             "AddAOp register mismatch");
+  _assert_msg_(DSPLLE, insn.inputs[1].guest_reg == insn.inputs[0].guest_reg + DSP_REG_WR0,
+               "AddAOp register mismatch");
   if (insn.inputs[2].type == IROp::REG)
   {
     m_gpr.ReadReg(DSP_REG_WR0 + reg, RDX, RegisterExtension::Zero);
@@ -176,14 +175,12 @@ void DSPEmitterIR::iremit_AddAOp(IRInsn const& insn)
     m_gpr.PutReg(DSP_REG_AR0 + reg);
   }
   else
-    ASSERT_MSG(DSPLLE, 0, "unhandled AddAOp variant");
-  m_gpr.PutXReg(tmp2);
-  m_gpr.PutXReg(tmp1);
+    _assert_msg_(DSPLLE, 0, "unhandled AddAOp variant");
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::AddAOp = {
-    "AddAOp", &DSPEmitterIR::iremit_AddAOp, 0x0000, 0x0000, 0x0000, 0x0000,
-};
+    "AddAOp",    &DSPEmitterIR::iremit_AddAOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
+    {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_SubAOp(IRInsn const& insn)
 {
@@ -191,14 +188,14 @@ void DSPEmitterIR::iremit_SubAOp(IRInsn const& insn)
   // output: value
   // for now, just assume input value and mask
   // and output value match.
-  X64Reg tmp1 = m_gpr.GetFreeXReg();
+  X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
   u8 reg = insn.inputs[0].guest_reg;
 
-  ASSERT_MSG(DSPLLE,
-             insn.inputs[1].guest_reg == insn.inputs[0].guest_reg + DSP_REG_WR0 &&
-                 (insn.inputs[2].type != IROp::REG ||
-                  insn.inputs[2].guest_reg == insn.inputs[0].guest_reg + DSP_REG_IX0),
-             "SubAOp register mismatch");
+  _assert_msg_(DSPLLE,
+               insn.inputs[1].guest_reg == insn.inputs[0].guest_reg + DSP_REG_WR0 &&
+                   (insn.inputs[2].type != IROp::REG ||
+                    insn.inputs[2].guest_reg == insn.inputs[0].guest_reg + DSP_REG_IX0),
+               "SubAOp register mismatch");
   if (insn.inputs[2].type == IROp::REG)
   {
     m_gpr.ReadReg(DSP_REG_WR0 + reg, RDX, RegisterExtension::Zero);
@@ -223,13 +220,12 @@ void DSPEmitterIR::iremit_SubAOp(IRInsn const& insn)
     m_gpr.PutReg(DSP_REG_AR0 + reg);
   }
   else
-    ASSERT_MSG(DSPLLE, 0, "unhandled AddAOp variant");
-  m_gpr.PutXReg(tmp1);
+    _assert_msg_(DSPLLE, 0, "unhandled AddAOp variant");
 }
 
 struct DSPEmitterIR::IREmitInfo const DSPEmitterIR::SubAOp = {
-    "SubAOp", &DSPEmitterIR::iremit_SubAOp, 0x0000, 0x0000, 0x0000, 0x0000,
-};
+    "SubAOp",    &DSPEmitterIR::iremit_SubAOp, 0x0000, 0x0000, 0x0000, 0x0000, false, {}, {},
+    {{OpAnyReg}}};
 
 void DSPEmitterIR::iremit_SBSetOp(IRInsn const& insn)
 {

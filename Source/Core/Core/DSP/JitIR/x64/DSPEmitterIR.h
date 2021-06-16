@@ -561,9 +561,6 @@ private:
   void set_long_prod(Gen::X64Reg host_sreg, Gen::X64Reg tmp1);
   void round_long(Gen::X64Reg long_acc);
 
-  // Branch helpers
-  void HandleLoop(u16 pc, u16 execd_cycles);
-
   // CC helpers
   void Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg tmp1);
   void Update_SR_Register64_Carry(Gen::X64Reg new_val, Gen::X64Reg old_val,
