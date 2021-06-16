@@ -560,7 +560,7 @@ void DSPEmitterIR::allocHostRegs()
       for (unsigned int i = 0; i < NUM_INPUTS; i++)
       {
         int vreg = insn.inputs[i].vreg;
-        if (vreg > 0)
+        if (vreg > 0 && insn.inputs[i].type == IROp::VREG)
         {
           if (!first_ref[vreg])
             first_ref[vreg] = n;
@@ -568,7 +568,7 @@ void DSPEmitterIR::allocHostRegs()
         }
       }
       int vreg = insn.output.vreg;
-      if (vreg > 0)
+      if (vreg > 0 && insn.output.type == IROp::VREG)
       {
         if (!first_ref[vreg])
           first_ref[vreg] = n;
@@ -625,7 +625,7 @@ void DSPEmitterIR::allocHostRegs()
       for (unsigned int i = 0; i < NUM_INPUTS; i++)
       {
         int vreg = insn.inputs[i].vreg;
-        if (vreg > 0 && first_ref[vreg] == n)
+        if (vreg > 0 && first_ref[vreg] == n && insn.inputs[i].type == IROp::VREG)
         {
           live_vregs.insert(vreg);
           insn.first_refed_vregs.insert(vreg);
@@ -633,7 +633,7 @@ void DSPEmitterIR::allocHostRegs()
       }
       {
         int vreg = insn.output.vreg;
-        if (vreg > 0 && first_ref[vreg] == n)
+        if (vreg > 0 && first_ref[vreg] == n && insn.output.type == IROp::VREG)
         {
           live_vregs.insert(vreg);
           insn.first_refed_vregs.insert(vreg);
@@ -654,7 +654,7 @@ void DSPEmitterIR::allocHostRegs()
       for (unsigned int i = 0; i < NUM_INPUTS; i++)
       {
         int vreg = insn.inputs[i].vreg;
-        if (vreg > 0 && last_ref[vreg] == n)
+        if (vreg > 0 && last_ref[vreg] == n && insn.inputs[i].type == IROp::VREG)
         {
           live_vregs.erase(vreg);
           insn.last_refed_vregs.insert(vreg);
@@ -662,7 +662,7 @@ void DSPEmitterIR::allocHostRegs()
       }
       {
         int vreg = insn.output.vreg;
-        if (vreg > 0 && last_ref[vreg] == n)
+        if (vreg > 0 && last_ref[vreg] == n && insn.output.type == IROp::VREG)
         {
           live_vregs.erase(vreg);
           insn.last_refed_vregs.insert(vreg);
@@ -782,10 +782,9 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
 
   _assert_msg_(DSPLLE, GetSpaceLeft() > 64, "code space too full");
 
-  // tell the m_gpr about our vregs
   // mark the active vregs active, so we can tell the m_gpr about
   // them being put, if needed(dropAllRegs)
-  for (auto i : insn.live_vregs)
+  for (auto i : insn.first_refed_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())
     {
@@ -799,59 +798,14 @@ void DSPEmitterIR::EmitInsn(IRInsn& insn)
   else
     insn.SR = M_SDSP_r_sr();
 
-  // do the actual loading. these should just be injected
-  // into the insn stream, so we can manipulate them
-  // must happen after assignVregs, but before register alloc
-  // when we go through with this
-  for (unsigned int i = 0; i < NUM_INPUTS; i++)
-  {
-    if (insn.emitter->inputs[i].reqs)
-    {
-      if (insn.inputs[i].type == IROp::IMM)
-      {
-        IRInsn p = {&LoadImmOp, {insn.inputs[i]}, IROp::Vreg(insn.inputs[i].vreg)};
-        p.output.oparg = m_vregs[p.output.vreg].oparg;
-        iremit_LoadImmOp(p);
-      }
-      else if (insn.inputs[i].type == IROp::REG)
-      {
-        IRInsn p = {&LoadGuestOp, {insn.inputs[i]}, IROp::Vreg(insn.inputs[i].vreg)};
-
-        if (insn.inputs[i].guest_reg == DSP_REG_ACM0 || insn.inputs[i].guest_reg == DSP_REG_ACM1)
-          p.needs_SR |= SR_40_MODE_BIT;
-
-        p.SR = insn.SR;
-        p.output.oparg = m_vregs[p.output.vreg].oparg;
-        iremit_LoadGuestOp(p);
-      }
-    }
-  }
-
-  // when we start retrieving guest regs for the emitters,
-  // we will be able to capsule a lot of the load/store
-  // from these, that is currently living in the emitter,
-  // for example, temporaries needed for STx, and SR_40_BIT_MODE
-
   (this->*insn.emitter->func)(insn);
-
-  // do the actual storing. these should just be injected
-  // into the insn stream, so we can manipulate them
-  if (insn.emitter->output.reqs)
-  {
-    IRInsn p = {&StoreGuestOp, {IROp::Vreg(insn.output.vreg)}, insn.output};
-    if (insn.output.guest_reg == DSP_REG_ACM0 || insn.output.guest_reg == DSP_REG_ACM1)
-      p.needs_SR |= SR_40_MODE_BIT;
-    p.SR = insn.SR;
-    p.inputs[0].oparg = m_vregs[p.inputs[0].vreg].oparg;
-    iremit_StoreGuestOp(p);
-  }
 
   if (insn.needs_SR || insn.modifies_SR)
     m_gpr.PutReg(DSP_REG_SR, insn.modifies_SR);
 
   // and now, drop it all again. this will not be needed when
   // we drop the m_gpr completely
-  for (auto i : insn.live_vregs)
+  for (auto i : insn.last_refed_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())
     {
@@ -971,6 +925,9 @@ void DSPEmitterIR::Compile(u16 start_addr)
   m_end_bb = new_end_bb;
 
   dumpIRNodes();
+
+  for (auto bb : m_bb_storage)
+    addGuestLoadStore(bb);
 
   for (auto bb : m_bb_storage)
     deparallelize(bb);

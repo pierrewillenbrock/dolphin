@@ -60,15 +60,15 @@ void DSPEmitterIR::dsp_reg_stack_pop(StackRegister stack_reg, Gen::X64Reg tmp1, 
   MOV(8, M_SDSP_reg_stack_ptrs(reg_index), R(tmp3));
 }
 
-void DSPEmitterIR::dsp_reg_store_stack(StackRegister stack_reg, Gen::X64Reg host_sreg,
+void DSPEmitterIR::dsp_reg_store_stack(StackRegister stack_reg, Gen::OpArg const& source,
                                        Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3)
 {
-  ASSERT_MSG(DSPLLE, host_sreg != tmp1 && host_sreg != tmp2 && host_sreg != tmp3,
-               "bad register allocation");
   dsp_reg_stack_push(stack_reg, tmp1, tmp2, tmp3);
-
   // g_dsp.r[DSP_REG_ST0 + stack_reg] = val;
-  MOV(16, M_SDSP_r_st(static_cast<size_t>(stack_reg)), R(host_sreg));
+  if (source.IsImm())
+    MOV(16, M_SDSP_r_st(static_cast<size_t>(stack_reg)), source.AsImm16());
+  else
+    MOV(16, M_SDSP_r_st(static_cast<size_t>(stack_reg)), source);
 }
 
 void DSPEmitterIR::dsp_reg_load_stack(StackRegister stack_reg, Gen::X64Reg host_dreg,
@@ -82,65 +82,8 @@ void DSPEmitterIR::dsp_reg_load_stack(StackRegister stack_reg, Gen::X64Reg host_
   dsp_reg_stack_pop(stack_reg, tmp1, tmp2, tmp3);
 }
 
-void DSPEmitterIR::dsp_reg_store_stack_imm(StackRegister stack_reg, u16 val, Gen::X64Reg tmp1,
-                                           Gen::X64Reg tmp2, Gen::X64Reg tmp3)
-{
-  dsp_reg_stack_push(stack_reg, tmp1, tmp2, tmp3);
-  // g_dsp.r[DSP_REG_ST0 + stack_reg] = val;
-  MOV(16, M_SDSP_r_st(static_cast<size_t>(stack_reg)), Imm16(val));
-}
-
-void DSPEmitterIR::dsp_op_write_reg(int reg, Gen::X64Reg host_sreg, Gen::X64Reg tmp1,
-                                    Gen::X64Reg tmp2, Gen::X64Reg tmp3)
-{
-  switch (reg & 0x1f)
-  {
-  // 8-bit sign extended registers.
-  case DSP_REG_ACH0:
-  case DSP_REG_ACH1:
-    m_gpr.WriteReg(reg, R(host_sreg));
-    break;
-
-  // Stack registers.
-  case DSP_REG_ST0:
-  case DSP_REG_ST1:
-  case DSP_REG_ST2:
-  case DSP_REG_ST3:
-    dsp_reg_store_stack(static_cast<StackRegister>(reg - DSP_REG_ST0), host_sreg, tmp1, tmp2, tmp3);
-    break;
-
-  default:
-    m_gpr.WriteReg(reg, R(host_sreg));
-    break;
-  }
-}
-
-void DSPEmitterIR::dsp_op_write_reg_imm(int reg, u16 val, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
-                                        Gen::X64Reg tmp3)
-{
-  switch (reg & 0x1f)
-  {
-  // 8-bit sign extended registers. Should look at prod.h too...
-  case DSP_REG_ACH0:
-  case DSP_REG_ACH1:
-    m_gpr.WriteReg(reg, Imm16((u16)(s16)(s8)(u8)val));
-    break;
-  // Stack registers.
-  case DSP_REG_ST0:
-  case DSP_REG_ST1:
-  case DSP_REG_ST2:
-  case DSP_REG_ST3:
-    dsp_reg_store_stack_imm(static_cast<StackRegister>(reg - DSP_REG_ST0), val, tmp1, tmp2, tmp3);
-    break;
-
-  default:
-    m_gpr.WriteReg(reg, Imm16(val));
-    break;
-  }
-}
-
 // if ACM reg: needs SR bits: SR_40_MODE_BIT
-void DSPEmitterIR::dsp_conditional_extend_accum(int reg, OpArg const& sr_reg, X64Reg tmp1)
+void DSPEmitterIR::dsp_conditional_extend_accum(int reg, OpArg const& sr_reg, OpArg const& acm_val)
 {
   switch (reg)
   {
@@ -150,17 +93,33 @@ void DSPEmitterIR::dsp_conditional_extend_accum(int reg, OpArg const& sr_reg, X6
     DSPJitIRRegCache c(m_gpr);
     TEST(16, sr_reg, Imm16(SR_40_MODE_BIT));
     FixupBranch not_40bit = J_CC(CC_Z, true);
-    // if (g_dsp.r[DSP_REG_SR] & SR_40_MODE_BIT)
-    //{
-    // Sign extend into whole accum.
-    // u16 val = g_dsp.r[reg];
-    m_gpr.ReadReg(reg, tmp1, RegisterExtension::Sign);
-    SHR(32, R(tmp1), Imm8(16));
-    // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACH0] = (val & 0x8000) ? 0xFFFF : 0x0000;
-    // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACL0] = 0;
-    m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACH0, R(tmp1));
-    m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACL0, Imm16(0));
-    //}
+
+    if (acm_val.IsImm())
+    {
+      u16 val = acm_val.AsImm16().Imm16();
+      m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACH0, Imm16((val & 0x8000) ? 0xffff : 0x0000));
+      m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACL0, Imm16(0));
+    }
+    else if (acm_val.IsSimpleReg())
+    {
+      // if (g_dsp.r[DSP_REG_SR] & SR_40_MODE_BIT)
+      //{
+      // Sign extend into whole accum.
+      // u16 val = g_dsp.r[reg];
+      MOVSX(64, 16, acm_val.GetSimpleReg(), acm_val);
+      SHR(32, acm_val, Imm8(16));
+      // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACH0] = (val & 0x8000) ? 0xFFFF : 0x0000;
+      // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACL0] = 0;
+      m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACH0, acm_val);
+      m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACL0, Imm16(0));
+      //}
+    }
+    else
+    {
+      _assert_msg_(DSPLLE, 0,
+                   "dsp_conditional_extend_accum only handles Imm and R for the acm_val");
+    }
+
     m_gpr.FlushRegs(c);
     SetJumpTarget(not_40bit);
   }
@@ -168,136 +127,44 @@ void DSPEmitterIR::dsp_conditional_extend_accum(int reg, OpArg const& sr_reg, X6
 }
 
 // if ACM reg: needs SR bits: SR_40_MODE_BIT
-void DSPEmitterIR::dsp_conditional_extend_accum_imm(int reg, u16 val, OpArg const& sr_reg)
+void DSPEmitterIR::dsp_op_read_acm_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
+                                       Gen::OpArg const& sr_reg, Gen::X64Reg tmp1)
 {
-  switch (reg)
-  {
-  case DSP_REG_ACM0:
-  case DSP_REG_ACM1:
-  {
-    DSPJitIRRegCache c(m_gpr);
-    TEST(16, sr_reg, Imm16(SR_40_MODE_BIT));
-    FixupBranch not_40bit = J_CC(CC_Z, true);
-    // if (g_dsp.r[DSP_REG_SR] & SR_40_MODE_BIT)
-    //{
-    // Sign extend into whole accum.
-    // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACH0] = (val & 0x8000) ? 0xFFFF : 0x0000;
-    // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACL0] = 0;
-    m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACH0, Imm16((val & 0x8000) ? 0xffff : 0x0000));
-    m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACL0, Imm16(0));
-    //}
-    m_gpr.FlushRegs(c);
-    SetJumpTarget(not_40bit);
-  }
-  }
-}
+  // we already know this is ACCM0 or ACCM1
+  const OpArg acc_reg = m_gpr.GetReg(reg - DSP_REG_ACM0 + DSP_REG_ACC0_64);
+  DSPJitIRRegCache c(m_gpr);
+  TEST(16, sr_reg, Imm16(SR_40_MODE_BIT));
+  FixupBranch not_40bit = J_CC(CC_Z, true);
 
-void DSPEmitterIR::dsp_op_read_reg_dont_saturate(int reg, Gen::X64Reg host_dreg,
-                                                 RegisterExtension extend, Gen::X64Reg tmp1,
-                                                 Gen::X64Reg tmp2, Gen::X64Reg tmp3)
-{
-  switch (reg & 0x1f)
-  {
-  case DSP_REG_ST0:
-  case DSP_REG_ST1:
-  case DSP_REG_ST2:
-  case DSP_REG_ST3:
-    dsp_reg_load_stack(static_cast<StackRegister>(reg - DSP_REG_ST0), host_dreg, tmp1, tmp2, tmp3);
-    switch (extend)
-    {
-    case RegisterExtension::Sign:
-      MOVSX(64, 16, host_dreg, R(host_dreg));
-      break;
-    case RegisterExtension::Zero:
-      MOVZX(64, 16, host_dreg, R(host_dreg));
-      break;
-    case RegisterExtension::None:
-    default:
-      break;
-    }
-    return;
-  default:
-    m_gpr.ReadReg(reg, host_dreg, extend);
-    return;
-  }
-}
+  MOVSX(64, 32, host_dreg, acc_reg);
+  CMP(64, R(host_dreg), acc_reg);
+  FixupBranch no_saturate = J_CC(CC_Z);
 
-// if ACM reg: needs SR bits: SR_40_MODE_BIT
-void DSPEmitterIR::dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
-                                   OpArg const& sr_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
-                                   Gen::X64Reg tmp3)
-{
-  switch (reg & 0x1f)
-  {
-  case DSP_REG_ST0:
-  case DSP_REG_ST1:
-  case DSP_REG_ST2:
-  case DSP_REG_ST3:
-    dsp_reg_load_stack(static_cast<StackRegister>(reg - DSP_REG_ST0), host_dreg, tmp1, tmp2, tmp3);
-    switch (extend)
-    {
-    case RegisterExtension::Sign:
-      MOVSX(64, 16, host_dreg, R(host_dreg));
-      break;
-    case RegisterExtension::Zero:
-      MOVZX(64, 16, host_dreg, R(host_dreg));
-      break;
-    case RegisterExtension::None:
-    default:
-      break;
-    }
-    return;
-  case DSP_REG_SR:
-  {
-    // for the moment, this is hardcoded here... the register fetcher
-    // to be implemented will fix this again.
-    MOV(16, R(host_dreg), sr_reg);
-    return;
-  }
-  case DSP_REG_ACM0:
-  case DSP_REG_ACM1:
-  {
-    // we already know this is ACCM0 or ACCM1
-    const OpArg acc_reg = m_gpr.GetReg(reg - DSP_REG_ACM0 + DSP_REG_ACC0_64);
-    DSPJitIRRegCache c(m_gpr);
-    TEST(16, sr_reg, Imm16(SR_40_MODE_BIT));
-    FixupBranch not_40bit = J_CC(CC_Z, true);
+  TEST(64, acc_reg, acc_reg);
+  FixupBranch negative = J_CC(CC_LE);
 
-    MOVSX(64, 32, host_dreg, acc_reg);
-    CMP(64, R(host_dreg), acc_reg);
-    FixupBranch no_saturate = J_CC(CC_Z);
+  MOV(64, R(host_dreg), Imm32(0x7fff));  // this works for all extend modes
+  FixupBranch done_positive = J();
 
-    TEST(64, acc_reg, acc_reg);
-    FixupBranch negative = J_CC(CC_LE);
+  SetJumpTarget(negative);
+  if (extend == RegisterExtension::None || extend == RegisterExtension::Zero)
+    MOV(64, R(host_dreg), Imm32(0x00008000));
+  else
+    MOV(64, R(host_dreg), Imm32(0xffff8000));
+  FixupBranch done_negative = J();
 
-    MOV(64, R(host_dreg), Imm32(0x7fff));  // this works for all extend modes
-    FixupBranch done_positive = J();
+  SetJumpTarget(no_saturate);
+  SetJumpTarget(not_40bit);
 
-    SetJumpTarget(negative);
-    if (extend == RegisterExtension::None || extend == RegisterExtension::Zero)
-      MOV(64, R(host_dreg), Imm32(0x00008000));
-    else
-      MOV(64, R(host_dreg), Imm32(0xffff8000));
-    FixupBranch done_negative = J();
-
-    SetJumpTarget(no_saturate);
-    SetJumpTarget(not_40bit);
-
-    MOV(64, R(host_dreg), acc_reg);
-    if (extend == RegisterExtension::None || extend == RegisterExtension::Zero)
-      SHR(64, R(host_dreg), Imm8(16));
-    else
-      SAR(64, R(host_dreg), Imm8(16));
-    SetJumpTarget(done_positive);
-    SetJumpTarget(done_negative);
-    m_gpr.FlushRegs(c);
-    m_gpr.PutReg(reg - DSP_REG_ACM0 + DSP_REG_ACC0_64, false);
-  }
-    return;
-  default:
-    m_gpr.ReadReg(reg, host_dreg, extend);
-    return;
-  }
+  MOV(64, R(host_dreg), acc_reg);
+  if (extend == RegisterExtension::None || extend == RegisterExtension::Zero)
+    SHR(64, R(host_dreg), Imm8(16));
+  else
+    SAR(64, R(host_dreg), Imm8(16));
+  SetJumpTarget(done_positive);
+  SetJumpTarget(done_negative);
+  m_gpr.FlushRegs(c);
+  m_gpr.PutReg(reg - DSP_REG_ACM0 + DSP_REG_ACC0_64, false);
 }
 
 // addr math
@@ -721,38 +588,14 @@ void DSPEmitterIR::dmem_read_imm(u16 address, X64Reg host_dreg)
   }
 }
 
-// Returns s64 in (long_prod)
-void DSPEmitterIR::get_long_prod(Gen::X64Reg long_prod, Gen::X64Reg tmp1)
-{
-  // s64 val   = (s8)(u8)g_dsp.r[DSP_REG_PRODH];
-  m_gpr.ReadReg(DSP_REG_PROD_64, long_prod, RegisterExtension::None);
-  // no use in keeping prod_reg any longer.
-  MOV(64, R(tmp1), R(long_prod));
-  SHL(64, R(long_prod), Imm8(64 - 40));  // sign extend
-  SAR(64, R(long_prod), Imm8(64 - 40));
-  SHR(64, R(tmp1), Imm8(48));
-  SHL(64, R(tmp1), Imm8(16));
-  ADD(64, R(long_prod), R(tmp1));
-}
-
-// For accurate emulation, this is wrong - but the real prod registers behave
-// in completely bizarre ways. Probably not meaningful to emulate them accurately.
-void DSPEmitterIR::set_long_prod(X64Reg host_sreg, X64Reg tmp1)
-{
-  MOV(64, R(tmp1), Imm64(0x000000ffffffffffULL));
-  AND(64, R(tmp1), R(host_sreg));
-
-  //	g_dsp.r[DSP_REG_PRODL] = (u16)val;
-  m_gpr.WriteReg(DSP_REG_PROD_64, R(tmp1));
-}
-
-void DSPEmitterIR::round_long(X64Reg long_acc)
+// Returns s64 in (long_reg)
+void DSPEmitterIR::round_long(X64Reg long_reg)
 {
   // if (prod & 0x10000) prod = (prod + 0x8000) & ~0xffff;
   // else prod = (prod + 0x7fff) & ~0xffff;
-  BT(32, R(long_acc), Imm8(16));
-  ADC(64, R(long_acc), Imm32(0x7FFF));
-  XOR(16, R(long_acc), R(long_acc));
+  BT(32, R(long_reg), Imm8(16));
+  ADC(64, R(long_reg), Imm32(0x7FFF));
+  XOR(16, R(long_reg), R(long_reg));
   // return prod;
 }
 

@@ -557,9 +557,7 @@ private:
 
   void Update_SR_Register(Gen::X64Reg val, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
 
-  void get_long_prod(Gen::X64Reg long_prod, Gen::X64Reg tmp1);
-  void set_long_prod(Gen::X64Reg host_sreg, Gen::X64Reg tmp1);
-  void round_long(Gen::X64Reg long_acc);
+  void round_long(Gen::X64Reg long_reg);
 
   // CC helpers
   void Update_SR_Register64(Gen::X64Reg val, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
@@ -590,23 +588,13 @@ private:
                           Gen::X64Reg tmp3);
   void dsp_reg_stack_pop(StackRegister stack_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
                          Gen::X64Reg tmp3);
-  void dsp_reg_store_stack(StackRegister stack_reg, Gen::X64Reg host_sreg, Gen::X64Reg tmp1,
+  void dsp_reg_store_stack(StackRegister stack_reg, Gen::OpArg const& source, Gen::X64Reg tmp1,
                            Gen::X64Reg tmp2, Gen::X64Reg tmp3);
   void dsp_reg_load_stack(StackRegister stack_reg, Gen::X64Reg host_dreg, Gen::X64Reg tmp1,
                           Gen::X64Reg tmp2, Gen::X64Reg tmp3);
-  void dsp_reg_store_stack_imm(StackRegister stack_reg, u16 val, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
-                               Gen::X64Reg tmp3);
-  void dsp_op_write_reg(int reg, Gen::X64Reg host_sreg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
-                        Gen::X64Reg tmp3);
-  void dsp_op_write_reg_imm(int reg, u16 val, Gen::X64Reg tmp1, Gen::X64Reg tmp2, Gen::X64Reg tmp3);
-  void dsp_conditional_extend_accum(int reg, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
-  void dsp_conditional_extend_accum_imm(int reg, u16 val, Gen::OpArg const& sr_reg);
-  void dsp_op_read_reg_dont_saturate(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
-                                     Gen::X64Reg tmp1, Gen::X64Reg tmp2,
-                                     Gen::X64Reg tmp3);  // only used in the loop emitter
-  void dsp_op_read_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
-                       Gen::OpArg const& sr_reg, Gen::X64Reg tmp1, Gen::X64Reg tmp2,
-                       Gen::X64Reg tmp3);
+  void dsp_conditional_extend_accum(int reg, Gen::OpArg const& sr_reg, Gen::OpArg const& acm_val);
+  void dsp_op_read_acm_reg(int reg, Gen::X64Reg host_dreg, RegisterExtension extend,
+                           Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
 
   // SDSP memory offset helpers
   Gen::OpArg M_SDSP_pc();
@@ -634,6 +622,9 @@ private:
   static int ir_to_regcache_reg(int reg);
 
   void DecodeInstruction(UDSPInstruction inst);
+  void addGuestLoadStore(IRNode* node, std::vector<IRNode*>& new_nodes);
+  void addGuestLoadStore(IRNode* node, IRBB* bb = NULL);
+  void addGuestLoadStore(IRBB* bb);
   void deparallelize(IRNode* node);
   void deparallelize(IRBB* bb);
   void allocHostRegs();
@@ -743,7 +734,14 @@ private:
 
   // helpers for moving things between vregs and gregs
   void iremit_LoadImmOp(IRInsn const& insn);
-  void iremit_LoadGuestOp(IRInsn const& insn);
+  void iremit_LoadGuestProdOp(IRInsn const& insn);
+  void iremit_LoadGuestFastOp(IRInsn const& insn);
+  void iremit_LoadGuestStackOp(IRInsn const& insn);
+  void iremit_LoadGuestSROp(IRInsn const& insn);
+  void iremit_LoadGuestACMOp(IRInsn const& insn);
+  void iremit_StoreGuestProdOp(IRInsn const& insn);
+  void iremit_StoreGuestStackOp(IRInsn const& insn);
+  void iremit_StoreGuestSROp(IRInsn const& insn);
   void iremit_StoreGuestOp(IRInsn const& insn);
 
   // ******* Information Structs for Emitters *******
@@ -817,7 +815,14 @@ private:
   static IREmitInfo const CheckExceptionsOp;
   // helpers for moving things between vregs and gregs
   static IREmitInfo const LoadImmOp;
-  static IREmitInfo const LoadGuestOp;
+  static IREmitInfo const LoadGuestProdOp;
+  static IREmitInfo const LoadGuestFastOp;
+  static IREmitInfo const LoadGuestStackOp;
+  static IREmitInfo const LoadGuestSROp;
+  static IREmitInfo const LoadGuestACMOp;
+  static IREmitInfo const StoreGuestProdOp;
+  static IREmitInfo const StoreGuestStackOp;
+  static IREmitInfo const StoreGuestSROp;
   static IREmitInfo const StoreGuestOp;
 
   DSPJitIRRegCache m_gpr{*this};

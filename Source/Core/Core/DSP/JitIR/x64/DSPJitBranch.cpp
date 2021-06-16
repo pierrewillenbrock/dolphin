@@ -343,9 +343,9 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
     u16 cnt = insn.inputs[0].oparg.AsImm16().Imm16();
     if (cnt)
     {
-      dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp1, tmp2, tmp3);
-      dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp1, tmp2, tmp3);
-      dsp_reg_store_stack_imm(StackRegister::LoopCounter, cnt, tmp1, tmp2, tmp3);
+      dsp_reg_store_stack(StackRegister::Call, Imm16(loop_start), tmp1, tmp2, tmp3);
+      dsp_reg_store_stack(StackRegister::LoopAddress, Imm16(loop_end), tmp1, tmp2, tmp3);
+      dsp_reg_store_stack(StackRegister::LoopCounter, Imm16(cnt), tmp1, tmp2, tmp3);
 
       MOV(16, M_SDSP_pc(), Imm16(loop_start));
     }
@@ -362,10 +362,9 @@ void DSPEmitterIR::iremit_LoopOp(IRInsn const& insn)
   {
     TEST(16, insn.inputs[0].oparg, insn.inputs[0].oparg);
     FixupBranch cnt = J_CC(CC_Z, true);
-    dsp_reg_store_stack(StackRegister::LoopCounter, insn.inputs[0].oparg.GetSimpleReg(), tmp1, tmp2,
-                        tmp3);
-    dsp_reg_store_stack_imm(StackRegister::Call, loop_start, tmp1, tmp2, tmp3);
-    dsp_reg_store_stack_imm(StackRegister::LoopAddress, loop_end, tmp1, tmp2, tmp3);
+    dsp_reg_store_stack(StackRegister::LoopCounter, insn.inputs[0].oparg, tmp1, tmp2, tmp3);
+    dsp_reg_store_stack(StackRegister::Call, Imm16(loop_start), tmp1, tmp2, tmp3);
+    dsp_reg_store_stack(StackRegister::LoopAddress, Imm16(loop_end), tmp1, tmp2, tmp3);
     MOV(16, M_SDSP_pc(), Imm16(loop_start));
     FixupBranch exit = J(true);
 
@@ -485,8 +484,7 @@ void DSPEmitterIR::irr_call(DSPEmitterIR::IRInsn const& insn)
   X64Reg tmp2 = insn.temps[1].oparg.GetSimpleReg();
   X64Reg tmp3 = insn.temps[2].oparg.GetSimpleReg();
 
-  dsp_reg_store_stack_imm(StackRegister::Call, insn.inputs[2].oparg.AsImm16().Imm16(), tmp1, tmp2,
-                          tmp3);
+  dsp_reg_store_stack(StackRegister::Call, insn.inputs[2].oparg, tmp1, tmp2, tmp3);
   if (insn.inputs[1].oparg.IsImm())
   {
     MOV(16, M_SDSP_pc(), insn.inputs[1].oparg.AsImm16());
