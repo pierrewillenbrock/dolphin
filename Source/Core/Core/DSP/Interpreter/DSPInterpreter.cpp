@@ -253,7 +253,7 @@ bool Interpreter::CheckCondition(u8 condition) const
   const auto IsOverS32 = [this] { return IsSRFlagSet(SR_OVER_S32); };
   const auto IsLess = [this] {
     const auto& state = m_dsp_core.DSPState();
-    return (state.r.sr & SR_OVERFLOW) != (state.r.sr & SR_SIGN);
+    return (!(m_dsp_core.DSPState().r.sr & SR_OVERFLOW) != !(m_dsp_core.DSPState().r.sr & SR_SIGN));
   };
   const auto IsZero = [this] { return IsSRFlagSet(SR_ARITH_ZERO); };
   const auto IsLogicZero = [this] { return IsSRFlagSet(SR_LOGIC_ZERO); };
