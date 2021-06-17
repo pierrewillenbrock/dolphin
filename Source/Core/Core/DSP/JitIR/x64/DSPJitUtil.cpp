@@ -38,7 +38,7 @@ void DSPEmitter::dsp_reg_stack_push(StackRegister stack_reg)
 
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
-  // g_dsp.reg_stack[reg_index][g_dsp.reg_stack_ptrs[reg_index]] = g_dsp.r[DSP_REG_ST0 + reg_index];
+  // g_dsp.reg_stacks[reg_index][g_dsp.reg_stack_ptrs[reg_index]] = g_dsp.r[DSP_REG_ST0 + reg_index];
   MOV(16, R(tmp1), M_SDSP_r_st(reg_index));
   MOVZX(64, 8, RAX, R(AL));
   MOV(64, R(tmp2), ImmPtr(m_dsp_core.DSPState().reg_stacks[reg_index]));
@@ -54,7 +54,7 @@ void DSPEmitter::dsp_reg_stack_pop(StackRegister stack_reg)
 {
   const auto reg_index = static_cast<size_t>(stack_reg);
 
-  // g_dsp.r[DSP_REG_ST0 + reg_index] = g_dsp.reg_stack[reg_index][g_dsp.reg_stack_ptrs[reg_index]];
+  // g_dsp.r[DSP_REG_ST0 + reg_index] = g_dsp.reg_stacks[reg_index][g_dsp.reg_stack_ptrs[reg_index]];
   MOV(8, R(AL), M_SDSP_reg_stack_ptrs(reg_index));
   X64Reg tmp1 = m_gpr.GetFreeXReg();
   X64Reg tmp2 = m_gpr.GetFreeXReg();
