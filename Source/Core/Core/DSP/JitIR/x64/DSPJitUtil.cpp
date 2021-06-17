@@ -185,7 +185,6 @@ void DSPEmitterIR::dsp_conditional_extend_accum_imm(int reg, u16 val)
     // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACH0] = (val & 0x8000) ? 0xFFFF : 0x0000;
     // g_dsp.r[reg - DSP_REG_ACM0 + DSP_REG_ACL0] = 0;
     m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACH0, Imm16((val & 0x8000) ? 0xffff : 0x0000));
-
     m_gpr.WriteReg(reg - DSP_REG_ACM0 + DSP_REG_ACL0, Imm16(0));
     //}
     m_gpr.FlushRegs(c);

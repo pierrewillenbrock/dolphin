@@ -39,32 +39,6 @@ public:
 
   // ******* Parsers *******
   // Ext commands
-  void l(UDSPInstruction opc);
-  void ln(UDSPInstruction opc);
-  void ls(UDSPInstruction opc);
-  void lsn(UDSPInstruction opc);
-  void lsm(UDSPInstruction opc);
-  void lsnm(UDSPInstruction opc);
-  void sl(UDSPInstruction opc);
-  void sln(UDSPInstruction opc);
-  void slm(UDSPInstruction opc);
-  void slnm(UDSPInstruction opc);
-  void s(UDSPInstruction opc);
-  void sn(UDSPInstruction opc);
-  void ld(UDSPInstruction opc);
-  void ldax(UDSPInstruction opc);
-  void ldn(UDSPInstruction opc);
-  void ldaxn(UDSPInstruction opc);
-  void ldm(UDSPInstruction opc);
-  void ldaxm(UDSPInstruction opc);
-  void ldnm(UDSPInstruction opc);
-  void ldaxnm(UDSPInstruction opc);
-  void mv(UDSPInstruction opc);
-  void dr(UDSPInstruction opc);
-  void ir(UDSPInstruction opc);
-  void nr(UDSPInstruction opc);
-  void nop(const UDSPInstruction opc) {}
-
   void ir_l(UDSPInstruction opc);
   void ir_ln(UDSPInstruction opc);
   void ir_ls(UDSPInstruction opc);
@@ -92,23 +66,6 @@ public:
   void ir_nop(const UDSPInstruction opc) {}
 
   // Commands
-  void dar(UDSPInstruction opc);
-  void iar(UDSPInstruction opc);
-  void subarn(UDSPInstruction opc);
-  void addarn(UDSPInstruction opc);
-  void sbclr(UDSPInstruction opc);
-  void sbset(UDSPInstruction opc);
-  void srbith(UDSPInstruction opc);
-  void lri(UDSPInstruction opc);
-  void lris(UDSPInstruction opc);
-  void mrr(UDSPInstruction opc);
-  // NX
-  // 1000 -000 xxxx xxxx
-  // No operation, but can be extended with extended opcode.
-  // This opcode is supposed to do nothing - it's used if you want to use
-  // an opcode extension but not do anything.
-  void nx(UDSPInstruction opc) {}
-
   void ir_dar(UDSPInstruction opc);
   void ir_iar(UDSPInstruction opc);
   void ir_subarn(UDSPInstruction opc);
@@ -119,22 +76,14 @@ public:
   void ir_lri(UDSPInstruction opc);
   void ir_lris(UDSPInstruction opc);
   void ir_mrr(UDSPInstruction opc);
+  // NX
+  // 1000 -000 xxxx xxxx
+  // No operation, but can be extended with extended opcode.
+  // This opcode is supposed to do nothing - it's used if you want to use
+  // an opcode extension but not do anything.
   void ir_nx(UDSPInstruction opc) {}
 
   // Branch
-  void jcc(UDSPInstruction opc);
-  void jmprcc(UDSPInstruction opc);
-  void call(UDSPInstruction opc);
-  void callr(UDSPInstruction opc);
-  void ifcc(UDSPInstruction opc);
-  void ret(UDSPInstruction opc);
-  void rti(UDSPInstruction opc);
-  void halt(UDSPInstruction opc);
-  void loop(UDSPInstruction opc);
-  void loopi(UDSPInstruction opc);
-  void bloop(UDSPInstruction opc);
-  void bloopi(UDSPInstruction opc);
-
   void ir_jcc(UDSPInstruction opc);
   void ir_jmprcc(UDSPInstruction opc);
   void ir_call(UDSPInstruction opc);
@@ -149,24 +98,6 @@ public:
   void ir_bloopi(UDSPInstruction opc);
 
   // Load/Store
-  void srs(UDSPInstruction opc);
-  void lrs(UDSPInstruction opc);
-  void lr(UDSPInstruction opc);
-  void sr(UDSPInstruction opc);
-  void si(UDSPInstruction opc);
-  void lrr(UDSPInstruction opc);
-  void lrrd(UDSPInstruction opc);
-  void lrri(UDSPInstruction opc);
-  void lrrn(UDSPInstruction opc);
-  void srr(UDSPInstruction opc);
-  void srrd(UDSPInstruction opc);
-  void srri(UDSPInstruction opc);
-  void srrn(UDSPInstruction opc);
-  void ilrr(UDSPInstruction opc);
-  void ilrrd(UDSPInstruction opc);
-  void ilrri(UDSPInstruction opc);
-  void ilrrn(UDSPInstruction opc);
-
   void ir_srs(UDSPInstruction opc);
   void ir_lrs(UDSPInstruction opc);
   void ir_lr(UDSPInstruction opc);
@@ -186,60 +117,6 @@ public:
   void ir_ilrrn(UDSPInstruction opc);
 
   // Arithmetic
-  void clr(UDSPInstruction opc);
-  void clrl(UDSPInstruction opc);
-  void andcf(UDSPInstruction opc);
-  void andf(UDSPInstruction opc);
-  void tst(UDSPInstruction opc);
-  void tstaxh(UDSPInstruction opc);
-  void cmp(UDSPInstruction opc);
-  void cmpar(UDSPInstruction opc);
-  void cmpi(UDSPInstruction opc);
-  void cmpis(UDSPInstruction opc);
-  void xorr(UDSPInstruction opc);
-  void andr(UDSPInstruction opc);
-  void orr(UDSPInstruction opc);
-  void andc(UDSPInstruction opc);
-  void orc(UDSPInstruction opc);
-  void xorc(UDSPInstruction opc);
-  void notc(UDSPInstruction opc);
-  void xori(UDSPInstruction opc);
-  void andi(UDSPInstruction opc);
-  void ori(UDSPInstruction opc);
-  void addr(UDSPInstruction opc);
-  void addax(UDSPInstruction opc);
-  void add(UDSPInstruction opc);
-  void addp(UDSPInstruction opc);
-  void addaxl(UDSPInstruction opc);
-  void addi(UDSPInstruction opc);
-  void addis(UDSPInstruction opc);
-  void incm(UDSPInstruction opc);
-  void inc(UDSPInstruction opc);
-  void subr(UDSPInstruction opc);
-  void subax(UDSPInstruction opc);
-  void sub(UDSPInstruction opc);
-  void subp(UDSPInstruction opc);
-  void decm(UDSPInstruction opc);
-  void dec(UDSPInstruction opc);
-  void neg(UDSPInstruction opc);
-  void abs(UDSPInstruction opc);
-  void movr(UDSPInstruction opc);
-  void movax(UDSPInstruction opc);
-  void mov(UDSPInstruction opc);
-  void lsl16(UDSPInstruction opc);
-  void lsr16(UDSPInstruction opc);
-  void asr16(UDSPInstruction opc);
-  void lsl(UDSPInstruction opc);
-  void lsr(UDSPInstruction opc);
-  void asl(UDSPInstruction opc);
-  void asr(UDSPInstruction opc);
-  void lsrn(UDSPInstruction opc);
-  void asrn(UDSPInstruction opc);
-  void lsrnrx(UDSPInstruction opc);
-  void asrnrx(UDSPInstruction opc);
-  void lsrnr(UDSPInstruction opc);
-  void asrnr(UDSPInstruction opc);
-
   void ir_clr(UDSPInstruction opc);
   void ir_clrl(UDSPInstruction opc);
   void ir_andcf(UDSPInstruction opc);
@@ -295,32 +172,6 @@ public:
   void ir_asrnr(UDSPInstruction opc);
 
   // Multipliers
-  void clrp(UDSPInstruction opc);
-  void tstprod(UDSPInstruction opc);
-  void movp(UDSPInstruction opc);
-  void movnp(UDSPInstruction opc);
-  void movpz(UDSPInstruction opc);
-  void addpaxz(UDSPInstruction opc);
-  void mulaxh(UDSPInstruction opc);
-  void mul(UDSPInstruction opc);
-  void mulac(UDSPInstruction opc);
-  void mulmv(UDSPInstruction opc);
-  void mulmvz(UDSPInstruction opc);
-  void mulx(UDSPInstruction opc);
-  void mulxac(UDSPInstruction opc);
-  void mulxmv(UDSPInstruction opc);
-  void mulxmvz(UDSPInstruction opc);
-  void mulc(UDSPInstruction opc);
-  void mulcac(UDSPInstruction opc);
-  void mulcmv(UDSPInstruction opc);
-  void mulcmvz(UDSPInstruction opc);
-  void maddx(UDSPInstruction opc);
-  void msubx(UDSPInstruction opc);
-  void maddc(UDSPInstruction opc);
-  void msubc(UDSPInstruction opc);
-  void madd(UDSPInstruction opc);
-  void msub(UDSPInstruction opc);
-
   void ir_clrp(UDSPInstruction opc);
   void ir_tstprod(UDSPInstruction opc);
   void ir_movp(UDSPInstruction opc);
@@ -695,20 +546,10 @@ private:
 
   void WriteBranchExit();
 
-  void ReJitConditional(UDSPInstruction opc,
-                        void (DSPEmitterIR::*conditional_fn)(UDSPInstruction, Gen::X64Reg tmp1,
-                                                             Gen::X64Reg tmp2),
-                        Gen::X64Reg tmp1, Gen::X64Reg tmp2);
   void IRReJitConditional(u8 cond, DSPEmitterIR::IRInsn const& insn,
                           void (DSPEmitterIR::*conditional_fn)(DSPEmitterIR::IRInsn const& insn,
                                                                Gen::X64Reg tmp1, Gen::X64Reg tmp2),
                           Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void r_jcc(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void r_jmprcc(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void r_call(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void r_callr(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void r_ifcc(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
-  void r_ret(UDSPInstruction opc, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
 
   void irr_ret(IRInsn const& insn, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
   void irr_jmp(IRInsn const& insn, Gen::X64Reg tmp1, Gen::X64Reg tmp2);
@@ -775,11 +616,6 @@ private:
   Gen::OpArg M_SDSP_external_interrupt_waiting();
   Gen::OpArg M_SDSP_r_st(size_t index);
   Gen::OpArg M_SDSP_reg_stack_ptrs(size_t index);
-
-  // Ext command helpers
-  void popExtValueToReg();
-  void pushExtValueFromMem(u16 dreg, u16 sreg);
-  void pushExtValueFromMem2(u16 dreg, u16 sreg);
 
   // Multiplier helpers
   void multiply(Gen::X64Reg dst, Gen::X64Reg mul);
@@ -973,10 +809,6 @@ private:
   std::vector<u16> m_block_size;
 
   u16 m_cycles_left = 0;
-
-  // The index of the last stored ext value (compile time).
-  int m_store_index = -1;
-  int m_store_index2 = -1;
 
   // CALL this to start the dispatcher
   const u8* m_enter_dispatcher;
