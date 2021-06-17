@@ -8,9 +8,9 @@
 
 #include "Common/x64Emitter.h"
 
-namespace DSP::JIT::x64
+namespace DSP::JITIR::x64
 {
-class DSPEmitter;
+class DSPEmitterIR;
 
 enum DSPJitRegSpecial
 {
@@ -33,26 +33,26 @@ enum class RegisterExtension
   None
 };
 
-class DSPJitRegCache
+class DSPJitIRRegCache
 {
 public:
-  explicit DSPJitRegCache(DSPEmitter& emitter);
+  explicit DSPJitIRRegCache(DSPEmitterIR& emitter);
 
   // For branching into multiple control flows
-  DSPJitRegCache(const DSPJitRegCache& cache);
-  DSPJitRegCache& operator=(const DSPJitRegCache& cache);
+  DSPJitIRRegCache(const DSPJitIRRegCache& cache);
+  DSPJitIRRegCache& operator=(const DSPJitIRRegCache& cache);
 
-  ~DSPJitRegCache();
+  ~DSPJitIRRegCache();
 
   // Merge must be done _before_ leaving the code branch, so we can fix
   // up any differences in state
-  void FlushRegs(DSPJitRegCache& cache, bool emit = true);
+  void FlushRegs(DSPJitIRRegCache& cache, bool emit = true);
   /* since some use cases are non-trivial, some examples:
 
      //this does not modify the final state of gpr
      <code using gpr>
      FixupBranch b = JCC();
-       DSPJitRegCache c = gpr;
+       DSPJitIRRegCache c = gpr;
        <code using c>
        gpr.FlushRegs(c);
      SetBranchTarget(b);
@@ -60,7 +60,7 @@ public:
 
      //this does not modify the final state of gpr
      <code using gpr>
-     DSPJitRegCache c = gpr;
+     DSPJitIRRegCache c = gpr;
      FixupBranch b1 = JCC();
        <code using gpr>
        gpr.FlushRegs(c);
@@ -74,7 +74,7 @@ public:
      //this allows gpr to be modified in the second branch
      //and fixes gpr according to the results form in the first branch
      <code using gpr>
-     DSPJitRegCache c = gpr;
+     DSPJitIRRegCache c = gpr;
      FixupBranch b1 = JCC();
        <code using c>
        FixupBranch b2 = JMP();
@@ -87,7 +87,7 @@ public:
      //this does not modify the final state of gpr
      <code using gpr>
      u8* b = GetCodePtr();
-       DSPJitRegCache c = gpr;
+       DSPJitIRRegCache c = gpr;
        <code using gpr>
        gpr.FlushRegs(c);
        JCC(b);
@@ -100,7 +100,7 @@ public:
   // Drop this copy without warning
   void Drop();
 
-  // Prepare state so that another flushed DSPJitRegCache can take over
+  // Prepare state so that another flushed DSPJitIRRegCache can take over
   void FlushRegs();
 
   void LoadRegs(bool emit = true);  // Load statically allocated regs from memory
@@ -174,11 +174,11 @@ private:
   std::array<DynamicReg, 37> m_regs;
   std::array<X64CachedReg, 16> m_xregs;
 
-  DSPEmitter& m_emitter;
+  DSPEmitterIR& m_emitter;
   bool m_is_temporary;
   bool m_is_merged;
 
   int m_use_ctr;
 };
 
-}  // namespace DSP::JIT::x64
+}  // namespace DSP::JITIR::x64

@@ -15,7 +15,7 @@
 
 #include "Core/DSP/DSPCommon.h"
 #include "Core/DSP/Jit/DSPEmitterBase.h"
-#include "Core/DSP/Jit/x64/DSPJitRegCache.h"
+#include "Core/DSP/JitIR/x64/DSPJitRegCache.h"
 
 class PointerWrap;
 
@@ -23,13 +23,13 @@ namespace DSP
 {
 enum class StackRegister;
 
-namespace JIT::x64
+namespace JITIR::x64
 {
-class DSPEmitter final : public JIT::DSPEmitter, public Gen::X64CodeBlock
+class DSPEmitterIR final : public JIT::DSPEmitter, public Gen::X64CodeBlock
 {
 public:
-  explicit DSPEmitter(DSPCore& dsp);
-  ~DSPEmitter() override;
+  explicit DSPEmitterIR(DSPCore& dsp);
+  ~DSPEmitterIR() override;
 
   u16 RunCycles(u16 cycles) override;
   void DoState(PointerWrap& p) override;
@@ -195,10 +195,10 @@ private:
 
   // The emitter emits calls to this function. It's present here
   // within the class itself to allow access to member variables.
-  static void CompileCurrent(DSPEmitter& emitter);
+  static void CompileCurrentIR(DSPEmitterIR& emitter);
 
-  static u16 ReadIFXRegisterHelper(DSPEmitter& emitter, u16 address);
-  static void WriteIFXRegisterHelper(DSPEmitter& emitter, u16 address, u16 value);
+  static u16 ReadIFXRegisterHelper(DSPEmitterIR& emitter, u16 address);
+  static void WriteIFXRegisterHelper(DSPEmitterIR& emitter, u16 address, u16 value);
 
   void EmitInstruction(UDSPInstruction inst);
   void ClearIRAMandDSPJITCodespaceReset();
@@ -214,7 +214,7 @@ private:
   void WriteBranchExit();
   void WriteBlockLink(u16 dest);
 
-  void ReJitConditional(UDSPInstruction opc, void (DSPEmitter::*conditional_fn)(UDSPInstruction));
+  void ReJitConditional(UDSPInstruction opc, void (DSPEmitterIR::*conditional_fn)(UDSPInstruction));
   void r_jcc(UDSPInstruction opc);
   void r_jmprcc(UDSPInstruction opc);
   void r_call(UDSPInstruction opc);
@@ -302,7 +302,7 @@ private:
 
   static constexpr size_t MAX_BLOCKS = 0x10000;
 
-  DSPJitRegCache m_gpr{*this};
+  DSPJitIRRegCache m_gpr{*this};
 
   u16 m_compile_pc;
   u16 m_compile_status_register;
@@ -329,5 +329,5 @@ private:
   DSPCore& m_dsp_core;
 };
 
-}  // namespace JIT::x64
+}  // namespace JITIR::x64
 }  // namespace DSP

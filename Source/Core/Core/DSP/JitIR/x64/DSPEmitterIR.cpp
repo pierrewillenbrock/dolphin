@@ -2,7 +2,7 @@
 // Licensed under GPLv2+
 // Refer to the license.txt file included.
 
-#include "Core/DSP/Jit/x64/DSPEmitter.h"
+#include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -20,17 +20,17 @@
 #include "Core/DSP/DSPTables.h"
 #include "Core/DSP/Interpreter/DSPIntTables.h"
 #include "Core/DSP/Interpreter/DSPInterpreter.h"
-#include "Core/DSP/Jit/x64/DSPJitTables.h"
+#include "Core/DSP/JitIR/x64/DSPJitTables.h"
 
 using namespace Gen;
 
-namespace DSP::JIT::x64
+namespace DSP::JITIR::x64
 {
 constexpr size_t COMPILED_CODE_SIZE = 2097152;
 constexpr size_t MAX_BLOCK_SIZE = 250;
 constexpr u16 DSP_IDLE_SKIP_CYCLES = 0x1000;
 
-DSPEmitter::DSPEmitter(DSPCore& dsp)
+DSPEmitterIR::DSPEmitterIR(DSPCore& dsp)
     : m_compile_status_register{SR_INT_ENABLE | SR_EXT_INT_ENABLE}, m_blocks(MAX_BLOCKS),
       m_block_size(MAX_BLOCKS), m_block_links(MAX_BLOCKS), m_dsp_core{dsp}
 {
@@ -44,12 +44,12 @@ DSPEmitter::DSPEmitter(DSPCore& dsp)
   std::fill(m_blocks.begin(), m_blocks.end(), (DSPCompiledCode)m_stub_entry_point);
 }
 
-DSPEmitter::~DSPEmitter()
+DSPEmitterIR::~DSPEmitterIR()
 {
   FreeCodeSpace();
 }
 
-u16 DSPEmitter::RunCycles(u16 cycles)
+u16 DSPEmitterIR::RunCycles(u16 cycles)
 {
   if (m_dsp_core.DSPState().external_interrupt_waiting.exchange(false, std::memory_order_acquire))
   {
@@ -67,12 +67,12 @@ u16 DSPEmitter::RunCycles(u16 cycles)
   return m_cycles_left;
 }
 
-void DSPEmitter::DoState(PointerWrap& p)
+void DSPEmitterIR::DoState(PointerWrap& p)
 {
   p.Do(m_cycles_left);
 }
 
-void DSPEmitter::ClearIRAM()
+void DSPEmitterIR::ClearIRAM()
 {
   for (size_t i = 0; i < DSP_IRAM_SIZE; i++)
   {
@@ -84,7 +84,7 @@ void DSPEmitter::ClearIRAM()
   m_dsp_core.DSPState().reset_dspjit_codespace = true;
 }
 
-void DSPEmitter::ClearIRAMandDSPJITCodespaceReset()
+void DSPEmitterIR::ClearIRAMandDSPJITCodespaceReset()
 {
   ClearCodeSpace();
   CompileDispatcher();
@@ -106,7 +106,7 @@ static void CheckExceptionsThunk(DSPCore& dsp)
 }
 
 // Must go out of block if exception is detected
-void DSPEmitter::checkExceptions(u32 retval)
+void DSPEmitterIR::checkExceptions(u32 retval)
 {
   // Check for interrupts and exceptions
   TEST(8, M_SDSP_exceptions(), Imm8(0xff));
@@ -114,7 +114,7 @@ void DSPEmitter::checkExceptions(u32 retval)
 
   MOV(16, M_SDSP_pc(), Imm16(m_compile_pc));
 
-  DSPJitRegCache c(m_gpr);
+  DSPJitIRRegCache c(m_gpr);
   m_gpr.SaveRegs();
   ABI_CallFunctionP(CheckExceptionsThunk, &m_dsp_core);
   MOV(32, R(EAX), Imm32(retval));
@@ -125,7 +125,7 @@ void DSPEmitter::checkExceptions(u32 retval)
   SetJumpTarget(skipCheck);
 }
 
-bool DSPEmitter::FlagsNeeded() const
+bool DSPEmitterIR::FlagsNeeded() const
 {
   const auto& analyzer = m_dsp_core.DSPState().GetAnalyzer();
 
@@ -137,7 +137,7 @@ static void FallbackThunk(Interpreter::Interpreter& interpreter, UDSPInstruction
   (interpreter.*Interpreter::GetOp(inst))(inst);
 }
 
-void DSPEmitter::FallBackToInterpreter(UDSPInstruction inst)
+void DSPEmitterIR::FallBackToInterpreter(UDSPInstruction inst)
 {
   const DSPOPCTemplate* const op_template = GetOpTemplate(inst);
 
@@ -169,7 +169,7 @@ static void ApplyWriteBackLogThunk(Interpreter::Interpreter& interpreter)
   interpreter.ApplyWriteBackLog();
 }
 
-void DSPEmitter::EmitInstruction(UDSPInstruction inst)
+void DSPEmitterIR::EmitInstruction(UDSPInstruction inst)
 {
   const DSPOPCTemplate* const op_template = GetOpTemplate(inst);
   bool ext_is_jit = false;
@@ -177,11 +177,11 @@ void DSPEmitter::EmitInstruction(UDSPInstruction inst)
   // Call extended
   if (op_template->extended)
   {
-    const auto jit_function = GetExtOp(inst);
+    const auto jit_decode_function = GetExtOp(inst);
 
-    if (jit_function)
+    if (jit_decode_function)
     {
-      (this->*jit_function)(inst);
+      (this->*jit_decode_function)(inst);
       ext_is_jit = true;
     }
     else
@@ -196,10 +196,10 @@ void DSPEmitter::EmitInstruction(UDSPInstruction inst)
   }
 
   // Main instruction
-  const auto jit_function = GetOp(inst);
-  if (jit_function)
+  const auto jit_decode_function = GetOp(inst);
+  if (jit_decode_function)
   {
-    (this->*jit_function)(inst);
+    (this->*jit_decode_function)(inst);
   }
   else
   {
@@ -225,7 +225,7 @@ void DSPEmitter::EmitInstruction(UDSPInstruction inst)
   }
 }
 
-void DSPEmitter::Compile(u16 start_addr)
+void DSPEmitterIR::Compile(u16 start_addr)
 {
   // Remember the current block address for later
   m_start_address = start_addr;
@@ -280,7 +280,7 @@ void DSPEmitter::Compile(u16 start_addr)
 
       // These functions branch and therefore only need to be called in the
       // end of each block and in this order
-      DSPJitRegCache c(m_gpr);
+      DSPJitIRRegCache c(m_gpr);
       HandleLoop();
       m_gpr.SaveRegs();
       if (!Host::OnThread() && analyzer.IsIdleSkip(start_addr))
@@ -308,15 +308,15 @@ void DSPEmitter::Compile(u16 start_addr)
         break;
       }
 
-      const auto jit_function = GetOp(inst);
-      if (!jit_function)
+      const auto jit_decode_function = GetOp(inst);
+      if (!jit_decode_function)
       {
         // look at g_dsp.pc if we actually branched
         MOV(16, R(AX), M_SDSP_pc());
         CMP(16, R(AX), Imm16(m_compile_pc));
         FixupBranch rNoBranch = J_CC(CC_Z, true);
 
-        DSPJitRegCache c(m_gpr);
+        DSPJitIRRegCache c(m_gpr);
         // don't update g_dsp.pc -- the branch insn already did
         m_gpr.SaveRegs();
         if (!Host::OnThread() && analyzer.IsIdleSkip(start_addr))
@@ -393,7 +393,7 @@ void DSPEmitter::Compile(u16 start_addr)
   JMP(m_return_dispatcher, true);
 }
 
-void DSPEmitter::CompileCurrent(DSPEmitter& emitter)
+void DSPEmitterIR::CompileCurrentIR(DSPEmitterIR& emitter)
 {
   emitter.Compile(emitter.m_dsp_core.DSPState().pc);
 
@@ -415,17 +415,17 @@ void DSPEmitter::CompileCurrent(DSPEmitter& emitter)
   }
 }
 
-const u8* DSPEmitter::CompileStub()
+const u8* DSPEmitterIR::CompileStub()
 {
   const u8* entryPoint = AlignCode16();
   MOV(64, R(ABI_PARAM1), Imm64(reinterpret_cast<u64>(this)));
-  ABI_CallFunction(CompileCurrent);
+  ABI_CallFunction(CompileCurrentIR);
   XOR(32, R(EAX), R(EAX));  // Return 0 cycles executed
   JMP(m_return_dispatcher);
   return entryPoint;
 }
 
-void DSPEmitter::CompileDispatcher()
+void DSPEmitterIR::CompileDispatcher()
 {
   m_enter_dispatcher = AlignCode16();
   // We don't use floating point (high 16 bits).
@@ -471,22 +471,22 @@ void DSPEmitter::CompileDispatcher()
   RET();
 }
 
-Gen::OpArg DSPEmitter::M_SDSP_pc()
+Gen::OpArg DSPEmitterIR::M_SDSP_pc()
 {
   return MDisp(R15, static_cast<int>(offsetof(SDSP, pc)));
 }
 
-Gen::OpArg DSPEmitter::M_SDSP_exceptions()
+Gen::OpArg DSPEmitterIR::M_SDSP_exceptions()
 {
   return MDisp(R15, static_cast<int>(offsetof(SDSP, exceptions)));
 }
 
-Gen::OpArg DSPEmitter::M_SDSP_cr()
+Gen::OpArg DSPEmitterIR::M_SDSP_cr()
 {
   return MDisp(R15, static_cast<int>(offsetof(SDSP, cr)));
 }
 
-Gen::OpArg DSPEmitter::M_SDSP_external_interrupt_waiting()
+Gen::OpArg DSPEmitterIR::M_SDSP_external_interrupt_waiting()
 {
   static_assert(decltype(SDSP::external_interrupt_waiting)::is_always_lock_free &&
                 sizeof(SDSP::external_interrupt_waiting) == sizeof(u8));
@@ -494,15 +494,15 @@ Gen::OpArg DSPEmitter::M_SDSP_external_interrupt_waiting()
   return MDisp(R15, static_cast<int>(offsetof(SDSP, external_interrupt_waiting)));
 }
 
-Gen::OpArg DSPEmitter::M_SDSP_r_st(size_t index)
+Gen::OpArg DSPEmitterIR::M_SDSP_r_st(size_t index)
 {
   return MDisp(R15, static_cast<int>(offsetof(SDSP, r.st) + sizeof(SDSP::r.st[0]) * index));
 }
 
-Gen::OpArg DSPEmitter::M_SDSP_reg_stack_ptrs(size_t index)
+Gen::OpArg DSPEmitterIR::M_SDSP_reg_stack_ptrs(size_t index)
 {
   return MDisp(R15, static_cast<int>(offsetof(SDSP, reg_stack_ptrs) +
                                      sizeof(SDSP::reg_stack_ptrs[0]) * index));
 }
 
-}  // namespace DSP::JIT::x64
+}  // namespace DSP::JITIR::x64

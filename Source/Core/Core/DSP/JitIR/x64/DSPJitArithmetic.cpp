@@ -7,18 +7,18 @@
 #include "Common/CommonTypes.h"
 
 #include "Core/DSP/DSPCore.h"
-#include "Core/DSP/Jit/x64/DSPEmitter.h"
+#include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
 
 using namespace Gen;
 
-namespace DSP::JIT::x64
+namespace DSP::JITIR::x64
 {
 // CLR $acR
 // 1000 r001 xxxx xxxx
 // Clears accumulator $acR
 //
 // flags out: --10 0100
-void DSPEmitter::clr(const UDSPInstruction opc)
+void DSPEmitterIR::clr(const UDSPInstruction opc)
 {
   u8 reg = (opc >> 11) & 0x1;
   //	dsp_set_long_acc(reg, 0);
@@ -36,7 +36,7 @@ void DSPEmitter::clr(const UDSPInstruction opc)
 // Clears (and rounds!) $acR.l - low 16 bits of accumulator $acR.
 //
 // flags out: --xx xx00
-void DSPEmitter::clrl(const UDSPInstruction opc)
+void DSPEmitterIR::clrl(const UDSPInstruction opc)
 {
   u8 reg = (opc >> 8) & 0x1;
   //	s64 acc = dsp_round_long_acc(dsp_get_long_acc(reg));
@@ -60,7 +60,7 @@ void DSPEmitter::clrl(const UDSPInstruction opc)
 // accumulator mid part $acD.m with immediate value I is equal I.
 //
 // flags out: -x-- ----
-void DSPEmitter::andcf(const UDSPInstruction opc)
+void DSPEmitterIR::andcf(const UDSPInstruction opc)
 {
   if (FlagsNeeded())
   {
@@ -95,7 +95,7 @@ void DSPEmitter::andcf(const UDSPInstruction opc)
 // immediate value 0.
 //
 // flags out: -x-- ----
-void DSPEmitter::andf(const UDSPInstruction opc)
+void DSPEmitterIR::andf(const UDSPInstruction opc)
 {
   if (FlagsNeeded())
   {
@@ -128,7 +128,7 @@ void DSPEmitter::andf(const UDSPInstruction opc)
 // Test accumulator %acR.
 //
 // flags out: --xx xx00
-void DSPEmitter::tst(const UDSPInstruction opc)
+void DSPEmitterIR::tst(const UDSPInstruction opc)
 {
   if (FlagsNeeded())
   {
@@ -145,7 +145,7 @@ void DSPEmitter::tst(const UDSPInstruction opc)
 // Test high part of secondary accumulator $axR.h.
 //
 // flags out: --x0 xx00
-void DSPEmitter::tstaxh(const UDSPInstruction opc)
+void DSPEmitterIR::tstaxh(const UDSPInstruction opc)
 {
   if (FlagsNeeded())
   {
@@ -164,7 +164,7 @@ void DSPEmitter::tstaxh(const UDSPInstruction opc)
 // Compares accumulator $ac0 with accumulator $ac1.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::cmp(const UDSPInstruction opc)
+void DSPEmitterIR::cmp(const UDSPInstruction opc)
 {
   if (FlagsNeeded())
   {
@@ -190,7 +190,7 @@ void DSPEmitter::cmp(const UDSPInstruction opc)
 // Not described by Duddie's doc - at least not as a separate instruction.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::cmpar(const UDSPInstruction opc)
+void DSPEmitterIR::cmpar(const UDSPInstruction opc)
 {
   if (FlagsNeeded())
   {
@@ -221,7 +221,7 @@ void DSPEmitter::cmpar(const UDSPInstruction opc)
 // Although flags are being set regarding whole accumulator register.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::cmpi(const UDSPInstruction opc)
+void DSPEmitterIR::cmpi(const UDSPInstruction opc)
 {
   if (FlagsNeeded())
   {
@@ -250,7 +250,7 @@ void DSPEmitter::cmpi(const UDSPInstruction opc)
 // $acD.hm and computing flags based on whole accumulator $acD.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::cmpis(const UDSPInstruction opc)
+void DSPEmitterIR::cmpis(const UDSPInstruction opc)
 {
   if (FlagsNeeded())
   {
@@ -280,7 +280,7 @@ void DSPEmitter::cmpis(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::xorr(const UDSPInstruction opc)
+void DSPEmitterIR::xorr(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
@@ -305,7 +305,7 @@ void DSPEmitter::xorr(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::andr(const UDSPInstruction opc)
+void DSPEmitterIR::andr(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
@@ -330,7 +330,7 @@ void DSPEmitter::andr(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::orr(const UDSPInstruction opc)
+void DSPEmitterIR::orr(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
@@ -355,7 +355,7 @@ void DSPEmitter::orr(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::andc(const UDSPInstruction opc)
+void DSPEmitterIR::andc(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] & g_dsp.r.acm[1 - dreg];
@@ -379,7 +379,7 @@ void DSPEmitter::andc(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::orc(const UDSPInstruction opc)
+void DSPEmitterIR::orc(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] | g_dsp.r.acm[1 - dreg];
@@ -402,7 +402,7 @@ void DSPEmitter::orc(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::xorc(const UDSPInstruction opc)
+void DSPEmitterIR::xorc(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] ^ g_dsp.r.acm[1 - dreg];
@@ -425,7 +425,7 @@ void DSPEmitter::xorc(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::notc(const UDSPInstruction opc)
+void DSPEmitterIR::notc(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u16 accm = g_dsp.r.acm[dreg] ^ 0xffff;
@@ -448,7 +448,7 @@ void DSPEmitter::notc(const UDSPInstruction opc)
 // immediate value I.
 //
 // flags out: --xx xx00
-void DSPEmitter::xori(const UDSPInstruction opc)
+void DSPEmitterIR::xori(const UDSPInstruction opc)
 {
   const u8 reg = (opc >> 8) & 0x1;
   //	u16 imm = dsp_fetch_code();
@@ -471,7 +471,7 @@ void DSPEmitter::xori(const UDSPInstruction opc)
 // Logic AND of accumulator mid part $acD.m with immediate value I.
 //
 // flags out: --xx xx00
-void DSPEmitter::andi(const UDSPInstruction opc)
+void DSPEmitterIR::andi(const UDSPInstruction opc)
 {
   const u8 reg = (opc >> 8) & 0x1;
   //	u16 imm = dsp_fetch_code();
@@ -494,7 +494,7 @@ void DSPEmitter::andi(const UDSPInstruction opc)
 // Logic OR of accumulator mid part $acD.m with immediate value I.
 //
 // flags out: --xx xx00
-void DSPEmitter::ori(const UDSPInstruction opc)
+void DSPEmitterIR::ori(const UDSPInstruction opc)
 {
   const u8 reg = (opc >> 8) & 0x1;
   //	u16 imm = dsp_fetch_code();
@@ -518,7 +518,7 @@ void DSPEmitter::ori(const UDSPInstruction opc)
 // Adds register $axS.L to accumulator $acD.M register.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::addr(const UDSPInstruction opc)
+void DSPEmitterIR::addr(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = ((opc >> 9) & 0x3) + DSP_REG_AXL0;
@@ -553,7 +553,7 @@ void DSPEmitter::addr(const UDSPInstruction opc)
 // Adds secondary accumulator $axS to accumulator register $acD.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::addax(const UDSPInstruction opc)
+void DSPEmitterIR::addax(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
@@ -587,7 +587,7 @@ void DSPEmitter::addax(const UDSPInstruction opc)
 // Adds accumulator $ac(1-D) to accumulator register $acD.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::add(const UDSPInstruction opc)
+void DSPEmitterIR::add(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
 
@@ -620,7 +620,7 @@ void DSPEmitter::add(const UDSPInstruction opc)
 // Adds product register to accumulator register.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::addp(const UDSPInstruction opc)
+void DSPEmitterIR::addp(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
 
@@ -654,7 +654,7 @@ void DSPEmitter::addp(const UDSPInstruction opc)
 // should be unsigned values!!
 //
 // flags out: x-xx xxxx
-void DSPEmitter::addaxl(const UDSPInstruction opc)
+void DSPEmitterIR::addaxl(const UDSPInstruction opc)
 {
   u8 sreg = (opc >> 9) & 0x1;
   u8 dreg = (opc >> 8) & 0x1;
@@ -690,7 +690,7 @@ void DSPEmitter::addaxl(const UDSPInstruction opc)
 // Adds immediate (16-bit sign extended) to mid accumulator $acD.hm.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::addi(const UDSPInstruction opc)
+void DSPEmitterIR::addi(const UDSPInstruction opc)
 {
   u8 areg = (opc >> 8) & 0x1;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
@@ -724,7 +724,7 @@ void DSPEmitter::addi(const UDSPInstruction opc)
 // Adds short immediate (8-bit sign extended) to mid accumulator $acD.hm.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::addis(const UDSPInstruction opc)
+void DSPEmitterIR::addis(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
 
@@ -759,7 +759,7 @@ void DSPEmitter::addis(const UDSPInstruction opc)
 // Increment 24-bit mid-accumulator $acsD.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::incm(const UDSPInstruction opc)
+void DSPEmitterIR::incm(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   s64 subtract = 0x10000;
@@ -790,7 +790,7 @@ void DSPEmitter::incm(const UDSPInstruction opc)
 // Increment accumulator $acD.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::inc(const UDSPInstruction opc)
+void DSPEmitterIR::inc(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
@@ -822,7 +822,7 @@ void DSPEmitter::inc(const UDSPInstruction opc)
 // Subtracts register $axS.L from accumulator $acD.M register.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::subr(const UDSPInstruction opc)
+void DSPEmitterIR::subr(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = ((opc >> 9) & 0x3) + DSP_REG_AXL0;
@@ -859,7 +859,7 @@ void DSPEmitter::subr(const UDSPInstruction opc)
 // Subtracts secondary accumulator $axS from accumulator register $acD.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::subax(const UDSPInstruction opc)
+void DSPEmitterIR::subax(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
@@ -894,7 +894,7 @@ void DSPEmitter::subax(const UDSPInstruction opc)
 // Subtracts accumulator $ac(1-D) from accumulator register $acD.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::sub(const UDSPInstruction opc)
+void DSPEmitterIR::sub(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
@@ -927,7 +927,7 @@ void DSPEmitter::sub(const UDSPInstruction opc)
 // Subtracts product register from accumulator register.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::subp(const UDSPInstruction opc)
+void DSPEmitterIR::subp(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
@@ -960,7 +960,7 @@ void DSPEmitter::subp(const UDSPInstruction opc)
 // Decrement 24-bit mid-accumulator $acsD.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::decm(const UDSPInstruction opc)
+void DSPEmitterIR::decm(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x01;
   s64 subtract = 0x10000;
@@ -991,7 +991,7 @@ void DSPEmitter::decm(const UDSPInstruction opc)
 // Decrement accumulator $acD.
 //
 // flags out: x-xx xxxx
-void DSPEmitter::dec(const UDSPInstruction opc)
+void DSPEmitterIR::dec(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x01;
   X64Reg tmp1 = m_gpr.GetFreeXReg();
@@ -1023,7 +1023,7 @@ void DSPEmitter::dec(const UDSPInstruction opc)
 // Negate accumulator $acD.
 //
 // flags out: --xx xx00
-void DSPEmitter::neg(const UDSPInstruction opc)
+void DSPEmitterIR::neg(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	s64 acc = dsp_get_long_acc(dreg);
@@ -1044,7 +1044,7 @@ void DSPEmitter::neg(const UDSPInstruction opc)
 // absolute value of $acD
 //
 // flags out: --xx xx00
-void DSPEmitter::abs(const UDSPInstruction opc)
+void DSPEmitterIR::abs(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 11) & 0x1;
 
@@ -1071,7 +1071,7 @@ void DSPEmitter::abs(const UDSPInstruction opc)
 // TODO: Check what happens to acD.h.
 //
 // flags out: --xx xx00
-void DSPEmitter::movr(const UDSPInstruction opc)
+void DSPEmitterIR::movr(const UDSPInstruction opc)
 {
   u8 areg = (opc >> 8) & 0x1;
   u8 sreg = ((opc >> 9) & 0x3) + DSP_REG_AXL0;
@@ -1094,7 +1094,7 @@ void DSPEmitter::movr(const UDSPInstruction opc)
 // Moves secondary accumulator $axS to accumulator $axD.
 //
 // flags out: --xx xx00
-void DSPEmitter::movax(const UDSPInstruction opc)
+void DSPEmitterIR::movax(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
@@ -1115,7 +1115,7 @@ void DSPEmitter::movax(const UDSPInstruction opc)
 // Moves accumulator $ax(1-D) to accumulator $axD.
 //
 // flags out: --x0 xx00
-void DSPEmitter::mov(const UDSPInstruction opc)
+void DSPEmitterIR::mov(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   //	u64 acc = dsp_get_long_acc(1 - dreg);
@@ -1136,7 +1136,7 @@ void DSPEmitter::mov(const UDSPInstruction opc)
 // Logically shifts left accumulator $acR by 16.
 //
 // flags out: --xx xx00
-void DSPEmitter::lsl16(const UDSPInstruction opc)
+void DSPEmitterIR::lsl16(const UDSPInstruction opc)
 {
   u8 areg = (opc >> 8) & 0x1;
   //	s64 acc = dsp_get_long_acc(areg);
@@ -1157,7 +1157,7 @@ void DSPEmitter::lsl16(const UDSPInstruction opc)
 // Logically shifts right accumulator $acR by 16.
 //
 // flags out: --xx xx00
-void DSPEmitter::lsr16(const UDSPInstruction opc)
+void DSPEmitterIR::lsr16(const UDSPInstruction opc)
 {
   u8 areg = (opc >> 8) & 0x1;
 
@@ -1182,7 +1182,7 @@ void DSPEmitter::lsr16(const UDSPInstruction opc)
 // Arithmetically shifts right accumulator $acR by 16.
 //
 // flags out: --xx xx00
-void DSPEmitter::asr16(const UDSPInstruction opc)
+void DSPEmitterIR::asr16(const UDSPInstruction opc)
 {
   u8 areg = (opc >> 11) & 0x1;
 
@@ -1204,7 +1204,7 @@ void DSPEmitter::asr16(const UDSPInstruction opc)
 // Logically shifts left accumulator $acR by number specified by value I.
 //
 // flags out: --xx xx00
-void DSPEmitter::lsl(const UDSPInstruction opc)
+void DSPEmitterIR::lsl(const UDSPInstruction opc)
 {
   u8 rreg = (opc >> 8) & 0x01;
   u16 shift = opc & 0x3f;
@@ -1229,7 +1229,7 @@ void DSPEmitter::lsl(const UDSPInstruction opc)
 // calculated by negating sign extended bits 0-6.
 //
 // flags out: --xx xx00
-void DSPEmitter::lsr(const UDSPInstruction opc)
+void DSPEmitterIR::lsr(const UDSPInstruction opc)
 {
   u8 rreg = (opc >> 8) & 0x01;
   u16 shift;
@@ -1264,7 +1264,7 @@ void DSPEmitter::lsr(const UDSPInstruction opc)
 // Logically shifts left accumulator $acR by number specified by value I.
 //
 // flags out: --xx xx00
-void DSPEmitter::asl(const UDSPInstruction opc)
+void DSPEmitterIR::asl(const UDSPInstruction opc)
 {
   u8 rreg = (opc >> 8) & 0x01;
   u16 shift = opc & 0x3f;
@@ -1287,7 +1287,7 @@ void DSPEmitter::asl(const UDSPInstruction opc)
 // value calculated by negating sign extended bits 0-6.
 //
 // flags out: --xx xx00
-void DSPEmitter::asr(const UDSPInstruction opc)
+void DSPEmitterIR::asr(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x01;
   u16 shift;
@@ -1318,7 +1318,7 @@ void DSPEmitter::asr(const UDSPInstruction opc)
 // (if value negative, becomes left shift).
 //
 // flags out: --xx xx00
-void DSPEmitter::lsrn(const UDSPInstruction opc)
+void DSPEmitterIR::lsrn(const UDSPInstruction opc)
 {
   //	s16 shift;
   //	u16 accm = (u16)dsp_get_acc_m(1);
@@ -1380,7 +1380,7 @@ void DSPEmitter::lsrn(const UDSPInstruction opc)
 // (if value negative, becomes left shift).
 //
 // flags out: --xx xx00
-void DSPEmitter::asrn(const UDSPInstruction opc)
+void DSPEmitterIR::asrn(const UDSPInstruction opc)
 {
   //	s16 shift;
   //	u16 accm = (u16)dsp_get_acc_m(1);
@@ -1437,7 +1437,7 @@ void DSPEmitter::asrn(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::lsrnrx(const UDSPInstruction opc)
+void DSPEmitterIR::lsrnrx(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
@@ -1500,7 +1500,7 @@ void DSPEmitter::lsrnrx(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::asrnrx(const UDSPInstruction opc)
+void DSPEmitterIR::asrnrx(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
   u8 sreg = (opc >> 9) & 0x1;
@@ -1557,7 +1557,7 @@ void DSPEmitter::asrnrx(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::lsrnr(const UDSPInstruction opc)
+void DSPEmitterIR::lsrnr(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
 
@@ -1615,7 +1615,7 @@ void DSPEmitter::lsrnr(const UDSPInstruction opc)
 // x = extension (7 bits!!)
 //
 // flags out: --xx xx00
-void DSPEmitter::asrnr(const UDSPInstruction opc)
+void DSPEmitterIR::asrnr(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 8) & 0x1;
 
@@ -1664,4 +1664,4 @@ void DSPEmitter::asrnr(const UDSPInstruction opc)
   }
 }
 
-}  // namespace DSP::JIT::x64
+}  // namespace DSP::JITIR::x64

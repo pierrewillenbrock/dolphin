@@ -5,15 +5,15 @@
 // Additional copyrights go to Duddie and Tratax (c) 2004
 
 #include "Core/DSP/DSPCore.h"
-#include "Core/DSP/Jit/x64/DSPEmitter.h"
+#include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
 
 using namespace Gen;
 
-namespace DSP::JIT::x64
+namespace DSP::JITIR::x64
 {
 // In: val: s64 _Value
 // Clobbers scratch
-void DSPEmitter::Update_SR_Register(Gen::X64Reg val, Gen::X64Reg scratch)
+void DSPEmitterIR::Update_SR_Register(Gen::X64Reg val, Gen::X64Reg scratch)
 {
   ASSERT(val != scratch);
 
@@ -57,7 +57,7 @@ void DSPEmitter::Update_SR_Register(Gen::X64Reg val, Gen::X64Reg scratch)
 
 // In: val: s64 _Value
 // Clobbers scratch
-void DSPEmitter::Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg scratch)
+void DSPEmitterIR::Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg scratch)
 {
   //	g_dsp.r[DSP_REG_SR] &= ~SR_CMP_MASK;
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
@@ -71,7 +71,7 @@ void DSPEmitter::Update_SR_Register64(Gen::X64Reg val, Gen::X64Reg scratch)
 // In: RDX: value that was added/negative of value that was subtracted
 // clobbers (new_val), (old_val), RDX
 // modifies SR bits 0, 1, 2, 3, 4, 5, 7, fixed bits: none
-void DSPEmitter::Update_SR_Register64_Carry(X64Reg new_val, X64Reg old_val, bool subtraction)
+void DSPEmitterIR::Update_SR_Register64_Carry(X64Reg new_val, X64Reg old_val, bool subtraction)
 {
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   //	g_dsp.r[DSP_REG_SR] &= ~SR_CMP_MASK;
@@ -103,7 +103,7 @@ void DSPEmitter::Update_SR_Register64_Carry(X64Reg new_val, X64Reg old_val, bool
 }
 
 // In: RAX: s64 _Value
-void DSPEmitter::Update_SR_Register16(X64Reg val)
+void DSPEmitterIR::Update_SR_Register16(X64Reg val)
 {
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
   AND(16, sr_reg, Imm16(~SR_CMP_MASK));
@@ -140,7 +140,7 @@ void DSPEmitter::Update_SR_Register16(X64Reg val)
 // In: (val): s64 _Value
 // In: RCX: s64 new accumulator value
 // modifies SR bits 0, 1, 2, 3, 4, 5, fixed bits: 0: 0, 1: 0
-void DSPEmitter::Update_SR_Register16_OverS32(Gen::X64Reg val)
+void DSPEmitterIR::Update_SR_Register16_OverS32(Gen::X64Reg val)
 {
   Update_SR_Register16(val);
 
@@ -160,4 +160,4 @@ void DSPEmitter::Update_SR_Register16_OverS32(Gen::X64Reg val)
   m_gpr.PutReg(DSP_REG_SR);
 }
 
-}  // namespace DSP::JIT::x64
+}  // namespace DSP::JITIR::x64

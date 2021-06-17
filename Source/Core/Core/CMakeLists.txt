@@ -496,6 +496,17 @@ if(_M_X86)
     DSP/Jit/x64/DSPJitTables.cpp
     DSP/Jit/x64/DSPJitTables.h
     DSP/Jit/x64/DSPJitUtil.cpp
+    DSP/JitIR/x64/DSPEmitterIR.cpp
+    DSP/JitIR/x64/DSPJitRegCache.cpp
+    DSP/JitIR/x64/DSPJitExtOps.cpp
+    DSP/JitIR/x64/DSPJitBranch.cpp
+    DSP/JitIR/x64/DSPJitCCUtil.cpp
+    DSP/JitIR/x64/DSPJitArithmetic.cpp
+    DSP/JitIR/x64/DSPJitLoadStore.cpp
+    DSP/JitIR/x64/DSPJitMisc.cpp
+    DSP/JitIR/x64/DSPJitMultiplier.cpp
+    DSP/JitIR/x64/DSPJitTables.cpp
+    DSP/JitIR/x64/DSPJitUtil.cpp
     PowerPC/Jit64/Jit.cpp
     PowerPC/Jit64/Jit.h
     PowerPC/Jit64/Jit64_Tables.cpp

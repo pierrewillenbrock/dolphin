@@ -5,16 +5,16 @@
 #include "Common/CommonTypes.h"
 
 #include "Core/DSP/DSPCore.h"
-#include "Core/DSP/Jit/x64/DSPEmitter.h"
+#include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
 
 using namespace Gen;
 
-namespace DSP::JIT::x64
+namespace DSP::JITIR::x64
 {
 // MRR $D, $S
 // 0001 11dd ddds ssss
 // Move value from register $S to register $D.
-void DSPEmitter::mrr(const UDSPInstruction opc)
+void DSPEmitterIR::mrr(const UDSPInstruction opc)
 {
   u8 sreg = opc & 0x1f;
   u8 dreg = (opc >> 5) & 0x1f;
@@ -33,7 +33,7 @@ void DSPEmitter::mrr(const UDSPInstruction opc)
 // register, has a different behaviour in S40 mode if loaded to AC0.M: The
 // value gets sign extended to the whole accumulator! This does not happen in
 // S16 mode.
-void DSPEmitter::lri(const UDSPInstruction opc)
+void DSPEmitterIR::lri(const UDSPInstruction opc)
 {
   const u8 reg = opc & 0x1F;
   const u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
@@ -44,7 +44,7 @@ void DSPEmitter::lri(const UDSPInstruction opc)
 // LRIS $(0x18+D), #I
 // 0000 1ddd iiii iiii
 // Load immediate value I (8-bit sign extended) to accumulator register.
-void DSPEmitter::lris(const UDSPInstruction opc)
+void DSPEmitterIR::lris(const UDSPInstruction opc)
 {
   u8 reg = ((opc >> 8) & 0x7) + DSP_REG_AXL0;
   u16 imm = (s8)opc;
@@ -59,7 +59,7 @@ void DSPEmitter::lris(const UDSPInstruction opc)
 // No operation, but can be extended with extended opcode.
 // This opcode is supposed to do nothing - it's used if you want to use
 // an opcode extension but not do anything. At least according to duddie.
-void DSPEmitter::nx(const UDSPInstruction opc)
+void DSPEmitterIR::nx(const UDSPInstruction opc)
 {
 }
 
@@ -68,7 +68,7 @@ void DSPEmitter::nx(const UDSPInstruction opc)
 // DAR $arD
 // 0000 0000 0000 01dd
 // Decrement address register $arD.
-void DSPEmitter::dar(const UDSPInstruction opc)
+void DSPEmitterIR::dar(const UDSPInstruction opc)
 {
   //	g_dsp.r[opc & 0x3] = dsp_decrement_addr_reg(opc & 0x3);
   decrement_addr_reg(opc & 0x3);
@@ -77,7 +77,7 @@ void DSPEmitter::dar(const UDSPInstruction opc)
 // IAR $arD
 // 0000 0000 0000 10dd
 // Increment address register $arD.
-void DSPEmitter::iar(const UDSPInstruction opc)
+void DSPEmitterIR::iar(const UDSPInstruction opc)
 {
   //	g_dsp.r[opc & 0x3] = dsp_increment_addr_reg(opc & 0x3);
   increment_addr_reg(opc & 0x3);
@@ -87,7 +87,7 @@ void DSPEmitter::iar(const UDSPInstruction opc)
 // 0000 0000 0000 11dd
 // Subtract indexing register $ixD from an addressing register $arD.
 // used only in IPL-NTSC ucode
-void DSPEmitter::subarn(const UDSPInstruction opc)
+void DSPEmitterIR::subarn(const UDSPInstruction opc)
 {
   //	u8 dreg = opc & 0x3;
   //	g_dsp.r[dreg] = dsp_decrease_addr_reg(dreg, (s16)g_dsp.r[DSP_REG_IX0 + dreg]);
@@ -98,7 +98,7 @@ void DSPEmitter::subarn(const UDSPInstruction opc)
 // 0000 0000 0001 ssdd
 // Adds indexing register $ixS to an addressing register $arD.
 // It is critical for the Zelda ucode that this one wraps correctly.
-void DSPEmitter::addarn(const UDSPInstruction opc)
+void DSPEmitterIR::addarn(const UDSPInstruction opc)
 {
   //	u8 dreg = opc & 0x3;
   //	u8 sreg = (opc >> 2) & 0x3;
@@ -110,7 +110,7 @@ void DSPEmitter::addarn(const UDSPInstruction opc)
 
 //----
 
-void DSPEmitter::setCompileSR(u16 bit)
+void DSPEmitterIR::setCompileSR(u16 bit)
 {
   //	g_dsp.r[DSP_REG_SR] |= bit
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
@@ -120,7 +120,7 @@ void DSPEmitter::setCompileSR(u16 bit)
   m_compile_status_register |= bit;
 }
 
-void DSPEmitter::clrCompileSR(u16 bit)
+void DSPEmitterIR::clrCompileSR(u16 bit)
 {
   //	g_dsp.r[DSP_REG_SR] &= bit
   const OpArg sr_reg = m_gpr.GetReg(DSP_REG_SR);
@@ -133,7 +133,7 @@ void DSPEmitter::clrCompileSR(u16 bit)
 // 0001 0011 aaaa aiii
 // bit of status register $sr. Bit number is calculated by adding 6 to
 // immediate value I.
-void DSPEmitter::sbclr(const UDSPInstruction opc)
+void DSPEmitterIR::sbclr(const UDSPInstruction opc)
 {
   u8 bit = (opc & 0x7) + 6;
 
@@ -144,7 +144,7 @@ void DSPEmitter::sbclr(const UDSPInstruction opc)
 // 0001 0010 aaaa aiii
 // Set bit of status register $sr. Bit number is calculated by adding 6 to
 // immediate value I.
-void DSPEmitter::sbset(const UDSPInstruction opc)
+void DSPEmitterIR::sbset(const UDSPInstruction opc)
 {
   u8 bit = (opc & 0x7) + 6;
 
@@ -154,7 +154,7 @@ void DSPEmitter::sbset(const UDSPInstruction opc)
 // 1000 bbbv xxxx xxxx, bbb >= 101
 // This is a bunch of flag setters, flipping bits in SR. So far so good,
 // but it's harder to know exactly what effect they have.
-void DSPEmitter::srbith(const UDSPInstruction opc)
+void DSPEmitterIR::srbith(const UDSPInstruction opc)
 {
   switch ((opc >> 8) & 0xf)
   {
@@ -190,4 +190,4 @@ void DSPEmitter::srbith(const UDSPInstruction opc)
   }
 }
 
-}  // namespace DSP::JIT::x64
+}  // namespace DSP::JITIR::x64

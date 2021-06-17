@@ -7,11 +7,11 @@
 #include "Common/CommonTypes.h"
 
 #include "Core/DSP/DSPCore.h"
-#include "Core/DSP/Jit/x64/DSPEmitter.h"
+#include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
 
 using namespace Gen;
 
-namespace DSP::JIT::x64
+namespace DSP::JITIR::x64
 {
 // SRS @M, $(0x18+S)
 // 0010 1sss mmmm mmmm
@@ -19,7 +19,7 @@ namespace DSP::JIT::x64
 // CR[0-7] | M. That is, the upper 8 bits of the address are the
 // bottom 8 bits from CR, and the lower 8 bits are from the 8-bit immediate.
 // Note: pc+=2 in duddie's doc seems wrong
-void DSPEmitter::srs(const UDSPInstruction opc)
+void DSPEmitterIR::srs(const UDSPInstruction opc)
 {
   u8 reg = ((opc >> 8) & 0x7) + 0x18;
   // u16 addr = (g_dsp.r.cr << 8) | (opc & 0xFF);
@@ -40,7 +40,7 @@ void DSPEmitter::srs(const UDSPInstruction opc)
 // Move value from data memory pointed by address CR[0-7] | M to register
 // $(0x18+D).  That is, the upper 8 bits of the address are the bottom 8 bits
 // from CR, and the lower 8 bits are from the 8-bit immediate.
-void DSPEmitter::lrs(const UDSPInstruction opc)
+void DSPEmitterIR::lrs(const UDSPInstruction opc)
 {
   u8 reg = ((opc >> 8) & 0x7) + 0x18;
 
@@ -62,7 +62,7 @@ void DSPEmitter::lrs(const UDSPInstruction opc)
 // 0000 0000 110d dddd
 // mmmm mmmm mmmm mmmm
 // Move value from data memory pointed by address M to register $D.
-void DSPEmitter::lr(const UDSPInstruction opc)
+void DSPEmitterIR::lr(const UDSPInstruction opc)
 {
   const int reg = opc & 0x1F;
   const u16 address = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
@@ -75,7 +75,7 @@ void DSPEmitter::lr(const UDSPInstruction opc)
 // 0000 0000 111s ssss
 // mmmm mmmm mmmm mmmm
 // Store value from register $S to a memory pointed by address M.
-void DSPEmitter::sr(const UDSPInstruction opc)
+void DSPEmitterIR::sr(const UDSPInstruction opc)
 {
   const u8 reg = opc & 0x1F;
   const u16 address = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
@@ -93,7 +93,7 @@ void DSPEmitter::sr(const UDSPInstruction opc)
 // iiii iiii iiii iiii
 // Store 16-bit immediate value I to a memory location pointed by address
 // M (M is 8-bit value sign extended).
-void DSPEmitter::si(const UDSPInstruction opc)
+void DSPEmitterIR::si(const UDSPInstruction opc)
 {
   const u16 address = static_cast<s8>(opc);
   const u16 imm = m_dsp_core.DSPState().ReadIMEM(m_compile_pc + 1);
@@ -109,7 +109,7 @@ void DSPEmitter::si(const UDSPInstruction opc)
 // LRR $D, @$S
 // 0001 1000 0ssd dddd
 // Move value from data memory pointed by addressing register $S to register $D.
-void DSPEmitter::lrr(const UDSPInstruction opc)
+void DSPEmitterIR::lrr(const UDSPInstruction opc)
 {
   u8 sreg = (opc >> 5) & 0x3;
   u8 dreg = opc & 0x1f;
@@ -129,7 +129,7 @@ void DSPEmitter::lrr(const UDSPInstruction opc)
 // 0001 1000 1ssd dddd
 // Move value from data memory pointed by addressing register $S to register $D.
 // Decrement register $S.
-void DSPEmitter::lrrd(const UDSPInstruction opc)
+void DSPEmitterIR::lrrd(const UDSPInstruction opc)
 {
   u8 sreg = (opc >> 5) & 0x3;
   u8 dreg = opc & 0x1f;
@@ -150,7 +150,7 @@ void DSPEmitter::lrrd(const UDSPInstruction opc)
 // 0001 1001 0ssd dddd
 // Move value from data memory pointed by addressing register $S to register $D.
 // Increment register $S.
-void DSPEmitter::lrri(const UDSPInstruction opc)
+void DSPEmitterIR::lrri(const UDSPInstruction opc)
 {
   u8 sreg = (opc >> 5) & 0x3;
   u8 dreg = opc & 0x1f;
@@ -171,7 +171,7 @@ void DSPEmitter::lrri(const UDSPInstruction opc)
 // 0001 1001 1ssd dddd
 // Move value from data memory pointed by addressing register $S to register $D.
 // Add indexing register $(0x4+S) to register $S.
-void DSPEmitter::lrrn(const UDSPInstruction opc)
+void DSPEmitterIR::lrrn(const UDSPInstruction opc)
 {
   u8 sreg = (opc >> 5) & 0x3;
   u8 dreg = opc & 0x1f;
@@ -192,7 +192,7 @@ void DSPEmitter::lrrn(const UDSPInstruction opc)
 // 0001 1010 0dds ssss
 // Store value from source register $S to a memory location pointed by
 // addressing register $D.
-void DSPEmitter::srr(const UDSPInstruction opc)
+void DSPEmitterIR::srr(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 5) & 0x3;
   u8 sreg = opc & 0x1f;
@@ -210,7 +210,7 @@ void DSPEmitter::srr(const UDSPInstruction opc)
 // 0001 1010 1dds ssss
 // Store value from source register $S to a memory location pointed by
 // addressing register $D. Decrement register $D.
-void DSPEmitter::srrd(const UDSPInstruction opc)
+void DSPEmitterIR::srrd(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 5) & 0x3;
   u8 sreg = opc & 0x1f;
@@ -230,7 +230,7 @@ void DSPEmitter::srrd(const UDSPInstruction opc)
 // 0001 1011 0dds ssss
 // Store value from source register $S to a memory location pointed by
 // addressing register $D. Increment register $D.
-void DSPEmitter::srri(const UDSPInstruction opc)
+void DSPEmitterIR::srri(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 5) & 0x3;
   u8 sreg = opc & 0x1f;
@@ -250,7 +250,7 @@ void DSPEmitter::srri(const UDSPInstruction opc)
 // 0001 1011 1dds ssss
 // Store value from source register $S to a memory location pointed by
 // addressing register $D. Add DSP_REG_IX0 register to register $D.
-void DSPEmitter::srrn(const UDSPInstruction opc)
+void DSPEmitterIR::srrn(const UDSPInstruction opc)
 {
   u8 dreg = (opc >> 5) & 0x3;
   u8 sreg = opc & 0x1f;
@@ -270,7 +270,7 @@ void DSPEmitter::srrn(const UDSPInstruction opc)
 // 0000 001d 0001 00ss
 // Move value from instruction memory pointed by addressing register
 // $arS to mid accumulator register $acD.m.
-void DSPEmitter::ilrr(const UDSPInstruction opc)
+void DSPEmitterIR::ilrr(const UDSPInstruction opc)
 {
   u16 reg = opc & 0x3;
   u16 dreg = (opc >> 8) & 1;
@@ -290,7 +290,7 @@ void DSPEmitter::ilrr(const UDSPInstruction opc)
 // 0000 001d 0001 01ss
 // Move value from instruction memory pointed by addressing register
 // $arS to mid accumulator register $acD.m. Decrement addressing register $arS.
-void DSPEmitter::ilrrd(const UDSPInstruction opc)
+void DSPEmitterIR::ilrrd(const UDSPInstruction opc)
 {
   u16 reg = opc & 0x3;
   u16 dreg = (opc >> 8) & 1;
@@ -311,7 +311,7 @@ void DSPEmitter::ilrrd(const UDSPInstruction opc)
 // 0000 001d 0001 10ss
 // Move value from instruction memory pointed by addressing register
 // $arS to mid accumulator register $acD.m. Increment addressing register $arS.
-void DSPEmitter::ilrri(const UDSPInstruction opc)
+void DSPEmitterIR::ilrri(const UDSPInstruction opc)
 {
   u16 reg = opc & 0x3;
   u16 dreg = (opc >> 8) & 1;
@@ -333,7 +333,7 @@ void DSPEmitter::ilrri(const UDSPInstruction opc)
 // Move value from instruction memory pointed by addressing register
 // $arS to mid accumulator register $acD.m. Add corresponding indexing
 // register $ixS to addressing register $arS.
-void DSPEmitter::ilrrn(const UDSPInstruction opc)
+void DSPEmitterIR::ilrrn(const UDSPInstruction opc)
 {
   u16 reg = opc & 0x3;
   u16 dreg = (opc >> 8) & 1;
@@ -350,4 +350,4 @@ void DSPEmitter::ilrrn(const UDSPInstruction opc)
   increase_addr_reg(reg, reg);
 }
 
-}  // namespace DSP::JIT::x64
+}  // namespace DSP::JITIR::x64

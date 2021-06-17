@@ -6,13 +6,13 @@
 
 #include "Core/DSP/DSPCommon.h"
 
-namespace DSP::JIT::x64
+namespace DSP::JITIR::x64
 {
-class DSPEmitter;
+class DSPEmitterIR;
 
-using JITFunction = void (DSPEmitter::*)(UDSPInstruction);
+using JITIRDecodeFunction = void (DSPEmitterIR::*)(UDSPInstruction);
 
-JITFunction GetOp(UDSPInstruction inst);
-JITFunction GetExtOp(UDSPInstruction inst);
+JITIRDecodeFunction GetOp(UDSPInstruction inst);
+JITIRDecodeFunction GetExtOp(UDSPInstruction inst);
 void InitInstructionTables();
-}  // namespace DSP::JIT::x64
+}  // namespace DSP::JITIR::x64

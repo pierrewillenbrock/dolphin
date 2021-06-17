@@ -2,7 +2,7 @@
 // Licensed under GPLv2+
 // Refer to the license.txt file included.
 
-#include "Core/DSP/Jit/x64/DSPJitRegCache.h"
+#include "Core/DSP/JitIR/x64/DSPJitRegCache.h"
 
 #include <cinttypes>
 #include <cstddef>
@@ -11,11 +11,11 @@
 #include "Common/Logging/Log.h"
 
 #include "Core/DSP/DSPCore.h"
-#include "Core/DSP/Jit/x64/DSPEmitter.h"
+#include "Core/DSP/JitIR/x64/DSPEmitterIR.h"
 
 using namespace Gen;
 
-namespace DSP::JIT::x64
+namespace DSP::JITIR::x64
 {
 // Ordered in order of prefered use.
 // Not all of these are actually available
@@ -101,7 +101,7 @@ static Gen::OpArg GetRegisterPointer(size_t reg)
 #define STATIC_REG_ACCS
 //#undef STATIC_REG_ACCS
 
-DSPJitRegCache::DSPJitRegCache(DSPEmitter& emitter)
+DSPJitIRRegCache::DSPJitIRRegCache(DSPEmitterIR& emitter)
     : m_emitter(emitter), m_is_temporary(false), m_is_merged(false)
 {
   for (X64CachedReg& xreg : m_xregs)
@@ -193,13 +193,13 @@ DSPJitRegCache::DSPJitRegCache(DSPEmitter& emitter)
   m_use_ctr = 0;
 }
 
-DSPJitRegCache::DSPJitRegCache(const DSPJitRegCache& cache)
+DSPJitIRRegCache::DSPJitIRRegCache(const DSPJitIRRegCache& cache)
     : m_regs(cache.m_regs), m_xregs(cache.m_xregs), m_emitter(cache.m_emitter),
       m_is_temporary(true), m_is_merged(false)
 {
 }
 
-DSPJitRegCache& DSPJitRegCache::operator=(const DSPJitRegCache& cache)
+DSPJitIRRegCache& DSPJitIRRegCache::operator=(const DSPJitIRRegCache& cache)
 {
   ASSERT_MSG(DSPLLE, &m_emitter == &cache.m_emitter, "emitter does not match");
   ASSERT_MSG(DSPLLE, m_is_temporary, "register cache not temporary??");
@@ -211,17 +211,17 @@ DSPJitRegCache& DSPJitRegCache::operator=(const DSPJitRegCache& cache)
   return *this;
 }
 
-DSPJitRegCache::~DSPJitRegCache()
+DSPJitIRRegCache::~DSPJitIRRegCache()
 {
   ASSERT_MSG(DSPLLE, !m_is_temporary || m_is_merged, "temporary cache not merged");
 }
 
-void DSPJitRegCache::Drop()
+void DSPJitIRRegCache::Drop()
 {
   m_is_merged = true;
 }
 
-void DSPJitRegCache::FlushRegs(DSPJitRegCache& cache, bool emit)
+void DSPJitIRRegCache::FlushRegs(DSPJitIRRegCache& cache, bool emit)
 {
   cache.m_is_merged = true;
 
@@ -323,11 +323,11 @@ void DSPJitRegCache::FlushRegs(DSPJitRegCache& cache, bool emit)
   m_use_ctr = cache.m_use_ctr;
 }
 
-void DSPJitRegCache::FlushMemBackedRegs()
+void DSPJitIRRegCache::FlushMemBackedRegs()
 {
   // also needs to undo any dynamic changes to static allocated regs
   // this should have the same effect as
-  // merge(DSPJitRegCache(emitter));
+  // merge(DSPJitIRRegCache(emitter));
 
   int reg_flush_cnt = 0;
   for (size_t i = 0; i < m_regs.size(); i++)
@@ -354,7 +354,7 @@ void DSPJitRegCache::FlushMemBackedRegs()
   ERROR_LOG(DSPLLE, "Flushing %d regs(of 8)", reg_flush_cnt);
 }
 
-void DSPJitRegCache::FlushRegs()
+void DSPJitIRRegCache::FlushRegs()
 {
   FlushMemBackedRegs();
 
@@ -390,7 +390,7 @@ void DSPJitRegCache::FlushRegs()
   m_use_ctr = 0;
 }
 
-void DSPJitRegCache::LoadRegs(bool emit)
+void DSPJitIRRegCache::LoadRegs(bool emit)
 {
   for (size_t i = 0; i < m_regs.size(); i++)
   {
@@ -401,7 +401,7 @@ void DSPJitRegCache::LoadRegs(bool emit)
   }
 }
 
-void DSPJitRegCache::SaveRegs()
+void DSPJitIRRegCache::SaveRegs()
 {
   FlushRegs();
 
@@ -416,7 +416,7 @@ void DSPJitRegCache::SaveRegs()
   }
 }
 
-void DSPJitRegCache::PushRegs()
+void DSPJitIRRegCache::PushRegs()
 {
   FlushMemBackedRegs();
 
@@ -458,7 +458,7 @@ void DSPJitRegCache::PushRegs()
   }
 }
 
-void DSPJitRegCache::PopRegs()
+void DSPJitIRRegCache::PopRegs()
 {
   int push_count = 0;
   for (int i = static_cast<int>(m_xregs.size() - 1); i >= 0; i--)
@@ -488,12 +488,12 @@ void DSPJitRegCache::PopRegs()
   }
 }
 
-X64Reg DSPJitRegCache::MakeABICallSafe(X64Reg reg)
+X64Reg DSPJitIRRegCache::MakeABICallSafe(X64Reg reg)
 {
   return reg;
 }
 
-void DSPJitRegCache::MovToHostReg(size_t reg, X64Reg host_reg, bool load)
+void DSPJitIRRegCache::MovToHostReg(size_t reg, X64Reg host_reg, bool load)
 {
   ASSERT_MSG(DSPLLE, reg < m_regs.size(), "bad register name %zu", reg);
   ASSERT_MSG(DSPLLE, m_regs[reg].parentReg == DSP_REG_NONE, "register %zu is proxy for %d", reg,
@@ -536,7 +536,7 @@ void DSPJitRegCache::MovToHostReg(size_t reg, X64Reg host_reg, bool load)
   }
 }
 
-void DSPJitRegCache::MovToHostReg(size_t reg, bool load)
+void DSPJitIRRegCache::MovToHostReg(size_t reg, bool load)
 {
   ASSERT_MSG(DSPLLE, reg < m_regs.size(), "bad register name %zu", reg);
   ASSERT_MSG(DSPLLE, m_regs[reg].parentReg == DSP_REG_NONE, "register %zu is proxy for %d", reg,
@@ -566,7 +566,7 @@ void DSPJitRegCache::MovToHostReg(size_t reg, bool load)
   MovToHostReg(reg, tmp, load);
 }
 
-void DSPJitRegCache::RotateHostReg(size_t reg, int shift, bool emit)
+void DSPJitIRRegCache::RotateHostReg(size_t reg, int shift, bool emit)
 {
   ASSERT_MSG(DSPLLE, reg < m_regs.size(), "bad register name %zu", reg);
   ASSERT_MSG(DSPLLE, m_regs[reg].parentReg == DSP_REG_NONE, "register %zu is proxy for %d", reg,
@@ -607,7 +607,7 @@ void DSPJitRegCache::RotateHostReg(size_t reg, int shift, bool emit)
   m_regs[reg].shift = shift;
 }
 
-void DSPJitRegCache::MovToMemory(size_t reg)
+void DSPJitIRRegCache::MovToMemory(size_t reg)
 {
   ASSERT_MSG(DSPLLE, reg < m_regs.size(), "bad register name %zu", reg);
   ASSERT_MSG(DSPLLE, m_regs[reg].parentReg == DSP_REG_NONE, "register %zu is proxy for %d", reg,
@@ -674,7 +674,7 @@ void DSPJitRegCache::MovToMemory(size_t reg)
   m_regs[reg].loc = tmp;
 }
 
-OpArg DSPJitRegCache::GetReg(int reg, bool load)
+OpArg DSPJitIRRegCache::GetReg(int reg, bool load)
 {
   int real_reg;
   int shift;
@@ -731,7 +731,7 @@ OpArg DSPJitRegCache::GetReg(int reg, bool load)
   return oparg;
 }
 
-void DSPJitRegCache::PutReg(int reg, bool dirty)
+void DSPJitIRRegCache::PutReg(int reg, bool dirty)
 {
   int real_reg = reg;
   if (m_regs[reg].parentReg != DSP_REG_NONE)
@@ -793,7 +793,7 @@ void DSPJitRegCache::PutReg(int reg, bool dirty)
   }
 }
 
-void DSPJitRegCache::ReadReg(int sreg, X64Reg host_dreg, RegisterExtension extend)
+void DSPJitIRRegCache::ReadReg(int sreg, X64Reg host_dreg, RegisterExtension extend)
 {
   const OpArg reg = GetReg(sreg);
 
@@ -837,7 +837,7 @@ void DSPJitRegCache::ReadReg(int sreg, X64Reg host_dreg, RegisterExtension exten
   PutReg(sreg, false);
 }
 
-void DSPJitRegCache::WriteReg(int dreg, OpArg arg)
+void DSPJitIRRegCache::WriteReg(int dreg, OpArg arg)
 {
   const OpArg reg = GetReg(dreg, false);
   if (arg.IsImm())
@@ -879,7 +879,7 @@ void DSPJitRegCache::WriteReg(int dreg, OpArg arg)
   PutReg(dreg, true);
 }
 
-X64Reg DSPJitRegCache::SpillXReg()
+X64Reg DSPJitIRRegCache::SpillXReg()
 {
   int max_use_ctr_diff = 0;
   X64Reg least_recent_use_reg = INVALID_REG;
@@ -915,7 +915,7 @@ X64Reg DSPJitRegCache::SpillXReg()
   return INVALID_REG;
 }
 
-void DSPJitRegCache::SpillXReg(X64Reg reg)
+void DSPJitIRRegCache::SpillXReg(X64Reg reg)
 {
   if (m_xregs[reg].guest_reg <= DSP_REG_MAX_MEM_BACKED)
   {
@@ -932,7 +932,7 @@ void DSPJitRegCache::SpillXReg(X64Reg reg)
   }
 }
 
-X64Reg DSPJitRegCache::FindFreeXReg() const
+X64Reg DSPJitIRRegCache::FindFreeXReg() const
 {
   for (X64Reg x : s_allocation_order)
   {
@@ -945,7 +945,7 @@ X64Reg DSPJitRegCache::FindFreeXReg() const
   return INVALID_REG;
 }
 
-X64Reg DSPJitRegCache::FindSpillFreeXReg()
+X64Reg DSPJitIRRegCache::FindSpillFreeXReg()
 {
   X64Reg reg = FindFreeXReg();
   if (reg == INVALID_REG)
@@ -955,7 +955,7 @@ X64Reg DSPJitRegCache::FindSpillFreeXReg()
   return reg;
 }
 
-X64Reg DSPJitRegCache::GetFreeXReg()
+X64Reg DSPJitIRRegCache::GetFreeXReg()
 {
   X64Reg reg = FindSpillFreeXReg();
 
@@ -969,7 +969,7 @@ X64Reg DSPJitRegCache::GetFreeXReg()
   return reg;
 }
 
-void DSPJitRegCache::GetXReg(X64Reg reg)
+void DSPJitIRRegCache::GetXReg(X64Reg reg)
 {
   if (m_xregs[reg].guest_reg == DSP_REG_STATIC)
   {
@@ -985,7 +985,7 @@ void DSPJitRegCache::GetXReg(X64Reg reg)
   m_xregs[reg].guest_reg = DSP_REG_USED;
 }
 
-void DSPJitRegCache::PutXReg(X64Reg reg)
+void DSPJitIRRegCache::PutXReg(X64Reg reg)
 {
   if (m_xregs[reg].guest_reg == DSP_REG_STATIC)
   {
@@ -998,4 +998,4 @@ void DSPJitRegCache::PutXReg(X64Reg reg)
   m_xregs[reg].guest_reg = DSP_REG_NONE;
 }
 
-}  // namespace DSP::JIT::x64
+}  // namespace DSP::JITIR::x64
