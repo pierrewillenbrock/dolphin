@@ -119,55 +119,7 @@ bool DSPEmitterIR::FlagsNeeded(u16 address) const
 
 int DSPEmitterIR::ir_to_regcache_reg(int reg)
 {
-  switch (reg)
-  {
-  case DSPEmitterIR::IROp::DSP_REG_ACC0_ALL:
-    return DSP_REG_ACC0_64;
-  case DSPEmitterIR::IROp::DSP_REG_ACC1_ALL:
-    return DSP_REG_ACC1_64;
-  case DSPEmitterIR::IROp::DSP_REG_AX0_ALL:
-    return DSP_REG_AX0_32;
-  case DSPEmitterIR::IROp::DSP_REG_AX1_ALL:
-    return DSP_REG_AX1_32;
-  case DSPEmitterIR::IROp::DSP_REG_PROD_ALL:
-    return DSP_REG_PROD_64;
-  case 0:
-  case 1:
-  case 2:
-  case 3:
-  case 4:
-  case 5:
-  case 6:
-  case 7:
-  case 8:
-  case 9:
-  case 10:
-  case 11:
-  case 12:
-  case 13:
-  case 14:
-  case 15:
-  case 16:
-  case 17:
-  case 18:
-  case 19:
-  case 20:
-  case 21:
-  case 22:
-  case 23:
-  case 24:
-  case 25:
-  case 26:
-  case 27:
-  case 28:
-  case 29:
-  case 30:
-  case 31:
-    return reg;
-  default:
-    _assert_msg_(DSPLLE, 0, "cannot convert il reg %d to regcache", reg);
-    return -1;
-  }
+  return reg;
 }
 
 void DSPEmitterIR::DecodeInstruction(UDSPInstruction inst)
@@ -777,8 +729,7 @@ void DSPEmitterIR::EmitInsn(IRInsnNode* in)
 
   ASSERT_MSG(DSPLLE, GetSpaceLeft() > 64, "code space too full");
 
-  // mark the active vregs active, so we can tell the m_gpr about
-  // them being put, if needed(dropAllRegs)
+  // mark the active vregs active(pre/postABICall)
   for (auto i : in->live_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())
@@ -808,8 +759,7 @@ void DSPEmitterIR::EmitInsn(IRInsnNode* in)
   if (insn.modifies_SR)
     MOV(16, M_SDSP_r_sr(), insn.SR);
 
-  // and now, drop it all again. this will not be needed when
-  // we drop the m_gpr completely
+  // and now, drop it all again.(pre/postABICall)
   for (auto i : in->live_vregs)
   {
     if (m_vregs[i].oparg.IsSimpleReg())

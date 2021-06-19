@@ -497,7 +497,6 @@ if(_M_X86)
     DSP/Jit/x64/DSPJitTables.h
     DSP/Jit/x64/DSPJitUtil.cpp
     DSP/JitIR/x64/DSPEmitterIR.cpp
-    DSP/JitIR/x64/DSPJitRegCache.cpp
     DSP/JitIR/x64/DSPJitExtOps.cpp
     DSP/JitIR/x64/DSPJitBranch.cpp
     DSP/JitIR/x64/DSPJitBranchInternals.cpp

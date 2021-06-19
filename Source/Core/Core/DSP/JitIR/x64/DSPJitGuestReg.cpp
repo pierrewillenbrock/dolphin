@@ -27,6 +27,132 @@ namespace JITIR
 {
 namespace x64
 {
+OpArg DSPEmitterIR::regMem(int reg)
+{
+  switch (reg)
+  {
+  case DSP_REG_AR0:
+  case DSP_REG_AR1:
+  case DSP_REG_AR2:
+  case DSP_REG_AR3:
+    return MDisp(
+        R15, static_cast<int>(offsetof(SDSP, r.ar) + sizeof(SDSP::r.ar[0]) * (reg - DSP_REG_AR0)));
+  case DSP_REG_IX0:
+  case DSP_REG_IX1:
+  case DSP_REG_IX2:
+  case DSP_REG_IX3:
+    return MDisp(
+        R15, static_cast<int>(offsetof(SDSP, r.ix) + sizeof(SDSP::r.ix[0]) * (reg - DSP_REG_IX0)));
+  case DSP_REG_WR0:
+  case DSP_REG_WR1:
+  case DSP_REG_WR2:
+  case DSP_REG_WR3:
+    return MDisp(
+        R15, static_cast<int>(offsetof(SDSP, r.wr) + sizeof(SDSP::r.wr[0]) * (reg - DSP_REG_WR0)));
+  case DSP_REG_ST0:
+  case DSP_REG_ST1:
+  case DSP_REG_ST2:
+  case DSP_REG_ST3:
+    return MDisp(
+        R15, static_cast<int>(offsetof(SDSP, r.st) + sizeof(SDSP::r.st[0]) * (reg - DSP_REG_ST0)));
+  case DSP_REG_ACH0:
+  case DSP_REG_ACH1:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[0].h) +
+                                       sizeof(SDSP::r.ac[0]) * (reg - DSP_REG_ACH0)));
+  case DSP_REG_CR:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.cr)));
+  case DSP_REG_SR:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.sr)));
+  case DSP_REG_PRODL:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.prod.l)));
+  case DSP_REG_PRODM:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.prod.m)));
+  case DSP_REG_PRODH:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.prod.h)));
+  case DSP_REG_PRODM2:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.prod.m2)));
+  case DSP_REG_AXL0:
+  case DSP_REG_AXL1:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ax[0].l) +
+                                       sizeof(SDSP::r.ax[0]) * (reg - DSP_REG_AXL0)));
+  case DSP_REG_AXH0:
+  case DSP_REG_AXH1:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ax[0].h) +
+                                       sizeof(SDSP::r.ax[0]) * (reg - DSP_REG_AXH0)));
+  case DSP_REG_ACL0:
+  case DSP_REG_ACL1:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[0].l) +
+                                       sizeof(SDSP::r.ac[0]) * (reg - DSP_REG_ACL0)));
+  case DSP_REG_ACM0:
+  case DSP_REG_ACM1:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[0].m) +
+                                       sizeof(SDSP::r.ac[0]) * (reg - DSP_REG_ACM0)));
+  case IROp::DSP_REG_AX0_ALL:
+  case IROp::DSP_REG_AX1_ALL:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ax[0].val) +
+                                       sizeof(SDSP::r.ax[0]) * (reg - IROp::DSP_REG_AX0_ALL)));
+  case IROp::DSP_REG_ACC0_ALL:
+  case IROp::DSP_REG_ACC1_ALL:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.ac[0].val) +
+                                       sizeof(SDSP::r.ac[0]) * (reg - IROp::DSP_REG_ACC0_ALL)));
+  case IROp::DSP_REG_PROD_ALL:
+    return MDisp(R15, static_cast<int>(offsetof(SDSP, r.prod.val)));
+  default:
+    ASSERT_MSG(DSPLLE, 0, "cannot happen");
+    return M(static_cast<void*>(nullptr));
+  }
+}
+
+size_t DSPEmitterIR::regSize(int reg)
+{
+  switch (reg)
+  {
+  case DSP_REG_AR0:
+  case DSP_REG_AR1:
+  case DSP_REG_AR2:
+  case DSP_REG_AR3:
+  case DSP_REG_IX0:
+  case DSP_REG_IX1:
+  case DSP_REG_IX2:
+  case DSP_REG_IX3:
+  case DSP_REG_WR0:
+  case DSP_REG_WR1:
+  case DSP_REG_WR2:
+  case DSP_REG_WR3:
+  case DSP_REG_ST0:
+  case DSP_REG_ST1:
+  case DSP_REG_ST2:
+  case DSP_REG_ST3:
+  case DSP_REG_ACH0:
+  case DSP_REG_ACH1:
+  case DSP_REG_CR:
+  case DSP_REG_SR:
+  case DSP_REG_PRODL:
+  case DSP_REG_PRODM:
+  case DSP_REG_PRODH:
+  case DSP_REG_PRODM2:
+  case DSP_REG_AXL0:
+  case DSP_REG_AXL1:
+  case DSP_REG_AXH0:
+  case DSP_REG_AXH1:
+  case DSP_REG_ACL0:
+  case DSP_REG_ACL1:
+  case DSP_REG_ACM0:
+  case DSP_REG_ACM1:
+    return 2;
+  case IROp::DSP_REG_AX0_ALL:
+  case IROp::DSP_REG_AX1_ALL:
+    return 4;
+  case IROp::DSP_REG_ACC0_ALL:
+  case IROp::DSP_REG_ACC1_ALL:
+  case IROp::DSP_REG_PROD_ALL:
+    return 8;
+  default:
+    _assert_msg_(DSPLLE, 0, "cannot happen");
+    return 0;
+  }
+}
+
 void DSPEmitterIR::iremit_LoadImmOp(IRInsn const& insn)
 {
   // nothing to do here. the checkImmVRegs already put something
@@ -99,7 +225,7 @@ void DSPEmitterIR::iremit_LoadGuestACMOp(IRInsn const& insn)
   int reqs = m_vregs[insn.output.vreg].reqs;
   int greg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
 
-  OpArg mem = m_gpr.RegMem(greg);
+  OpArg mem = regMem(greg);
 
   if ((insn.constant_mask_SR & SR_40_MODE_BIT) && (insn.constant_val_SR & SR_40_MODE_BIT))
   {
@@ -255,8 +381,8 @@ void DSPEmitterIR::iremit_LoadGuestFastOp(IRInsn const& insn)
   int reqs = m_vregs[insn.output.vreg].reqs;
   int greg = ir_to_regcache_reg(insn.inputs[0].guest_reg);
 
-  const OpArg mem = m_gpr.RegMem(greg);
-  switch (m_gpr.RegSize(greg))
+  const OpArg mem = regMem(greg);
+  switch (regSize(greg))
   {
   case 2:
     switch (reqs & ExtendMask)
@@ -317,7 +443,7 @@ void DSPEmitterIR::iremit_LoadGuestProdOp(IRInsn const& insn)
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
   // s64 val   = (s8)(u8)g_dsp.r[DSP_REG_PRODH];
-  const OpArg mem = m_gpr.RegMem(DSP_REG_PROD_64);
+  const OpArg mem = regMem(IROp::DSP_REG_PROD_ALL);
 
   MOV(64, insn.output.oparg, mem);
 
@@ -338,7 +464,7 @@ void DSPEmitterIR::iremit_StoreGuestProdOp(IRInsn const& insn)
 {
   X64Reg tmp1 = insn.temps[0].oparg.GetSimpleReg();
 
-  OpArg mem = m_gpr.RegMem(DSP_REG_PROD_64);
+  OpArg mem = regMem(IROp::DSP_REG_PROD_ALL);
 
   if (insn.inputs[0].oparg.IsImm())
   {
@@ -416,7 +542,7 @@ void DSPEmitterIR::iremit_StoreGuestACMOp(IRInsn const& insn)
 {
   int greg = ir_to_regcache_reg(insn.output.guest_reg);
 
-  OpArg mem = m_gpr.RegMem(greg);
+  OpArg mem = regMem(greg);
 
   TEST(16, insn.SR, Imm16(SR_40_MODE_BIT));
   FixupBranch not_40bit = J_CC(CC_Z, true);
@@ -461,12 +587,12 @@ void DSPEmitterIR::iremit_StoreGuestOp(IRInsn const& insn)
 {
   int greg = ir_to_regcache_reg(insn.output.guest_reg);
 
-  OpArg mem = m_gpr.RegMem(greg);
+  OpArg mem = regMem(greg);
   OpArg src = insn.inputs[0].oparg;
 
   if (src.IsImm())
   {
-    size_t size = m_gpr.RegSize(greg);
+    size_t size = regSize(greg);
     if (greg == DSP_REG_ACH0 || greg == DSP_REG_ACH1)
     {
       src = Imm64((s64)(s16)src.AsImm64().Imm64());
@@ -501,7 +627,7 @@ void DSPEmitterIR::iremit_StoreGuestOp(IRInsn const& insn)
   }
   else if (src.IsSimpleReg())
   {
-    size_t size = m_gpr.RegSize(greg);
+    size_t size = regSize(greg);
     if (greg == DSP_REG_ACH0 || greg == DSP_REG_ACH1)
     {
       MOVSX(32, 8, src.GetSimpleReg(), src);

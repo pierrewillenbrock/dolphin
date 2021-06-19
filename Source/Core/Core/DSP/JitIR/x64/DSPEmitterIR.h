@@ -17,7 +17,6 @@
 
 #include "Core/DSP/DSPCommon.h"
 #include "Core/DSP/Jit/DSPEmitterBase.h"
-#include "Core/DSP/JitIR/x64/DSPJitRegCache.h"
 
 class PointerWrap;
 
@@ -272,7 +271,6 @@ private:
     // implement the ORing of parallel output to the same insn
     // handle fetching from the same memory segment
     // things that should be thought of:
-    //* kill m_gpr
     //** what about insn.SR? => make it vreg?
     //* switch insn "tree" to real graph
     //* what to do with "active" vregs that need to be stored
@@ -556,6 +554,8 @@ private:
   void Update_SR_Register(Gen::X64Reg val, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
 
   void round_long(Gen::X64Reg long_reg);
+  static Gen::OpArg regMem(int reg);
+  static size_t regSize(int reg);
 
   // CC helpers
   void Update_SR_Register64(Gen::X64Reg val, Gen::OpArg const& sr_reg, Gen::X64Reg tmp1);
@@ -864,8 +864,6 @@ private:
   static IREmitInfo const GRegOrAXAXHOp;
   static IREmitInfo const GRegOrAXAXLOp;
   static IREmitInfo const GRegOr1616Op;
-
-  DSPJitIRRegCache m_gpr{*this};
 
   // during parsing: PC of the instruction being parsed
   u16 m_compile_pc;
